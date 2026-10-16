@@ -1,0 +1,2 @@
+-keep class com.hyperos.quickopen.MainHook { *; }
+-keepclassmembers class com.hyperos.quickopen.** { *; }

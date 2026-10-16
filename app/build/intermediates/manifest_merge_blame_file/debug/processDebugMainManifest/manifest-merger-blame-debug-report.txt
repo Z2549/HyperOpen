@@ -1,0 +1,152 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.hyperos.quickopen"
+4    android:versionCode="100"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="29"
+9        android:targetSdkVersion="35" />
+10
+11    <permission
+11-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:22:5-24:47
+12        android:name="com.hyperos.quickopen.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+12-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:23:9-81
+13        android:protectionLevel="signature" />
+13-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:24:9-44
+14
+15    <uses-permission android:name="com.hyperos.quickopen.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+15-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:26:5-97
+15-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:26:22-94
+16
+17    <application
+17-->D:\VS\systemui\app\src\main\AndroidManifest.xml:4:5-34:19
+18        android:allowBackup="true"
+18-->D:\VS\systemui\app\src\main\AndroidManifest.xml:5:9-35
+19        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+19-->[androidx.core:core:1.13.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d1f6c266aab555df17bc6687cf35a200\transformed\core-1.13.0\AndroidManifest.xml:28:18-86
+20        android:debuggable="true"
+21        android:extractNativeLibs="false"
+22        android:icon="@mipmap/ic_launcher"
+22-->D:\VS\systemui\app\src\main\AndroidManifest.xml:6:9-43
+23        android:label="@string/app_name"
+23-->D:\VS\systemui\app\src\main\AndroidManifest.xml:7:9-41
+24        android:roundIcon="@mipmap/ic_launcher"
+24-->D:\VS\systemui\app\src\main\AndroidManifest.xml:8:9-48
+25        android:supportsRtl="true"
+25-->D:\VS\systemui\app\src\main\AndroidManifest.xml:9:9-35
+26        android:theme="@style/Theme.HyperOSQuickOpen" >
+26-->D:\VS\systemui\app\src\main\AndroidManifest.xml:10:9-54
+27
+28        <!-- LSPosed / Xposed 模块声明元数据 -->
+29        <meta-data
+29-->D:\VS\systemui\app\src\main\AndroidManifest.xml:13:9-15:36
+30            android:name="xposedmodule"
+30-->D:\VS\systemui\app\src\main\AndroidManifest.xml:14:13-40
+31            android:value="true" />
+31-->D:\VS\systemui\app\src\main\AndroidManifest.xml:15:13-33
+32        <meta-data
+32-->D:\VS\systemui\app\src\main\AndroidManifest.xml:16:9-18:83
+33            android:name="xposeddescription"
+33-->D:\VS\systemui\app\src\main\AndroidManifest.xml:17:13-45
+34            android:value="小米澎湃OS指纹快捷方式增强：Apple Watch蜂窝充满、柔光玻璃与高斯模糊双材质、任意自定义动作" />
+34-->D:\VS\systemui\app\src\main\AndroidManifest.xml:18:13-80
+35        <meta-data
+35-->D:\VS\systemui\app\src\main\AndroidManifest.xml:19:9-21:34
+36            android:name="xposedminversion"
+36-->D:\VS\systemui\app\src\main\AndroidManifest.xml:20:13-44
+37            android:value="82" />
+37-->D:\VS\systemui\app\src\main\AndroidManifest.xml:21:13-31
+38        <meta-data
+38-->D:\VS\systemui\app\src\main\AndroidManifest.xml:22:9-24:54
+39            android:name="xposedscope"
+39-->D:\VS\systemui\app\src\main\AndroidManifest.xml:23:13-39
+40            android:resource="@array/xposed_scope" />
+40-->D:\VS\systemui\app\src\main\AndroidManifest.xml:24:13-51
+41
+42        <activity
+42-->D:\VS\systemui\app\src\main\AndroidManifest.xml:26:9-33:20
+43            android:name="com.hyperos.quickopen.ui.MainActivity"
+43-->D:\VS\systemui\app\src\main\AndroidManifest.xml:27:13-44
+44            android:exported="true" >
+44-->D:\VS\systemui\app\src\main\AndroidManifest.xml:28:13-36
+45            <intent-filter>
+45-->D:\VS\systemui\app\src\main\AndroidManifest.xml:29:13-32:29
+46                <action android:name="android.intent.action.MAIN" />
+46-->D:\VS\systemui\app\src\main\AndroidManifest.xml:30:17-69
+46-->D:\VS\systemui\app\src\main\AndroidManifest.xml:30:25-66
+47
+48                <category android:name="android.intent.category.LAUNCHER" />
+48-->D:\VS\systemui\app\src\main\AndroidManifest.xml:31:17-77
+48-->D:\VS\systemui\app\src\main\AndroidManifest.xml:31:27-74
+49            </intent-filter>
+50        </activity>
+51
+52        <provider
+52-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+53            android:name="androidx.startup.InitializationProvider"
+53-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
+54            android:authorities="com.hyperos.quickopen.androidx-startup"
+54-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
+55            android:exported="false" >
+55-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
+56            <meta-data
+56-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+57                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+57-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
+58                android:value="androidx.startup" />
+58-->[androidx.emoji2:emoji2:1.3.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\4fdf6974bf4541081c0a740666ff4297\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
+59            <meta-data
+59-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d244440afcbe40a83732677becc2b7ed\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
+60                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+60-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d244440afcbe40a83732677becc2b7ed\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
+61                android:value="androidx.startup" />
+61-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\qmry\.gradle\caches\9.5.1\transforms\d244440afcbe40a83732677becc2b7ed\transformed\lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
+62            <meta-data
+62-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:29:13-31:52
+63                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+63-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:30:17-85
+64                android:value="androidx.startup" />
+64-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:31:17-49
+65        </provider>
+66
+67        <receiver
+67-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:34:9-52:20
+68            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+68-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:35:13-76
+69            android:directBootAware="false"
+69-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:36:13-44
+70            android:enabled="true"
+70-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:37:13-35
+71            android:exported="true"
+71-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:38:13-36
+72            android:permission="android.permission.DUMP" >
+72-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:39:13-57
+73            <intent-filter>
+73-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:40:13-42:29
+74                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+74-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:41:17-91
+74-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:41:25-88
+75            </intent-filter>
+76            <intent-filter>
+76-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:43:13-45:29
+77                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+77-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:44:17-85
+77-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:44:25-82
+78            </intent-filter>
+79            <intent-filter>
+79-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:46:13-48:29
+80                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+80-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:47:17-88
+80-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:47:25-85
+81            </intent-filter>
+82            <intent-filter>
+82-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:49:13-51:29
+83                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+83-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:50:17-95
+83-->[androidx.profileinstaller:profileinstaller:1.4.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\f30b7d9dc1460894d200145c49e0f2d2\transformed\profileinstaller-1.4.0\AndroidManifest.xml:50:25-92
+84            </intent-filter>
+85        </receiver>
+86    </application>
+87
+88</manifest>

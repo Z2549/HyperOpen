@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.hyperos.quickopen.app-mergeDebugResources-30:/values-v18/values-v18.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\qmry\\.gradle\\caches\\9.5.1\\transforms\\f427785ef7c1cc5c0eee2774c94cf50f\\transformed\\appcompat-1.7.0\\res\\values-v18\\values-v18.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "48",
+                        "endOffsets": "99"
+                    }
+                }
+            ]
+        }
+    ]
+}

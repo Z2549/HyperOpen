@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="xposed_scope">
+        <item>com.android.systemui</item>
+    </string-array>
+    <color name="accent">#00F0FF</color>
+    <color name="background">#0E1017</color>
+    <color name="divider">#262A36</color>
+    <color name="primary">#00E5FF</color>
+    <color name="primary_dark">#00B0FF</color>
+    <color name="surface">#181A22</color>
+    <color name="surface_variant">#222530</color>
+    <color name="text_primary">#F5F5F7</color>
+    <color name="text_secondary">#9DA2B0</color>
+    <string name="app_name">指纹快捷方式增强</string>
+    <string name="btn_add_shortcut">添加快捷动作</string>
+    <string name="btn_reset_defaults">恢复预设布局</string>
+    <string name="hint_instant_apply">提示：所有修改即时保存，长按指纹即可验证效果，无需重启 SystemUI。</string>
+    <string name="material_gaussian_blur">高斯模糊 (Gaussian Blur)</string>
+    <string name="material_soft_glass">柔光玻璃 (Soft Light Glass)</string>
+    <string name="material_system">跟随系统设置 (System Auto)</string>
+    <string name="param_icon_size">图标基础尺寸 (Icon Size)</string>
+    <string name="param_influence_radius">感应辐射范围 (Influence Radius)</string>
+    <string name="param_max_scale">鱼眼最大放大倍率 (Max Scale)</string>
+    <string name="param_offset_y">整体垂直高度偏移 (Offset Y)</string>
+    <string name="param_region_diameter">圆形视界直径 (Region Diameter)</string>
+    <string name="param_show_region_bg">显示圆形区域底衬与边框</string>
+    <string name="section_geometry">几何与位置参数</string>
+    <string name="section_icon_physics">图标与物理动力学</string>
+    <string name="section_material">材质与系统风格</string>
+    <string name="section_shortcuts">快捷项目管理与动作排序</string>
+    <string name="title_settings">快捷方式个性化设置</string>
+    <style name="Theme.HyperOSQuickOpen" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@color/background</item>
+        <item name="android:navigationBarColor">@color/background</item>
+    </style>
+</resources>

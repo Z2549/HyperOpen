@@ -1,0 +1,157 @@
+package com.hyperos.quickopen.model;
+
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.hardware.camera2.CameraManager;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import android.widget.Toast;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.DataOutputStream;
+
+public class ShortcutItem {
+    private static final String TAG = "QuickOpen_Shortcut";
+
+    public static final String ACTION_APP = "APP";
+    public static final String ACTION_INTENT_URI = "INTENT_URI";
+    public static final String ACTION_BROADCAST = "BROADCAST";
+    public static final String ACTION_FLASHLIGHT = "FLASHLIGHT";
+    public static final String ACTION_SHELL = "SHELL";
+
+    public String id;
+    public String title;
+    public String subtitle;
+    public String actionType;
+    public String actionPayload;
+    public int tintColor;
+    public boolean enabled;
+
+    public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
+        this.id = id;
+        this.title = title;
+        this.subtitle = subtitle;
+        this.actionType = actionType;
+        this.actionPayload = actionPayload;
+        this.tintColor = tintColor;
+        this.enabled = enabled;
+    }
+
+    public JSONObject toJson() {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("id", id);
+            json.put("title", title);
+            json.put("subtitle", subtitle);
+            json.put("actionType", actionType);
+            json.put("actionPayload", actionPayload);
+            json.put("tintColor", tintColor);
+            json.put("enabled", enabled);
+        } catch (JSONException e) {
+            Log.e(TAG, "Error serializing ShortcutItem to JSON", e);
+        }
+        return json;
+    }
+
+    public static ShortcutItem fromJson(JSONObject json) {
+        return new ShortcutItem(
+            json.optString("id", ""),
+            json.optString("title", "未命名"),
+            json.optString("subtitle", ""),
+            json.optString("actionType", ACTION_APP),
+            json.optString("actionPayload", ""),
+            json.optInt("tintColor", Color.CYAN),
+            json.optBoolean("enabled", true)
+        );
+    }
+
+    /**
+     * 在 SystemUI 上下文中分发执行该快捷方式动作
+     */
+    public void execute(Context context) {
+        if (context == null) return;
+        try {
+            switch (actionType) {
+                case ACTION_APP: {
+                    Intent intent = context.getPackageManager().getLaunchIntentForPackage(actionPayload);
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                        context.startActivity(intent);
+                    } else {
+                        showToast(context, "未找到目标应用: " + actionPayload);
+                    }
+                    break;
+                }
+                case ACTION_INTENT_URI: {
+                    Intent intent = Intent.parseUri(actionPayload, Intent.URI_INTENT_SCHEME);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(intent);
+                    break;
+                }
+                case ACTION_BROADCAST: {
+                    Intent intent = new Intent(actionPayload);
+                    context.sendBroadcast(intent);
+                    break;
+                }
+                case ACTION_FLASHLIGHT: {
+                    toggleFlashlight(context);
+                    break;
+                }
+                case ACTION_SHELL: {
+                    runShellCommand(actionPayload);
+                    break;
+                }
+                default:
+                    Log.w(TAG, "未知动作类型: " + actionType);
+                    break;
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "执行快捷动作失败: " + title, t);
+            showToast(context, "启动失败: " + t.getMessage());
+        }
+    }
+
+    private static boolean isFlashlightOn = false;
+
+    private static void toggleFlashlight(Context context) {
+        try {
+            CameraManager cm = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            if (cm != null) {
+                String[] cameraIdList = cm.getCameraIdList();
+                if (cameraIdList.length > 0) {
+                    String cameraId = cameraIdList[0];
+                    isFlashlightOn = !isFlashlightOn;
+                    cm.setTorchMode(cameraId, isFlashlightOn);
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "切换手电筒状态失败", t);
+        }
+    }
+
+    private static void runShellCommand(String cmd) {
+        new Thread(() -> {
+            try {
+                Process p = Runtime.getRuntime().exec("sh");
+                DataOutputStream os = new DataOutputStream(p.getOutputStream());
+                os.writeBytes(cmd + "\n");
+                os.writeBytes("exit\n");
+                os.flush();
+                p.waitFor();
+            } catch (Throwable t) {
+                Log.e(TAG, "Shell 脚本执行异常", t);
+            }
+        }).start();
+    }
+
+    private static void showToast(Context context, String msg) {
+        new Handler(Looper.getMainLooper()).post(() ->
+            Toast.makeText(context.getApplicationContext(), msg, Toast.LENGTH_SHORT).show()
+        );
+    }
+}
