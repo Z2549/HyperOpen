@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-36:12
-INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-36:12
-INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-36:12
-INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-36:12
+ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-43:12
+INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-43:12
+INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-43:12
+INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:1-43:12
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\9b4b4cdda8cd41ee4a4d3baad8857b0b\transformed\material-1.12.0\AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\086b9f07888ecf15a059437ddc394868\transformed\constraintlayout-2.2.0\AndroidManifest.xml:2:1-9:12
 MERGED from [androidx.appcompat:appcompat-resources:1.7.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\2d7a6cb6ff30c1b35d9bf223a76022eb\transformed\appcompat-resources-1.7.0\AndroidManifest.xml:2:1-7:12
@@ -55,8 +55,8 @@ MERGED from [androidx.annotation:annotation-experimental:1.4.0] C:\Users\qmry\.g
 	xmlns:android
 		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:2:11-69
 application
-ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:4:5-34:19
-INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:4:5-34:19
+ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:4:5-41:19
+INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml:4:5-41:19
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\9b4b4cdda8cd41ee4a4d3baad8857b0b\transformed\material-1.12.0\AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.12.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\9b4b4cdda8cd41ee4a4d3baad8857b0b\transformed\material-1.12.0\AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.2.0] C:\Users\qmry\.gradle\caches\9.5.1\transforms\086b9f07888ecf15a059437ddc394868\transformed\constraintlayout-2.2.0\AndroidManifest.xml:7:5-20
@@ -129,6 +129,16 @@ category#android.intent.category.LAUNCHER
 ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:31:17-77
 	android:name
 		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:31:27-74
+provider#com.hyperos.quickopen.provider.SettingsProvider
+ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:36:9-40:44
+	android:authorities
+		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:38:13-65
+	android:multiprocess
+		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:40:13-41
+	android:exported
+		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:39:13-36
+	android:name
+		ADDED from D:\VS\systemui\app\src\main\AndroidManifest.xml:37:13-54
 uses-sdk
 INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from D:\VS\systemui\app\src\main\AndroidManifest.xml

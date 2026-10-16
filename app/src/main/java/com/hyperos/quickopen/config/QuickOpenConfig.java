@@ -20,6 +20,7 @@ public class QuickOpenConfig {
 
     public static final String PACKAGE_NAME = "com.hyperos.quickopen";
     public static final String PREF_NAME = "quick_open_settings";
+    public static final String ACTION_CONFIG_CHANGED = "com.hyperos.quickopen.ACTION_CONFIG_CHANGED";
 
     public static final int MATERIAL_FOLLOW_SYSTEM = 0;
     public static final int MATERIAL_SOFT_GLASS = 1;
@@ -37,7 +38,39 @@ public class QuickOpenConfig {
     private static XSharedPreferences xPrefs;
 
     /**
-     * SystemUI 进程加载配置
+     * SystemUI 优先通过 ContentProvider 查询跨进程配置，失败时回退 XSharedPreferences
+     */
+    public static QuickOpenConfig load(Context context) {
+        if (context != null) {
+            try {
+                android.os.Bundle bundle = context.getContentResolver().call(
+                    android.net.Uri.parse("content://com.hyperos.quickopen.provider"),
+                    "get_config", null, null
+                );
+                if (bundle != null) {
+                    QuickOpenConfig config = new QuickOpenConfig();
+                    config.materialStyle = bundle.getInt("material_style", MATERIAL_SOFT_GLASS);
+                    config.offsetY = bundle.getInt("offset_y", 280);
+                    config.regionDiameter = bundle.getInt("region_diameter", 330);
+                    config.showRegionBg = bundle.getBoolean("show_region_bg", true);
+                    config.iconSize = bundle.getInt("icon_size", 58);
+                    config.maxScale = bundle.getFloat("max_scale", 1.40f);
+                    config.influenceRadius = bundle.getInt("influence_radius", 120);
+
+                    String jsonStr = bundle.getString("shortcuts_json", null);
+                    config.shortcuts = parseShortcutsJson(jsonStr);
+                    Log.i(TAG, "成功通过 ContentProvider 读取最新配置: offsetY=" + config.offsetY + ", items=" + config.shortcuts.size());
+                    return config;
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "ContentProvider 查询异常，回退 XSharedPreferences: " + t.getMessage());
+            }
+        }
+        return loadFromXposed();
+    }
+
+    /**
+     * SystemUI 进程加载配置 (XSharedPreferences 兜底)
      */
     public static QuickOpenConfig loadFromXposed() {
         if (xPrefs == null) {
@@ -81,7 +114,7 @@ public class QuickOpenConfig {
     }
 
     /**
-     * 保存配置 (支持全局只读分享给 SystemUI)
+     * 保存配置 (支持全局只读分享给 SystemUI + 实时广播通知)
      */
     public void save(Context context) {
         SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
@@ -95,6 +128,29 @@ public class QuickOpenConfig {
             .putInt("influence_radius", influenceRadius)
             .putString("shortcuts_json", serializeShortcutsJson(shortcuts))
             .apply();
+
+        // 开放目录与文件可读权限，为 XSharedPreferences 回退提供支持
+        try {
+            java.io.File dataDir = context.getDataDir();
+            dataDir.setReadable(true, false);
+            dataDir.setExecutable(true, false);
+            java.io.File prefsDir = new java.io.File(dataDir, "shared_prefs");
+            if (prefsDir.exists()) {
+                prefsDir.setReadable(true, false);
+                prefsDir.setExecutable(true, false);
+            }
+            java.io.File prefsFile = new java.io.File(prefsDir, PREF_NAME + ".xml");
+            if (prefsFile.exists()) {
+                prefsFile.setReadable(true, false);
+            }
+        } catch (Throwable ignored) {}
+
+        // 发送广播通知 SystemUI 实时热重载配置
+        try {
+            android.content.Intent intent = new android.content.Intent(ACTION_CONFIG_CHANGED);
+            intent.setPackage("com.android.systemui");
+            context.sendBroadcast(intent);
+        } catch (Throwable ignored) {}
     }
 
     public static List<ShortcutItem> parseShortcutsJson(String jsonStr) {

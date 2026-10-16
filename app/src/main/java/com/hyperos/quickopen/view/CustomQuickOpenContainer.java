@@ -30,7 +30,7 @@ import java.util.List;
 
 public class CustomQuickOpenContainer extends FrameLayout {
 
-    private final QuickOpenConfig config;
+    private QuickOpenConfig config;
     private final ClassLoader systemuiClassLoader;
     private int resolvedStyle;
 
@@ -68,6 +68,16 @@ public class CustomQuickOpenContainer extends FrameLayout {
         // 图标容器
         bubblesContainer = new FrameLayout(getContext());
         addView(bubblesContainer, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+    }
+
+    public void updateConfig(QuickOpenConfig newConfig) {
+        if (newConfig != null) {
+            this.config = newConfig;
+            this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(getContext(), config.materialStyle);
+            if (regionBackdrop != null) {
+                regionBackdrop.setStyle(resolvedStyle);
+            }
+        }
     }
 
     private void initVibrator() {

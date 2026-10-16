@@ -3,6 +3,7 @@ package com.hyperos.quickopen.hook;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Point;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -40,8 +41,8 @@ public class QuickOpenHook {
                     FrameLayout view = (FrameLayout) param.thisObject;
                     Context context = view.getContext();
 
-                    QuickOpenConfig config = QuickOpenConfig.loadFromXposed();
-                    CustomQuickOpenContainer container = new CustomQuickOpenContainer(context, config, cl);
+                    QuickOpenConfig config = QuickOpenConfig.load(context);
+                    final CustomQuickOpenContainer container = new CustomQuickOpenContainer(context, config, cl);
                     container.setTag(CONTAINER_TAG);
                     container.setVisibility(View.GONE);
 
@@ -50,6 +51,32 @@ public class QuickOpenHook {
                     );
                     view.addView(container, lp);
                     XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
+
+                    // 注册配置实时更新广播监听
+                    try {
+                        android.content.IntentFilter filter = new android.content.IntentFilter(QuickOpenConfig.ACTION_CONFIG_CHANGED);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            context.registerReceiver(new android.content.BroadcastReceiver() {
+                                @Override
+                                public void onReceive(Context ctx, android.content.Intent intent) {
+                                    Log.i(TAG, "收到模块配置变更广播，实时热重载！");
+                                    QuickOpenConfig newConfig = QuickOpenConfig.load(ctx);
+                                    container.updateConfig(newConfig);
+                                }
+                            }, filter, Context.RECEIVER_EXPORTED);
+                        } else {
+                            context.registerReceiver(new android.content.BroadcastReceiver() {
+                                @Override
+                                public void onReceive(Context ctx, android.content.Intent intent) {
+                                    Log.i(TAG, "收到模块配置变更广播，实时热重载！");
+                                    QuickOpenConfig newConfig = QuickOpenConfig.load(ctx);
+                                    container.updateConfig(newConfig);
+                                }
+                            }, filter);
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "注册配置变更广播失败", t);
+                    }
 
                     Log.i(TAG, "已成功向 MiuiGxzwQuickOpenView 注入 CustomQuickOpenContainer！");
                 }
@@ -63,6 +90,33 @@ public class QuickOpenHook {
 
                     // 完全阻止系统原生 startShowQuickOpenItemAnimation 执行 (避免创建原生5项View、动画和扇形黑底)
                     param.setResult(null);
+
+                    // 恢复触发系统原生的全屏高斯模糊
+                    try {
+                        Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
+                        if (blurUtilsDelegate != null) {
+                            Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
+                            if (blurUtils != null) {
+                                float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", 1.0f);
+                                Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                                if (vri != null) {
+                                    XposedHelpers.callMethod(blurUtils, "applyBlur", vri, (int) blurRadius);
+                                    Log.i(TAG, "已成功调用系统 BlurUtils.applyBlur，高斯模糊生效: 半径=" + blurRadius);
+                                } else {
+                                    view.post(() -> {
+                                        try {
+                                            Object postVri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                                            if (postVri != null) {
+                                                XposedHelpers.callMethod(blurUtils, "applyBlur", postVri, (int) blurRadius);
+                                            }
+                                        } catch (Throwable ignored) {}
+                                    });
+                                }
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "触发系统背景模糊失败", t);
+                    }
 
                     // 允许触摸穿透并更新 WindowManager 布局标记 (相当于系统原生的 flags |= 4)
                     try {
@@ -80,8 +134,12 @@ public class QuickOpenHook {
                         Log.w(TAG, "更新 LayoutParams 失败", t);
                     }
 
-                    // 取消原生扇形黑底背景，改为柔和半透明暗色蒙版
-                    view.setBackgroundColor(0x22000000);
+                    // 设置系统专属暗色背景 (0x7f080b49: finger_quick_open_bg)
+                    try {
+                        view.setBackgroundResource(0x7f080b49);
+                    } catch (Throwable t) {
+                        view.setBackgroundColor(0x22000000);
+                    }
 
                     // 清理可能残余的原生 item 数据
                     try {
@@ -101,7 +159,7 @@ public class QuickOpenHook {
                         XposedHelpers.getAdditionalInstanceField(view, "customContainer");
 
                     if (container == null) {
-                        QuickOpenConfig config = QuickOpenConfig.loadFromXposed();
+                        QuickOpenConfig config = QuickOpenConfig.load(view.getContext());
                         container = new CustomQuickOpenContainer(view.getContext(), config, cl);
                         container.setTag(CONTAINER_TAG);
                         view.addView(container, new FrameLayout.LayoutParams(
@@ -109,6 +167,10 @@ public class QuickOpenHook {
                         ));
                         XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
                     }
+
+                    // 每次展开前，实时从 ContentProvider 同步最新配置并热更新！
+                    QuickOpenConfig latestConfig = QuickOpenConfig.load(view.getContext());
+                    container.updateConfig(latestConfig);
 
                     // 若容器已处于展示状态，则无需重复初始化
                     if (container.getVisibility() == View.VISIBLE) {
@@ -152,6 +214,20 @@ public class QuickOpenHook {
                         container.resetBubbles();
                         container.setVisibility(View.GONE);
                     }
+
+                    // 确保全屏高斯模糊复位清除
+                    try {
+                        Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
+                        if (blurUtilsDelegate != null) {
+                            Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
+                            if (blurUtils != null) {
+                                Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                                if (vri != null) {
+                                    XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {}
                 }
             });
 

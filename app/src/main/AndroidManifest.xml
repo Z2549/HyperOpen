@@ -31,6 +31,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 跨进程配置共享 Provider (给 SystemUI 实时提供最新配置) -->
+        <provider
+            android:name=".provider.SettingsProvider"
+            android:authorities="com.hyperos.quickopen.provider"
+            android:exported="true"
+            android:multiprocess="false" />
     </application>
 
 </manifest>
