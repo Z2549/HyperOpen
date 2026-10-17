@@ -356,6 +356,75 @@ public final class IconGlyphFactory {
                 dot(fp, 17.7f, 13, 0.95f);
                 break;
             }
+            case "bankcards": {
+                // 银行卡/付款码：卡体 + 芯片 + 磁条
+                rrect(sp, 3, 5.2f, 21, 18.8f, 2.4f);
+                line(sp, 3, 9.5f, 21, 9.5f);
+                rrect(sp, 5.8f, 12.8f, 10.2f, 16.2f, 0.8f);
+                break;
+            }
+            case "photos": {
+                // 相册/照片：相框 + 太阳 + 群山
+                rrect(sp, 3.2f, 4, 20.8f, 20, 2.4f);
+                dot(fp, 7.8f, 8.5f, 1.3f);
+                sp.moveTo(3.5f, 17.2f);
+                sp.lineTo(8.2f, 12.5f);
+                sp.lineTo(12.8f, 16.8f);
+                sp.lineTo(15.5f, 14.2f);
+                sp.lineTo(20.5f, 18.8f);
+                break;
+            }
+            case "search": {
+                // 搜索/放大镜：镜框 + 镜柄
+                sp.addCircle(10.5f, 10.5f, 5.5f, Path.Direction.CW);
+                line(sp, 14.5f, 14.5f, 19.5f, 19.5f);
+                break;
+            }
+            case "home": {
+                // 主页/房子
+                sp.moveTo(12, 3.5f);
+                sp.lineTo(20, 10.5f);
+                sp.lineTo(17.8f, 10.5f);
+                sp.lineTo(17.8f, 20);
+                sp.lineTo(6.2f, 20);
+                sp.lineTo(6.2f, 10.5f);
+                sp.lineTo(4, 10.5f);
+                sp.close();
+                rrect(sp, 9.5f, 13, 14.5f, 20, 0.8f);
+                break;
+            }
+            case "folder": {
+                // 文件夹
+                sp.moveTo(3.2f, 6);
+                sp.lineTo(8.5f, 6);
+                sp.lineTo(10.5f, 8.2f);
+                sp.lineTo(20.8f, 8.2f);
+                sp.lineTo(20.8f, 19.5f);
+                sp.lineTo(3.2f, 19.5f);
+                sp.close();
+                break;
+            }
+            case "alarm": {
+                // 闹钟：钟面 + 表耳 + 指针
+                sp.addCircle(12, 13, 6.8f, Path.Direction.CW);
+                line(sp, 12, 13, 12, 9.5f);
+                line(sp, 12, 13, 15, 13);
+                line(sp, 4.8f, 5.2f, 7.8f, 7.5f);
+                line(sp, 19.2f, 5.2f, 16.2f, 7.5f);
+                break;
+            }
+            case "lock": {
+                // 锁
+                rrect(sp, 5.5f, 10, 18.5f, 20.5f, 2.2f);
+                sp.moveTo(8.5f, 10);
+                sp.lineTo(8.5f, 6.8f);
+                sp.quadTo(8.5f, 3.8f, 12, 3.8f);
+                sp.quadTo(15.5f, 3.8f, 15.5f, 6.8f);
+                sp.lineTo(15.5f, 10);
+                dot(fp, 12, 14.5f, 1.1f);
+                line(sp, 12, 14.5f, 12, 17.5f);
+                break;
+            }
             case "sparkle":
             default: {
                 // 兜底：四角星芒（填充）
