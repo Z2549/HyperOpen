@@ -1074,21 +1074,19 @@ fun AppListPickerDialog(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pm = ctx.packageManager
-            val intent = Intent(Intent.ACTION_MAIN, null).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
-            val resolveInfos = pm.queryIntentActivities(intent, 0)
-            val list = resolveInfos.mapNotNull { ri ->
-                val pkg = ri.activityInfo.packageName
-                val name = ri.loadLabel(pm).toString()
+            val installedPackages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+            val list = installedPackages.mapNotNull { pi ->
+                val appInfo = pi.applicationInfo ?: return@mapNotNull null
+                val pkg = pi.packageName
+                val name = appInfo.loadLabel(pm).toString().ifBlank { pkg }
                 val icon = try {
-                    ri.loadIcon(pm)
+                    appInfo.loadIcon(pm)
                 } catch (t: Throwable) {
                     null
                 }
                 AppInfoItem(pkg, name, icon)
             }.distinctBy { it.packageName }
-                .sortedBy { it.appName.lowercase() }
+                .sortedWith(compareBy({ it.appName.lowercase() }, { it.packageName }))
             withContext(Dispatchers.Main) {
                 allApps = list
                 isLoading = false
