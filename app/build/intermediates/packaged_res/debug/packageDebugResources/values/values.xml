@@ -26,6 +26,7 @@
     <string name="param_max_scale">鱼眼最大放大倍率 (Max Scale)</string>
     <string name="param_offset_y">整体垂直高度偏移 (Offset Y)</string>
     <string name="param_region_diameter">圆形视界直径 (Region Diameter)</string>
+    <string name="param_show_header_pill_bg">显示顶部提示胶囊背景</string>
     <string name="param_show_region_bg">显示圆形区域底衬与边框</string>
     <string name="safety_crash_count">连续崩溃计数：%1$d / %2$d</string>
     <string name="safety_crash_log_empty">暂无崩溃记录。</string>

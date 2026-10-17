@@ -16,6 +16,10 @@ id btn_clear_crash
 id btn_exit_safe_mode
 id btn_reset
 id card_safety
+id et_icon_glyph
+id et_icon_package
+id iv_icon
+id iv_preview
 id rb_mat_gaussian
 id rb_mat_soft_glass
 id rb_mat_system
@@ -27,6 +31,7 @@ id slider_max_scale
 id slider_offset_y
 id slider_region_diameter
 id switch_enable
+id switch_header_pill_bg
 id switch_hook_enabled
 id switch_show_region_bg
 id toolbar
@@ -44,8 +49,8 @@ id tv_safety_status
 id tv_safety_total_crash
 id tv_subtitle
 id tv_title
-id v_color_dot
 layout activity_main
+layout dialog_edit_icon
 layout item_shortcut
 mipmap ic_launcher
 string app_name
@@ -62,6 +67,7 @@ string param_influence_radius
 string param_max_scale
 string param_offset_y
 string param_region_diameter
+string param_show_header_pill_bg
 string param_show_region_bg
 string safety_crash_count
 string safety_crash_log_empty

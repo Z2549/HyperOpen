@@ -77,6 +77,8 @@ public class CustomQuickOpenContainer extends FrameLayout {
             if (regionBackdrop != null) {
                 regionBackdrop.setStyle(resolvedStyle);
             }
+            // 胶囊背景开关热生效
+            applyHeaderPillBackground();
         }
     }
 
@@ -110,8 +112,36 @@ public class CustomQuickOpenContainer extends FrameLayout {
         int padV = dpToPx(10);
         headerPill.setPadding(padH, padV, padH, padV);
 
-        // 柔光胶囊材质背景 (专用胶囊形玻璃，无中心彩色晶核 —— 避免看起来像一个多余的图标)
-        headerPill.setBackground(HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle));
+        // 胶囊轮廓裁切：确保模糊/底衬都沿胶囊形渲染，防止被画成圆形
+        // （背景本体按 showHeaderPillBg 开关在 applyHeaderPillBackground() 中决定是否铺设）
+        headerPill.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override
+            public void getOutline(android.view.View view, android.graphics.Outline outline) {
+                int w = view.getWidth();
+                int h = view.getHeight();
+                if (w <= 0 || h <= 0) return;
+                if (view.getBackground() == null) {
+                    // 无背景时给一个真实胶囊 outline 而非空 outline：
+                    // clipToOutline 会在空 outline 时把整个 View 内容裁没（文字消失根因），
+                    // 配合 applyHeaderPillBackground() 中的 setClipToOutline(false) 使用
+                    outline.setRoundRect(0, 0, w, h, Math.min(w, h) / 2f);
+                    return;
+                }
+                float r = Math.min(w, h) / 2f;
+                outline.setRoundRect(0, 0, w, h, r);
+            }
+        });
+        // 只有存在背景时才沿 outline 裁切；无背景时必须关闭，否则内容被裁空
+        headerPill.setClipToOutline(headerPill.getBackground() != null);
+
+        // 尺寸/样式变化时同步刷新背景，避免背景残留在过期 bounds 上
+        headerPill.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (v.getWidth() > 0 && v.getHeight() > 0 && v.getBackground() instanceof HyperOSMaterialFactory.HeaderPillDrawable) {
+                v.getBackground().invalidateSelf();
+            }
+        });
+
+        applyHeaderPillBackground();
 
         headerTitle = new TextView(getContext());
         headerTitle.setText("滑动选择快捷方式");
@@ -133,11 +163,55 @@ public class CustomQuickOpenContainer extends FrameLayout {
     }
 
     /**
+     * 按 showHeaderPillBg 开关铺设/移除顶部提示的胶囊玻璃背景。
+     * 关闭时背景置 null 且 outline 置空，只保留标题/副标题纯文字悬浮。
+     */
+    private void applyHeaderPillBackground() {
+        if (headerPill == null) return;
+        boolean show = config == null || config.showHeaderPillBg;
+        if (show) {
+            if (!(headerPill.getBackground() instanceof HyperOSMaterialFactory.HeaderPillDrawable)) {
+                headerPill.setBackground(HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle));
+            }
+            headerPill.setClipToOutline(true);
+        } else {
+            if (headerPill.getBackground() != null) {
+                headerPill.setBackground(null);
+            }
+            // 关键：必须先关掉裁切再清背景，否则空 outline 会把整个 View 内容裁没
+            headerPill.setClipToOutline(false);
+        }
+        headerPill.invalidateOutline();
+        headerPill.invalidate();
+    }
+
+    /**
+     * 展开前强制恢复胶囊头部的胶囊形背景与 Z 序：
+     * 配置热重载、原生提示 View 竞争注入等场景都可能导致
+     * headerPill 背景被覆盖或形状回落为圆形，这里统一自愈。
+     * showHeaderPillBg 关闭时反向自愈：确保背景保持移除状态。
+     */
+    public void ensureHeaderPillIntact() {
+        if (headerPill == null) return;
+        applyHeaderPillBackground();
+        if (headerPill.getVisibility() != View.VISIBLE) {
+            headerPill.setVisibility(View.VISIBLE);
+        }
+        if (headerPill.getParent() == this) {
+            headerPill.bringToFront();
+        }
+        headerPill.invalidate();
+    }
+
+    /**
      * 设置指纹中心并根据最新配置构建网格与散开动画
      */
     public void setupAndExpand(float fodX, float fodY) {
         this.fodCenterX = fodX;
         this.fodCenterY = fodY;
+
+        // 胶囊头部自愈：确保每次展开时胶囊背景都是胶囊形且在最上层
+        ensureHeaderPillIntact();
 
         bubblesContainer.removeAllViews();
         bubbles.clear();

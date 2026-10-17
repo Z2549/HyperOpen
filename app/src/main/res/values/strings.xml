@@ -10,6 +10,7 @@
     <string name="param_offset_y">整体垂直高度偏移 (Offset Y)</string>
     <string name="param_region_diameter">圆形视界直径 (Region Diameter)</string>
     <string name="param_show_region_bg">显示圆形区域底衬与边框</string>
+    <string name="param_show_header_pill_bg">显示顶部提示胶囊背景</string>
 
     <string name="section_icon_physics">图标与物理动力学</string>
     <string name="param_icon_size">图标基础尺寸 (Icon Size)</string>

@@ -146,7 +146,8 @@ public class HyperOSMaterialFactory {
             int height = getBounds().height();
             if (width <= 0 || height <= 0) return;
 
-            float radius = height / 2f;
+            // 胶囊圆角 = 短边一半（宽>高时即标准胶囊形，方形容器时也不会画出突兀大圆）
+            float radius = Math.min(width, height) / 2f;
             RectF pill = new RectF(2f, 2f, width - 2f, height - 2f);
 
             if (style == STYLE_SOFT_GLASS) {

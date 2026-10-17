@@ -325,6 +325,15 @@
                         android:layout_marginTop="8dp"
                         android:text="@string/param_show_region_bg"
                         android:textColor="@color/text_secondary" />
+
+                    <!-- Header Pill BG Switch -->
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switch_header_pill_bg"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/param_show_header_pill_bg"
+                        android:textColor="@color/text_secondary" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

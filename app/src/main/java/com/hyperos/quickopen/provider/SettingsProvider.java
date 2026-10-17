@@ -98,6 +98,7 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putInt("offset_y", sp.getInt("offset_y", 280));
                 bundle.putInt("region_diameter", sp.getInt("region_diameter", 330));
                 bundle.putBoolean("show_region_bg", sp.getBoolean("show_region_bg", true));
+                bundle.putBoolean("show_header_pill_bg", sp.getBoolean("show_header_pill_bg", true));
                 bundle.putInt("icon_size", sp.getInt("icon_size", 58));
                 bundle.putFloat("max_scale", sp.getFloat("max_scale", 1.40f));
                 bundle.putInt("influence_radius", sp.getInt("influence_radius", 120));

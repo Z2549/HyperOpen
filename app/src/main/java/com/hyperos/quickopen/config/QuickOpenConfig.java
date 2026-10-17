@@ -30,6 +30,7 @@ public class QuickOpenConfig {
     public int offsetY = 280;          // dp
     public int regionDiameter = 330;   // dp
     public boolean showRegionBg = true;
+    public boolean showHeaderPillBg = true;
     public int iconSize = 58;          // dp
     public float maxScale = 1.40f;
     public int influenceRadius = 120;  // dp
@@ -53,6 +54,7 @@ public class QuickOpenConfig {
                     config.offsetY = bundle.getInt("offset_y", 280);
                     config.regionDiameter = bundle.getInt("region_diameter", 330);
                     config.showRegionBg = bundle.getBoolean("show_region_bg", true);
+                    config.showHeaderPillBg = bundle.getBoolean("show_header_pill_bg", true);
                     config.iconSize = bundle.getInt("icon_size", 58);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 120);
@@ -85,6 +87,7 @@ public class QuickOpenConfig {
         config.offsetY = xPrefs.getInt("offset_y", 280);
         config.regionDiameter = xPrefs.getInt("region_diameter", 330);
         config.showRegionBg = xPrefs.getBoolean("show_region_bg", true);
+        config.showHeaderPillBg = xPrefs.getBoolean("show_header_pill_bg", true);
         config.iconSize = xPrefs.getInt("icon_size", 58);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 120);
@@ -104,6 +107,7 @@ public class QuickOpenConfig {
         config.offsetY = sp.getInt("offset_y", 280);
         config.regionDiameter = sp.getInt("region_diameter", 330);
         config.showRegionBg = sp.getBoolean("show_region_bg", true);
+        config.showHeaderPillBg = sp.getBoolean("show_header_pill_bg", true);
         config.iconSize = sp.getInt("icon_size", 58);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 120);
@@ -123,6 +127,7 @@ public class QuickOpenConfig {
             .putInt("offset_y", offsetY)
             .putInt("region_diameter", regionDiameter)
             .putBoolean("show_region_bg", showRegionBg)
+            .putBoolean("show_header_pill_bg", showHeaderPillBg)
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)

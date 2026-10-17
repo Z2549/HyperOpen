@@ -31,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     private Slider sliderOffsetY, sliderRegionDiameter, sliderIconSize, sliderMaxScale, sliderInfluenceRadius;
     private TextView tvOffsetYVal, tvRegionDiameterVal, tvIconSizeVal, tvMaxScaleVal, tvInfluenceRadiusVal;
     private MaterialSwitch switchShowRegionBg;
+    private MaterialSwitch switchHeaderPillBg;
 
     private RecyclerView rvShortcuts;
     private ShortcutAdapter adapter;
@@ -71,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
         tvRegionDiameterVal = findViewById(R.id.tv_region_diameter_val);
 
         switchShowRegionBg = findViewById(R.id.switch_show_region_bg);
+        switchHeaderPillBg = findViewById(R.id.switch_header_pill_bg);
 
         sliderIconSize = findViewById(R.id.slider_icon_size);
         tvIconSizeVal = findViewById(R.id.tv_icon_size_val);
@@ -193,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
         tvRegionDiameterVal.setText(String.format(Locale.getDefault(), "%d dp", config.regionDiameter));
 
         switchShowRegionBg.setChecked(config.showRegionBg);
+        switchHeaderPillBg.setChecked(config.showHeaderPillBg);
 
         sliderIconSize.setValue(clamp(config.iconSize, 40, 80));
         tvIconSizeVal.setText(String.format(Locale.getDefault(), "%d dp", config.iconSize));
@@ -234,6 +237,11 @@ public class MainActivity extends AppCompatActivity {
 
         switchShowRegionBg.setOnCheckedChangeListener((btn, isChecked) -> {
             config.showRegionBg = isChecked;
+            saveConfig();
+        });
+
+        switchHeaderPillBg.setOnCheckedChangeListener((btn, isChecked) -> {
+            config.showHeaderPillBg = isChecked;
             saveConfig();
         });
 

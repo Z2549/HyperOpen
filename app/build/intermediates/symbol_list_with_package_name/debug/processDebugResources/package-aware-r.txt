@@ -3303,6 +3303,8 @@ id endToStart
 id enterAlways
 id enterAlwaysCollapsed
 id escape
+id et_icon_glyph
+id et_icon_package
 id exitUntilCollapsed
 id expand_activities_button
 id expanded_menu
@@ -3354,6 +3356,8 @@ id inward
 id is_pooling_container_tag
 id italic
 id item_touch_helper_previous_elevation
+id iv_icon
+id iv_preview
 id jumpToEnd
 id jumpToStart
 id labeled
@@ -3565,6 +3569,7 @@ id submenuarrow
 id submit_area
 id supportScrollUp
 id switch_enable
+id switch_header_pill_bg
 id switch_hook_enabled
 id switch_show_region_bg
 id tabMode
@@ -3636,7 +3641,6 @@ id uniform
 id unlabeled
 id up
 id useLogo
-id v_color_dot
 id vertical
 id vertical_only
 id view_offset_helper
@@ -3787,6 +3791,7 @@ layout design_navigation_menu
 layout design_navigation_menu_item
 layout design_text_input_end_icon
 layout design_text_input_start_icon
+layout dialog_edit_icon
 layout ime_base_split_test_activity
 layout ime_secondary_split_test_activity
 layout item_shortcut
@@ -4021,6 +4026,7 @@ string param_influence_radius
 string param_max_scale
 string param_offset_y
 string param_region_diameter
+string param_show_header_pill_bg
 string param_show_region_bg
 string password_toggle_content_description
 string path_password_eye
