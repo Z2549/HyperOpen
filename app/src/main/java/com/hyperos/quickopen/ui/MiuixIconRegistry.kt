@@ -1,91 +1,80 @@
 package com.hyperos.quickopen.ui
 
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.Alarm
-import top.yukonga.miuix.kmp.icon.extended.BankCards
-import top.yukonga.miuix.kmp.icon.extended.Contacts
-import top.yukonga.miuix.kmp.icon.extended.Copy
-import top.yukonga.miuix.kmp.icon.extended.Cut
-import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.Download
-import top.yukonga.miuix.kmp.icon.extended.Edit
-import top.yukonga.miuix.kmp.icon.extended.Email
-import top.yukonga.miuix.kmp.icon.extended.Filter
-import top.yukonga.miuix.kmp.icon.extended.Folder
-import top.yukonga.miuix.kmp.icon.extended.Help
-import top.yukonga.miuix.kmp.icon.extended.Home
-import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Location
-import top.yukonga.miuix.kmp.icon.extended.Lock
-import top.yukonga.miuix.kmp.icon.extended.Messages
-import top.yukonga.miuix.kmp.icon.extended.Music
-import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Paste
-import top.yukonga.miuix.kmp.icon.extended.Pause
-import top.yukonga.miuix.kmp.icon.extended.Phone
-import top.yukonga.miuix.kmp.icon.extended.Photos
-import top.yukonga.miuix.kmp.icon.extended.Play
-import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.Scan
-import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.icon.extended.Settings
-import top.yukonga.miuix.kmp.icon.extended.Share
-import top.yukonga.miuix.kmp.icon.extended.Sort
-import top.yukonga.miuix.kmp.icon.extended.Timer
-import top.yukonga.miuix.kmp.icon.extended.Tune
-import top.yukonga.miuix.kmp.icon.extended.Unlock
-import top.yukonga.miuix.kmp.icon.extended.VolumeOff
-import top.yukonga.miuix.kmp.icon.extended.VolumeUp
-import top.yukonga.miuix.kmp.icon.extended.WorldClock
 
+/**
+ * Miuix 全量扩展图标库注册表（涵盖 125+ 常用官方矢量图标），
+ * 并支持动态切换 5 档粗细（Light / Normal / Regular / Medium / Demibold）。
+ */
 object MiuixIconRegistry {
-    val ICONS: List<Pair<String, ImageVector>> = listOf(
-        "Scan" to MiuixIcons.Scan,
-        "BankCards" to MiuixIcons.BankCards,
-        "Photos" to MiuixIcons.Photos,
-        "Search" to MiuixIcons.Search,
-        "Settings" to MiuixIcons.Settings,
-        "Music" to MiuixIcons.Music,
-        "Notes" to MiuixIcons.Notes,
-        "Contacts" to MiuixIcons.Contacts,
-        "Folder" to MiuixIcons.Folder,
-        "Home" to MiuixIcons.Home,
-        "Email" to MiuixIcons.Email,
-        "Phone" to MiuixIcons.Phone,
-        "Messages" to MiuixIcons.Messages,
-        "WorldClock" to MiuixIcons.WorldClock,
-        "Alarm" to MiuixIcons.Alarm,
-        "Timer" to MiuixIcons.Timer,
-        "Location" to MiuixIcons.Location,
-        "Link" to MiuixIcons.Link,
-        "Share" to MiuixIcons.Share,
-        "Lock" to MiuixIcons.Lock,
-        "Unlock" to MiuixIcons.Unlock,
-        "Play" to MiuixIcons.Play,
-        "Pause" to MiuixIcons.Pause,
-        "VolumeUp" to MiuixIcons.VolumeUp,
-        "VolumeOff" to MiuixIcons.VolumeOff,
-        "Download" to MiuixIcons.Download,
-        "Copy" to MiuixIcons.Copy,
-        "Cut" to MiuixIcons.Cut,
-        "Paste" to MiuixIcons.Paste,
-        "Filter" to MiuixIcons.Filter,
-        "Sort" to MiuixIcons.Sort,
-        "Tune" to MiuixIcons.Tune,
-        "Help" to MiuixIcons.Help,
-        "Info" to MiuixIcons.Info,
-        "Edit" to MiuixIcons.Edit,
-        "Add" to MiuixIcons.Add,
-        "Delete" to MiuixIcons.Delete,
-        "Refresh" to MiuixIcons.Refresh,
+
+    val WEIGHTS = listOf("Light", "Normal", "Regular", "Medium", "Demibold")
+
+    val ICON_NAMES: List<String> = listOf(
+        "Add", "AddCircle", "AddFolder", "Alarm", "Album", "All", "Answer", "AppRecording",
+        "Back", "Background", "Backup", "BankCards", "Blocklist", "CallRecording", "Carrier",
+        "ChevronBackward", "ChevronForward", "Clear", "Close", "Close2", "CloudFill", "Community",
+        "Contacts", "ContactsBook", "ContactsCircle", "ConvertFile", "Copy", "Create", "Cut",
+        "Delete", "Download", "Edit", "Email", "ExpandLess", "ExpandMore", "Favorites",
+        "FavoritesFill", "File", "FileDownloads", "Filter", "Folder", "FolderFill", "Forward",
+        "GridView", "Help", "Hide", "Home", "HorizontalSplit", "Image", "Import", "Info",
+        "Layers", "Link", "ListView", "Location", "Lock", "MapAlbum", "Merge", "Messages",
+        "Mic", "MicSlash", "MindMap", "Months", "More", "MoreCircle", "MoveFile", "Music",
+        "Notes", "NotesFill", "Ok", "Paste", "Pause", "Phone", "Photos", "Pin", "Play",
+        "Playlist", "Promotions", "Recent", "Recording", "RecordingTape", "Redo", "Refresh",
+        "Remove", "RemoveContact", "Rename", "Replace", "Reply", "ReplyAll", "Report", "Reset",
+        "RotateLeft", "Scan", "ScreenCapture", "ScreenMirroring", "Search", "SearchDevice",
+        "SelectAll", "Send", "Settings", "Share", "Show", "Sidebar", "Sort", "Stopwatch",
+        "Store", "Tasks", "Theme", "Timer", "TopDownloads", "Translate", "Trim", "Tune",
+        "Undo", "Unlock", "Unpin", "Update", "UploadCloud", "VerticalSplit", "VolumeOff",
+        "VolumeUp", "Weeks", "WorldClock", "Years", "ZoomOut"
     )
 
-    fun find(key: String?): ImageVector? {
+    private val cache = HashMap<String, ImageVector?>()
+
+    /**
+     * 获取指定名称和字重的 Miuix 矢量图标。
+     * 支持 "Scan" 或 "Scan:Medium" 这种带粗细后缀的 key。
+     */
+    fun find(key: String?, weightOverride: String? = null): ImageVector? {
         if (key.isNullOrBlank()) return null
-        return ICONS.firstOrNull { it.first.equals(key.trim(), ignoreCase = true) }?.second
+        val cleanKey = key.trim()
+
+        val rawName: String
+        val rawWeight: String
+        if (cleanKey.contains(":")) {
+            val parts = cleanKey.split(":")
+            rawName = parts[0].trim()
+            rawWeight = weightOverride ?: parts.getOrElse(1) { "Regular" }.trim()
+        } else {
+            rawName = cleanKey
+            rawWeight = weightOverride ?: "Regular"
+        }
+
+        val matchedName = ICON_NAMES.firstOrNull { it.equals(rawName, ignoreCase = true) } ?: return null
+        val targetWeight = WEIGHTS.firstOrNull { it.equals(rawWeight, ignoreCase = true) } ?: "Regular"
+        val cacheKey = "$matchedName:$targetWeight"
+
+        if (cache.containsKey(cacheKey)) {
+            return cache[cacheKey]
+        }
+
+        val vector = try {
+            val clazz = Class.forName("top.yukonga.miuix.kmp.icon.extended.${matchedName}Kt")
+            val method = when (targetWeight.lowercase()) {
+                "light" -> clazz.getMethod("get$matchedName", MiuixIcons.Light::class.java).invoke(null, MiuixIcons.Light)
+                "normal" -> clazz.getMethod("get$matchedName", MiuixIcons.Normal::class.java).invoke(null, MiuixIcons.Normal)
+                "medium" -> clazz.getMethod("get$matchedName", MiuixIcons.Medium::class.java).invoke(null, MiuixIcons.Medium)
+                "demibold" -> clazz.getMethod("get$matchedName", MiuixIcons.Demibold::class.java).invoke(null, MiuixIcons.Demibold)
+                else -> clazz.getMethod("get$matchedName", MiuixIcons.Regular::class.java).invoke(null, MiuixIcons.Regular)
+            }
+            method as? ImageVector
+        } catch (t: Throwable) {
+            null
+        }
+
+        cache[cacheKey] = vector
+        return vector
     }
 }

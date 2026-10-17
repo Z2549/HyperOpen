@@ -77,9 +77,13 @@ public final class IconGlyphFactory {
             if (d != null) return d;
         }
 
-        // 4) 手动指定内置符号
+        // 4) 手动指定内置符号 / Miuix 符号
         if (notBlank(item.iconGlyph)) {
-            return createGlyph(item.iconGlyph.trim().toLowerCase(), item.tintColor);
+            String key = item.iconGlyph.trim();
+            if (key.contains(":")) {
+                key = key.split(":")[0].trim();
+            }
+            return createGlyph(key.toLowerCase(), item.tintColor);
         }
 
         // 5) 关键词匹配内置符号

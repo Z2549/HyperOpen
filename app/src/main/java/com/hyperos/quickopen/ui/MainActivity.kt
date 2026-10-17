@@ -1040,7 +1040,7 @@ fun ShortcutEditPage(
     // ── Miuix 图标选择弹窗 ──
     if (showMiuixIconPicker) {
         MiuixIconPickerDialog(
-            currentIcon = iconGlyph,
+            currentIconWithWeight = iconGlyph,
             onDismiss = { showMiuixIconPicker = false },
             onSelectIcon = { glyphKey ->
                 iconGlyph = glyphKey
@@ -1058,6 +1058,7 @@ fun ShortcutEditPage(
 data class AppInfoItem(
     val packageName: String,
     val appName: String,
+    val isSystem: Boolean,
     val icon: android.graphics.drawable.Drawable?,
 )
 
@@ -1068,6 +1069,7 @@ fun AppListPickerDialog(
 ) {
     val ctx = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
+    var filterTab by remember { mutableIntStateOf(0) } // 0=全部, 1=用户应用, 2=系统应用
     var allApps by remember { mutableStateOf<List<AppInfoItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -1079,12 +1081,14 @@ fun AppListPickerDialog(
                 val appInfo = pi.applicationInfo ?: return@mapNotNull null
                 val pkg = pi.packageName
                 val name = appInfo.loadLabel(pm).toString().ifBlank { pkg }
+                val isSys = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 val icon = try {
                     appInfo.loadIcon(pm)
                 } catch (t: Throwable) {
                     null
                 }
-                AppInfoItem(pkg, name, icon)
+                AppInfoItem(pkg, name, isSys, icon)
             }.distinctBy { it.packageName }
                 .sortedWith(compareBy({ it.appName.lowercase() }, { it.packageName }))
             withContext(Dispatchers.Main) {
@@ -1094,11 +1098,18 @@ fun AppListPickerDialog(
         }
     }
 
-    val filteredApps = remember(searchQuery, allApps) {
-        if (searchQuery.isBlank()) allApps
-        else allApps.filter {
-            it.appName.contains(searchQuery, ignoreCase = true) || it.packageName.contains(searchQuery, ignoreCase = true)
+    val filteredApps = remember(searchQuery, filterTab, allApps) {
+        var base = when (filterTab) {
+            1 -> allApps.filter { !it.isSystem }
+            2 -> allApps.filter { it.isSystem }
+            else -> allApps
         }
+        if (searchQuery.isNotBlank()) {
+            base = base.filter {
+                it.appName.contains(searchQuery, ignoreCase = true) || it.packageName.contains(searchQuery, ignoreCase = true)
+            }
+        }
+        base
     }
 
     Dialog(
@@ -1125,7 +1136,13 @@ fun AppListPickerDialog(
                     text = "选取应用作为快捷图标或启动目标",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                TabRow(
+                    tabs = listOf("全部 (${allApps.size})", "用户应用", "系统应用"),
+                    selectedTabIndex = filterTab,
+                    onTabSelected = { filterTab = it },
+                    modifier = Modifier.padding(bottom = 10.dp),
                 )
                 TextField(
                     value = searchQuery,
@@ -1185,14 +1202,31 @@ fun AppListPickerDialog(
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = app.appName,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = MiuixTheme.colorScheme.onSurface,
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = app.appName,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = MiuixTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f, fill = false),
+                                        )
+                                        if (app.isSystem) {
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = "系统",
+                                                fontSize = 10.sp,
+                                                color = MiuixTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .background(
+                                                        MiuixTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                                        RoundedCornerShape(4.dp),
+                                                    )
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                                            )
+                                        }
+                                    }
                                     Text(
                                         text = app.packageName,
                                         fontSize = 12.sp,
@@ -1217,16 +1251,33 @@ fun AppListPickerDialog(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Miuix 矢量图标选择弹窗组件
+// Miuix 矢量图标选择弹窗组件（完整 125+ 图标库 + 5 档粗细切换 + 搜索）
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
 fun MiuixIconPickerDialog(
-    currentIcon: String,
+    currentIconWithWeight: String,
     onDismiss: () -> Unit,
     onSelectIcon: (String) -> Unit,
 ) {
-    val icons = MiuixIconRegistry.ICONS
+    val initialWeight = remember(currentIconWithWeight) {
+        if (currentIconWithWeight.contains(":")) currentIconWithWeight.split(":")[1].trim() else "Regular"
+    }
+    val initialName = remember(currentIconWithWeight) {
+        if (currentIconWithWeight.contains(":")) currentIconWithWeight.split(":")[0].trim() else currentIconWithWeight.trim()
+    }
+
+    var selectedWeight by remember { mutableStateOf(initialWeight) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredNames = remember(searchQuery) {
+        if (searchQuery.isBlank()) MiuixIconRegistry.ICON_NAMES
+        else MiuixIconRegistry.ICON_NAMES.filter { it.contains(searchQuery, ignoreCase = true) }
+    }
+
+    val weightIndex = remember(selectedWeight) {
+        MiuixIconRegistry.WEIGHTS.indexOf(selectedWeight).coerceAtLeast(0)
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1243,28 +1294,58 @@ fun MiuixIconPickerDialog(
                     .padding(20.dp),
             ) {
                 Text(
-                    text = "选择 Miuix 图标",
+                    text = "选择 Miuix 矢量图标",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "选择矢量图标作为快捷方式图标",
+                    text = "支持 125+ 完整官方矢量库，并可实时调节线条粗细",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(bottom = 12.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
+
+                // 粗细字重切换器
+                Text(
+                    text = "图标粗细：$selectedWeight",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+                TabRow(
+                    tabs = MiuixIconRegistry.WEIGHTS,
+                    selectedTabIndex = weightIndex,
+                    onTabSelected = { selectedWeight = MiuixIconRegistry.WEIGHTS[it] },
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "搜索图标名称（如 Scan, Search, Settings...）",
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                )
+
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                        .padding(vertical = 8.dp),
+                        .heightIn(max = 340.dp)
+                        .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(icons) { (name, vector) ->
-                        val isSelected = name.equals(currentIcon, ignoreCase = true)
+                    items(filteredNames, key = { it }) { name ->
+                        val isSelected = name.equals(initialName, ignoreCase = true)
+                        val vector = remember(name, selectedWeight) {
+                            MiuixIconRegistry.find(name, selectedWeight)
+                        }
+
                         Column(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
@@ -1272,17 +1353,22 @@ fun MiuixIconPickerDialog(
                                     if (isSelected) MiuixTheme.colorScheme.primary.copy(alpha = 0.16f)
                                     else MiuixTheme.colorScheme.surfaceVariant,
                                 )
-                                .clickable { onSelectIcon(name) }
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                                .clickable {
+                                    val finalKey = "$name:$selectedWeight"
+                                    onSelectIcon(finalKey)
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
-                            Icon(
-                                imageVector = vector,
-                                contentDescription = name,
-                                tint = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(28.dp),
-                            )
+                            if (vector != null) {
+                                Icon(
+                                    imageVector = vector,
+                                    contentDescription = name,
+                                    tint = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 text = name,
