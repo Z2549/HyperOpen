@@ -110,8 +110,8 @@ public class CustomQuickOpenContainer extends FrameLayout {
         int padV = dpToPx(10);
         headerPill.setPadding(padH, padV, padH, padV);
 
-        // 柔光胶囊材质背景
-        headerPill.setBackground(HyperOSMaterialFactory.createCircularBubbleDrawable(resolvedStyle, 0xFF00F0FF, false));
+        // 柔光胶囊材质背景 (专用胶囊形玻璃，无中心彩色晶核 —— 避免看起来像一个多余的图标)
+        headerPill.setBackground(HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle));
 
         headerTitle = new TextView(getContext());
         headerTitle.setText("滑动选择快捷方式");

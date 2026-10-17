@@ -12,6 +12,7 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RadialGradient;
 import android.graphics.RenderEffect;
+import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -109,6 +110,99 @@ public class HyperOSMaterialFactory {
      */
     public static Drawable createCircularBubbleDrawable(int style, int tintColor, boolean isSelected) {
         return new CircularBubbleDrawable(style, tintColor, isSelected);
+    }
+
+    /**
+     * 创建顶部提示胶囊专用的「胶囊形」玻璃背景。
+     *
+     * 与 CircularBubbleDrawable 的区别：不绘制中心彩色自发光晶核 ——
+     * 否则提示胶囊中央会渲染出一枚类似图标的彩色光斑，被误认为是一个
+     * 多余的、无法选中的快捷图标。这里只保留玻璃底、顶部高光与描边，
+     * 且形状为圆角胶囊 (横向长条)，贴合提示条本身的宽高比。
+     */
+    public static Drawable createHeaderPillDrawable(int style) {
+        return new HeaderPillDrawable(style);
+    }
+
+    /**
+     * 顶部提示胶囊专用材质：圆角胶囊玻璃，无彩色晶核。
+     */
+    public static class HeaderPillDrawable extends Drawable {
+        private final int style;
+
+        private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        public HeaderPillDrawable(int style) {
+            this.style = style;
+            borderPaint.setStyle(Paint.Style.STROKE);
+            borderPaint.setStrokeWidth(2.5f);
+        }
+
+        @Override
+        public void draw(@NonNull Canvas canvas) {
+            int width = getBounds().width();
+            int height = getBounds().height();
+            if (width <= 0 || height <= 0) return;
+
+            float radius = height / 2f;
+            RectF pill = new RectF(2f, 2f, width - 2f, height - 2f);
+
+            if (style == STYLE_SOFT_GLASS) {
+                // 1. 柔光玻璃渐变底
+                LinearGradient bgShader = new LinearGradient(
+                    0, 0, width, height,
+                    new int[]{0x4DFFFFFF, 0x1FFFFFFF, 0x0AFFFFFF},
+                    new float[]{0f, 0.45f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                bgPaint.setShader(bgShader);
+                canvas.drawRoundRect(pill, radius, radius, bgPaint);
+
+                // 2. 顶部弧形反射切面高光
+                LinearGradient hlShader = new LinearGradient(
+                    0, 0, 0, height * 0.55f,
+                    new int[]{0x73FFFFFF, 0x1AFFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.65f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                highlightPaint.setShader(hlShader);
+                canvas.save();
+                canvas.clipRect(0, 0, width, height / 2f);
+                canvas.drawRoundRect(pill, radius, radius, highlightPaint);
+                canvas.restore();
+
+                // 3. 菲涅尔描边
+                borderPaint.setColor(0x59FFFFFF);
+                canvas.drawRoundRect(pill, radius, radius, borderPaint);
+            } else {
+                // 高斯模糊 (哑光磨砂)
+                bgPaint.setShader(null);
+                bgPaint.setColor(0x26FFFFFF);
+                canvas.drawRoundRect(pill, radius, radius, bgPaint);
+
+                borderPaint.setColor(0x38FFFFFF);
+                canvas.drawRoundRect(pill, radius, radius, borderPaint);
+            }
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            bgPaint.setAlpha(alpha);
+            borderPaint.setAlpha(alpha);
+            highlightPaint.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(@Nullable ColorFilter colorFilter) {
+            bgPaint.setColorFilter(colorFilter);
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     /**
