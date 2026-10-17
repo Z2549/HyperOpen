@@ -2,6 +2,7 @@ package com.hyperos.quickopen.ui
 
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import android.os.Bundle
 import androidx.compose.foundation.background
@@ -9,59 +10,58 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.key
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hyperos.quickopen.config.QuickOpenConfig
@@ -69,59 +69,37 @@ import com.hyperos.quickopen.model.ShortcutItem
 import com.hyperos.quickopen.safety.SafetyStore
 import com.hyperos.quickopen.view.IconGlyphFactory
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.extra.SuperDialog
 import top.yukonga.miuix.kmp.extra.SuperSwitch
-import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 二级页路由 id：与 QuickOpenApp.subPage 对齐。
- */
-private const val SUB_PAGE_THEME = 1
-
-/**
- * Compose 重构版设置主页（MiX 材质 / MIUIX 双风格由 [HyperOSQuickOpenTheme] 承载）。
- * 底栏双页：Page0 参数配置（材质/几何/图标物理/快捷项）、Page1 软件设置（界面风格/安全模式/关于）。
+ * Compose 设置界面（固定 MIUIX 轨道）。
+ * 底栏双页：Page0 参数配置、Page1 软件设置；二级页：主题设置（状态内导航，不 recreate）。
  */
 class MainActivity : ComponentActivity() {
+
+    internal var backPressConsumer: (() -> Boolean)? = null
+
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (backPressConsumer?.invoke() == true) {
+            return
+        }
+        super.onBackPressed()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val config = QuickOpenConfig.loadFromApp(this)
-        val style = if (config.uiStyle == QuickOpenConfig.UI_STYLE_MIUIX) UiStyle.MIUIX else UiStyle.MATERIAL
-        // 二级页路由（recreate 后保持）：1=主题设置
-        val subPage = intent.getIntExtra("sub_page", 0)
-
         setContent {
-            HyperOSQuickOpenTheme(
-                uiStyle = style.ordinal,
-                themeMode = config.themeMode,
-                monet = config.monetColors,
-                barBlur = config.barBlur,
-                floatingNavBar = config.floatingNavBar,
-                predictiveBack = config.predictiveBack,
-                edgeBack = config.edgeBack,
-                pageGesture = config.pageSwitchGesture,
-            ) {
-                QuickOpenApp(
-                    initialConfig = config,
-                    initialSubPage = subPage,
-                    onStyleChange = { newStyle ->
-                        val newUi = if (newStyle == UiStyle.MIUIX) QuickOpenConfig.UI_STYLE_MIUIX else QuickOpenConfig.UI_STYLE_MATERIAL
-                        config.uiStyle = newUi
-                        config.save(this)
-                        recreate()
-                    },
-                    onOpenThemePage = {
-                        intent.putExtra("sub_page", 1)
-                        recreate()
-                    },
-                    onExitSubPage = {
-                        intent.removeExtra("sub_page")
-                        recreate()
-                    },
-                )
-            }
+            QuickOpenApp(activity = this, initialConfig = config)
         }
     }
 }
@@ -130,19 +108,14 @@ class MainActivity : ComponentActivity() {
 // App 主结构
 // ─────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuickOpenApp(
+    activity: MainActivity? = null,
     initialConfig: QuickOpenConfig,
-    initialSubPage: Int,
-    onStyleChange: (UiStyle) -> Unit,
-    onOpenThemePage: () -> Unit,
-    onExitSubPage: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val semantic = currentSemantic()
 
-    // 配置镜像状态（单一大对象 + 手动触发重组）
+    // 配置镜像状态（单一大对象 + 手动触发持久化；直接驱动主题 → 实时生效）
     var materialStyle by remember { mutableStateOf(initialConfig.materialStyle) }
     var offsetY by remember { mutableStateOf(initialConfig.offsetY.toFloat()) }
     var regionDiameter by remember { mutableStateOf(initialConfig.regionDiameter.toFloat()) }
@@ -151,19 +124,17 @@ fun QuickOpenApp(
     var iconSize by remember { mutableStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableStateOf(initialConfig.influenceRadius.toFloat()) }
-    var uiStyle by remember { mutableStateOf(if (initialConfig.uiStyle == QuickOpenConfig.UI_STYLE_MIUIX) UiStyle.MIUIX else UiStyle.MATERIAL) }
     var themeMode by remember { mutableStateOf(initialConfig.themeMode) }
     var monetColors by remember { mutableStateOf(initialConfig.monetColors) }
     var barBlur by remember { mutableStateOf(initialConfig.barBlur) }
+    var liquidGlass by remember { mutableStateOf(initialConfig.liquidGlass) }
     var floatingNavBar by remember { mutableStateOf(initialConfig.floatingNavBar) }
     var predictiveBack by remember { mutableStateOf(initialConfig.predictiveBack) }
-    var edgeBack by remember { mutableStateOf(initialConfig.edgeBack) }
-    var pageSwitchGesture by remember { mutableStateOf(initialConfig.pageSwitchGesture) }
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
-    // 二级页状态：recreate 进入（initialSubPage=1）时直接落在主题设置页
-    var subPage by remember { mutableStateOf(initialSubPage) }
+    // 二级页：状态内导航（不再 recreate，返回/切换均瞬时）
+    var subPage by remember { mutableStateOf(0) }
 
     fun persist() {
         val c = QuickOpenConfig.loadFromApp(ctx)
@@ -175,272 +146,213 @@ fun QuickOpenApp(
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
-        c.uiStyle = if (uiStyle == UiStyle.MIUIX) QuickOpenConfig.UI_STYLE_MIUIX else QuickOpenConfig.UI_STYLE_MATERIAL
         c.themeMode = themeMode
         c.monetColors = monetColors
         c.barBlur = barBlur
+        c.liquidGlass = liquidGlass
         c.floatingNavBar = floatingNavBar
         c.predictiveBack = predictiveBack
-        c.edgeBack = edgeBack
-        c.pageSwitchGesture = pageSwitchGesture
         c.shortcuts = ArrayList(shortcuts)
         c.save(ctx)
     }
 
-    androidx.compose.material3.Scaffold(
-        containerColor = semantic.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    androidx.compose.material3.Text(
-                        if (subPage == 1) "主题设置" else "指纹快捷方式增强",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    titleContentColor = semantic.fgPrimary,
-                ),
-            )
-        },
-        bottomBar = {
-            if (subPage == 0) {
-                BottomNavBar(page, floatingNavBar) { page = it }
+    // 拦截系统返回键与手势返回：在二级页时优先返回软件主页
+    LaunchedEffect(activity, subPage) {
+        activity?.backPressConsumer = {
+            if (subPage != 0) {
+                subPage = 0
+                true
             } else {
-                // 二级页：仅横移返回手势可用，不显示底栏
-                if (edgeBack && pageSwitchGesture == PageGesture.HORIZONTAL) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .height(26.dp)
-                            .combinedClickable(onClick = onExitSubPage),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Filled.KeyboardArrowLeft,
-                            contentDescription = "返回",
-                            tint = semantic.fgSecondary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        androidx.compose.material3.Text(
-                            "横滑返回 · 点按也可返回",
-                            color = semantic.fgSecondary,
-                            fontSize = 11.sp,
-                        )
-                    }
-                } else {
-                    Spacer(Modifier.navigationBarsPadding().height(26.dp))
-                }
+                false
             }
-        },
-    ) { padding ->
-        if (subPage == 1) {
-            ThemeSettingsPage(
-                padding = padding,
-                semantic = semantic,
-                themeMode = themeMode, onThemeMode = { themeMode = it; persist() },
-                monet = monetColors, onMonet = { monetColors = it; persist() },
-                barBlur = barBlur, onBarBlur = { barBlur = it; persist() },
-                floatingNavBar = floatingNavBar, onFloatingNavBar = { floatingNavBar = it; persist() },
-                predictiveBack = predictiveBack, onPredictiveBack = { predictiveBack = it; persist() },
-                edgeBack = edgeBack, onEdgeBack = { edgeBack = it; persist() },
-                pageGesture = pageSwitchGesture, onPageGesture = { pageSwitchGesture = it; persist() },
-                onExitSubPage = onExitSubPage,
-            )
-        } else if (page == 0) {
-            ParamsPage(
-                padding = padding,
-                semantic = semantic,
-                materialStyle = materialStyle, onMaterialStyle = { materialStyle = it; persist() },
-                offsetY = offsetY, onOffsetY = { offsetY = it; persist() },
-                regionDiameter = regionDiameter, onRegionDiameter = { regionDiameter = it; persist() },
-                showRegionBg = showRegionBg, onShowRegionBg = { showRegionBg = it; persist() },
-                showHeaderPillBg = showHeaderPillBg, onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
-                iconSize = iconSize, onIconSize = { iconSize = it; persist() },
-                maxScale = maxScale, onMaxScale = { maxScale = it; persist() },
-                influenceRadius = influenceRadius, onInfluenceRadius = { influenceRadius = it; persist() },
-                shortcuts = shortcuts, onShortcutToggle = { item, enabled -> item.enabled = enabled; persist() },
-                onShortcutEdit = { updated ->
-                    val i = shortcuts.indexOfFirst { it.id == updated.id }
-                    if (i >= 0) shortcuts[i] = updated
-                    persist()
-                },
-                onResetShortcuts = {
-                    shortcuts.clear(); shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts()); persist()
-                    Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
-                },
-            )
-        } else {
-            SettingsPage(
-                padding = padding,
-                semantic = semantic,
-                uiStyle = uiStyle,
-                onStyleChange = onStyleChange,
-                safetyTick = safetyTick,
-                onSafetyRefresh = { safetyTick++ },
-                onOpenThemePage = onOpenThemePage,
-            )
         }
     }
-}
+    BackHandler(enabled = subPage != 0) {
+        subPage = 0
+    }
 
-// ─────────────────────────────────────────────────────────────────────
-// 底部导航栏（Material 轨 NavigationBar / MIUIX 轨自绘 Tab）
-// ─────────────────────────────────────────────────────────────────────
+    // 主题装配在状态内层 → themeMode/monet/floatingNavBar/liquidGlass 变化即时重组
+    HyperOSQuickOpenTheme(
+        themeMode = themeMode,
+        monet = monetColors,
+        barBlur = false,
+        floatingNavBar = floatingNavBar,
+        predictiveBack = false,
+    ) {
+        // —— 全部颜色读取必须在主题 provide 之内（否则拿到默认浅色，切换不生效）——
+        val semantic = currentSemantic()
+        val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val topSpace = topInset + 56.dp
+        val bottomSpace = if (subPage == 1) {
+            24.dp + navInset
+        } else if (floatingNavBar) {
+            72.dp + navInset
+        } else {
+            64.dp + navInset
+        }
+        val contentPadding = PaddingValues(top = topSpace, bottom = bottomSpace)
 
-private val NAV_PAGES = listOf(
-    Triple("参数配置", "Parameters", Icons.Filled.Build),
-    Triple("软件设置", "Preferences", Icons.Filled.Settings),
-)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(semantic.background),
+        ) {
+            // ── 内容（全屏滚动） ──────────────────────────────
+            if (subPage == 1) {
+                ThemeSettingsPage(
+                    padding = contentPadding,
+                    semantic = semantic,
+                    themeMode = themeMode, onThemeMode = { themeMode = it; persist() },
+                    monet = monetColors, onMonet = { monetColors = it; persist() },
+                    liquidGlass = liquidGlass, onLiquidGlass = { liquidGlass = it; persist() },
+                    floatingNavBar = floatingNavBar, onFloatingNavBar = { floatingNavBar = it; persist() },
+                )
+            } else if (page == 0) {
+                ParamsPage(
+                    padding = contentPadding,
+                    semantic = semantic,
+                    materialStyle = materialStyle, onMaterialStyle = { materialStyle = it; persist() },
+                    offsetY = offsetY, onOffsetY = { offsetY = it; persist() },
+                    regionDiameter = regionDiameter, onRegionDiameter = { regionDiameter = it; persist() },
+                    showRegionBg = showRegionBg, onShowRegionBg = { showRegionBg = it; persist() },
+                    showHeaderPillBg = showHeaderPillBg, onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
+                    iconSize = iconSize, onIconSize = { iconSize = it; persist() },
+                    maxScale = maxScale, onMaxScale = { maxScale = it; persist() },
+                    influenceRadius = influenceRadius, onInfluenceRadius = { influenceRadius = it; persist() },
+                    shortcuts = shortcuts, onShortcutToggle = { item, enabled -> item.enabled = enabled; persist() },
+                    onShortcutEdit = { updated ->
+                        val i = shortcuts.indexOfFirst { it.id == updated.id }
+                        if (i >= 0) shortcuts[i] = updated
+                        persist()
+                    },
+                    onResetShortcuts = {
+                        shortcuts.clear(); shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts()); persist()
+                        Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
+                    },
+                )
+            } else {
+                SettingsPage(
+                    padding = contentPadding,
+                    semantic = semantic,
+                    safetyTick = safetyTick,
+                    onSafetyRefresh = { safetyTick++ },
+                    onOpenThemePage = { subPage = 1 },
+                )
+            }
 
-@Composable
-fun BottomNavBar(page: Int, floating: Boolean, onPageChange: (Int) -> Unit) {
-    val semantic = currentSemantic()
-    val style = LocalUiStyle.current
-    if (style == UiStyle.MIUIX) {
-        // miuix 没有 NavigationBar 组件 —— 自绘澎湃风格底部 Tab（Surface + 权重行 + 图标文字）
-        if (floating) {
-            // Apple 风格悬浮底栏：胶囊浮岛 + navigationBarsPadding 外边距
+            // ── 顶栏（实色覆盖状态栏与标题区，防止列表内容从顶栏上方露白透出） ──
             Surface(
                 color = semantic.surface,
-                shape = RoundedCornerShape(percent = 50),
-                shadowElevation = 8.dp,
+                shadowElevation = 1.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 28.dp)
-                    .navigationBarsPadding()
-                    .padding(vertical = 6.dp),
+                    .align(Alignment.TopCenter),
             ) {
-                Row(
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .height(56.dp),
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
-                        FloatingTab(page == i, title, icon, semantic) { onPageChange(i) }
-                    }
-                }
-            }
-        } else {
-            Surface(
-                color = semantic.surface,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .height(64.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
-                        val selected = page == i
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
+                    if (subPage == 1) {
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .combinedClickable(onClick = { onPageChange(i) }),
+                                .align(Alignment.CenterStart)
+                                .padding(start = 6.dp)
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(onClick = { subPage = 0 }),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = title,
-                                tint = if (selected) semantic.primary else semantic.fgSecondary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                            Spacer(Modifier.height(3.dp))
-                            androidx.compose.material3.Text(
-                                title,
-                                color = if (selected) semantic.primary else semantic.fgSecondary,
-                                fontSize = 11.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            Text(
+                                "‹",
+                                color = semantic.fgPrimary,
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Light,
                             )
                         }
                     }
+                    Text(
+                        if (subPage == 1) "主题设置" else "指纹快捷方式增强",
+                        color = semantic.fgPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
                 }
             }
-        }
-    } else if (floating) {
-        // Material 轨悬浮底栏：圆角胶囊 + 阴影
-        Surface(
-            color = semantic.surface,
-            shape = RoundedCornerShape(percent = 50),
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 28.dp)
-                .navigationBarsPadding()
-                .padding(vertical = 6.dp),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
-                    FloatingTab(page == i, title, icon, semantic) { onPageChange(i) }
-                }
-            }
-        }
-    } else {
-        NavigationBar(
-            containerColor = semantic.surface,
-            contentColor = semantic.fgPrimary,
-        ) {
-            NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
-                NavigationBarItem(
-                    selected = page == i,
-                    onClick = { onPageChange(i) },
-                    icon = { Icon(icon, contentDescription = title) },
-                    label = { androidx.compose.material3.Text(title, fontSize = 12.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = semantic.primary,
-                        selectedTextColor = semantic.primary,
-                        unselectedIconColor = semantic.fgSecondary,
-                        unselectedTextColor = semantic.fgSecondary,
-                        indicatorColor = semantic.primary.copy(alpha = 0.16f),
-                    ),
-                )
+
+            // ── 底栏（二级页不显示） ────────────────────────────
+            if (subPage == 0) {
+                BottomNavBar(page, floatingNavBar, liquidGlass) { page = it }
             }
         }
     }
 }
 
-/** 悬浮底栏单个 Tab（胶囊内等分，图标+文字，选中着主色）。RowScope 扩展以获得 weight。 */
+// ─────────────────────────────────────────────────────────────────────
+// 底部导航栏（使用 miuix 官方 NavigationBar 与 FloatingNavigationBar）
+// ─────────────────────────────────────────────────────────────────────
+
+/** BoxScope 扩展：在覆盖层内用 align(BottomCenter) 定位，使用 ui 库组件 */
 @Composable
-private fun RowScope.FloatingTab(
-    selected: Boolean,
-    title: String,
-    icon: ImageVector,
-    semantic: SemanticPalette,
-    onClick: () -> Unit,
+fun BoxScope.BottomNavBar(
+    page: Int,
+    floating: Boolean,
+    liquidGlass: Boolean,
+    onPageChange: (Int) -> Unit,
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .combinedClickable(onClick = onClick),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = if (selected) semantic.primary else semantic.fgSecondary,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.height(2.dp))
-        androidx.compose.material3.Text(
-            title,
-            color = if (selected) semantic.primary else semantic.fgSecondary,
-            fontSize = 10.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
+    if (floating) {
+        // UI 库官方 FloatingNavigationBar 组件（Apple 风格胶囊悬浮浮岛）
+        val barColor = if (liquidGlass) {
+            MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f)
+        } else {
+            MiuixTheme.colorScheme.surfaceContainer
+        }
+        FloatingNavigationBar(
+            color = barColor,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            FloatingNavigationBarItem(
+                selected = page == 0,
+                onClick = { onPageChange(0) },
+                icon = Icons.Filled.Build,
+                label = "参数配置",
+            )
+            FloatingNavigationBarItem(
+                selected = page == 1,
+                onClick = { onPageChange(1) },
+                icon = Icons.Filled.Settings,
+                label = "软件设置",
+            )
+        }
+    } else {
+        // UI 库官方 NavigationBar 组件（常规贴底底栏）
+        val barColor = if (liquidGlass) {
+            MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f)
+        } else {
+            MiuixTheme.colorScheme.surfaceContainer
+        }
+        NavigationBar(
+            color = barColor,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter),
+        ) {
+            NavigationBarItem(
+                selected = page == 0,
+                onClick = { onPageChange(0) },
+                icon = Icons.Filled.Build,
+                label = "参数配置",
+            )
+            NavigationBarItem(
+                selected = page == 1,
+                onClick = { onPageChange(1) },
+                icon = Icons.Filled.Settings,
+                label = "软件设置",
+            )
+        }
     }
 }
 
@@ -466,10 +378,8 @@ fun ParamsPage(
     onResetShortcuts: () -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = padding,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // ── 材质 ─────────────────────────────────────────────
@@ -523,7 +433,7 @@ fun ParamsPage(
             ResetButton("恢复预设布局") { onResetShortcuts() }
         }
         item {
-            androidx.compose.material3.Text(
+            Text(
                 "提示：所有修改即时保存，长按指纹即可验证效果，无需重启 SystemUI。",
                 color = semantic.fgSecondary,
                 fontSize = 12.sp,
@@ -535,44 +445,22 @@ fun ParamsPage(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Page1：软件设置（界面风格 / 安全模式 / 关于）
+// Page1：软件设置（主题设置入口 / 安全模式 / 关于）
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
 fun SettingsPage(
     padding: PaddingValues,
     semantic: SemanticPalette,
-    uiStyle: UiStyle,
-    onStyleChange: (UiStyle) -> Unit,
     safetyTick: Int,
     onSafetyRefresh: () -> Unit,
     onOpenThemePage: () -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = padding,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // ── 界面风格 ────────────────────────────────────────
-        item { SmallTitle("界面风格") }
-        item {
-            SettingsCard {
-                MaterialRow(
-                    "Material · 玻璃暗色",
-                    "material3 组件 · 深色玻璃质感",
-                    uiStyle == UiStyle.MATERIAL,
-                ) { onStyleChange(UiStyle.MATERIAL) }
-                DividerRow()
-                MaterialRow(
-                    "MIUIX · 澎湃卡片",
-                    "miuix 组件 · 小米 HyperOS 风格",
-                    uiStyle == UiStyle.MIUIX,
-                ) { onStyleChange(UiStyle.MIUIX) }
-            }
-        }
-
         // ── 主题设置入口（二级页） ───────────────────────────
         item { SmallTitle("主题") }
         item {
@@ -585,20 +473,20 @@ fun SettingsPage(
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        androidx.compose.material3.Text(
+                        Text(
                             "主题设置",
                             color = semantic.fgPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                         )
-                        androidx.compose.material3.Text(
-                            "深浅模式 · Monet · 毛玻璃 · 手势",
+                        Text(
+                            "深浅模式 · Monet · 毛玻璃 · 液态玻璃 · 手势",
                             color = semantic.fgSecondary,
                             fontSize = 12.sp,
                         )
                     }
                     Icon(
-                        Icons.Filled.KeyboardArrowRight,
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null,
                         tint = semantic.fgSecondary,
                     )
@@ -606,8 +494,8 @@ fun SettingsPage(
             }
         }
         item {
-            androidx.compose.material3.Text(
-                "切换界面风格后立即生效（界面会刷新一次）。",
+            Text(
+                "主题调整实时生效，无需重启。",
                 color = semantic.fgSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 8.dp),
@@ -627,7 +515,7 @@ fun SettingsPage(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
                     AboutLine("模块名称", "HyperOS QuickOpen")
                     AboutLine("功能", "指纹快捷面板自定义 · 图标与动效增强")
-                    AboutLine("UI 框架", "miuix 0.8.8 + Material3 1.4.0 (Compose)")
+                    AboutLine("UI 框架", "miuix 0.8.8 (Compose)")
                     AboutLine("使用方式", "指纹解锁时按压指纹传感器唤出快捷面板")
                     AboutLine("生效条件", "LSPosed 激活模块并勾选 SystemUI 作用域，重启 SystemUI")
                 }
@@ -641,13 +529,13 @@ fun SettingsPage(
 fun AboutLine(label: String, value: String) {
     val semantic = currentSemantic()
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        androidx.compose.material3.Text(
+        Text(
             label,
             color = semantic.fgSecondary,
             fontSize = 13.sp,
             modifier = Modifier.width(84.dp),
         )
-        androidx.compose.material3.Text(
+        Text(
             value,
             color = semantic.fgPrimary,
             fontSize = 13.sp,
@@ -658,22 +546,12 @@ fun AboutLine(label: String, value: String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 通用行组件（Material 分支；MIUIX 分支用 miuix 组件由 SettingsCard 内部按风格分派）
+// 通用行组件（MIUIX 卡片）
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
-fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    val semantic = currentSemantic()
-    val style = LocalUiStyle.current
-    if (style == UiStyle.MIUIX) {
-        Card(modifier = Modifier.fillMaxWidth()) { Column { content() } }
-    } else {
-        androidx.compose.material3.Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = semantic.surface),
-            shape = RoundedCornerShape(18.dp),
-        ) { Column(Modifier.padding(vertical = 4.dp)) { content() } }
-    }
+fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) { Column { content() } }
 }
 
 @Composable
@@ -707,11 +585,11 @@ fun MaterialRow(title: String, sub: String, selected: Boolean, onSelect: () -> U
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            androidx.compose.material3.Text(title, color = semantic.fgPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            androidx.compose.material3.Text(sub, color = semantic.fgSecondary, fontSize = 12.sp)
+            Text(title, color = semantic.fgPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(sub, color = semantic.fgSecondary, fontSize = 12.sp)
         }
         if (selected) {
-            androidx.compose.material3.Text("✓", color = semantic.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("✓", color = semantic.primary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -722,15 +600,15 @@ fun SliderRow(title: String, valueText: String, value: Float, range: ClosedFloat
     var v by remember(value) { mutableStateOf(value) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Text(title, color = semantic.fgPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            androidx.compose.material3.Text(valueText, color = semantic.fgSecondary, fontSize = 13.sp)
+            Text(title, color = semantic.fgPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Text(valueText, color = semantic.fgSecondary, fontSize = 13.sp)
         }
         Slider(
             value = v,
             onValueChange = { v = it },
             onValueChangeFinished = { onChange(v) },
             valueRange = range,
-            colors = androidx.compose.material3.SliderDefaults.colors(
+            colors = SliderDefaults.colors(
                 thumbColor = semantic.primary,
                 activeTrackColor = semantic.primary,
                 inactiveTrackColor = semantic.divider,
@@ -746,8 +624,8 @@ fun SwitchRowM3(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        androidx.compose.material3.Text(title, color = semantic.fgPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, colors = androidx.compose.material3.SwitchDefaults.colors(
+        Text(title, color = semantic.fgPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(
             checkedTrackColor = semantic.primary,
         ))
     }
@@ -765,7 +643,7 @@ fun ResetButton(text: String, onClick: () -> Unit) {
             .padding(vertical = 13.dp),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Text(text, color = semantic.fgPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(text, color = semantic.fgPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -777,46 +655,23 @@ fun ResetButton(text: String, onClick: () -> Unit) {
 fun ShortcutRow(item: ShortcutItem, onToggle: (Boolean) -> Unit, onEdit: (ShortcutItem) -> Unit) {
     val ctx = LocalContext.current
     val semantic = currentSemantic()
-    val style = LocalUiStyle.current
     var showEdit by remember { mutableStateOf(false) }
     val painter = remember(item.id, item.iconPackage, item.iconGlyph) { IconPainter.resolve(item, ctx) }
 
-    if (style == UiStyle.MIUIX) {
-        SuperSwitch(
-            title = item.title,
-            summary = item.subtitle,
-            checked = item.enabled,
-            startAction = {
-                androidx.compose.foundation.Image(
-                    painter = painter,
-                    contentDescription = item.title,
-                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)),
-                )
-            },
-            onCheckedChange = onToggle,
-            modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { showEdit = true }).fillMaxWidth(),
-        )
-    } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = {}, onLongClick = { showEdit = true })
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    SuperSwitch(
+        title = item.title,
+        summary = item.subtitle,
+        checked = item.enabled,
+        startAction = {
             androidx.compose.foundation.Image(
                 painter = painter,
                 contentDescription = item.title,
                 modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)),
             )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                androidx.compose.material3.Text(item.title, color = semantic.fgPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                androidx.compose.material3.Text(item.subtitle, color = semantic.fgSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Switch(checked = item.enabled, onCheckedChange = onToggle, colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = semantic.primary))
-        }
-    }
+        },
+        onCheckedChange = onToggle,
+        modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { showEdit = true }).fillMaxWidth(),
+    )
 
     if (showEdit) {
         IconEditDialog(item = item, onDismiss = { showEdit = false }, onSave = { onEdit(it); showEdit = false })
@@ -844,7 +699,7 @@ fun IconEditDialog(item: ShortcutItem, onDismiss: () -> Unit, onSave: (ShortcutI
         val canvas = android.graphics.Canvas(bmp)
         d.setBounds(0, 0, 96, 96)
         d.draw(canvas)
-        androidx.compose.ui.graphics.painter.BitmapPainter(bmp.toComposeImageBitmap())
+        BitmapPainter(bmp.toComposeImageBitmap())
     }
 
     SuperDialog(
@@ -893,7 +748,6 @@ private fun android.graphics.Bitmap.toComposeImageBitmap(): androidx.compose.ui.
 fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
     val ctx = LocalContext.current
     val semantic = currentSemantic()
-    val style = LocalUiStyle.current
 
     // 每次进入组合 / tick 变化时从 SafetyStore 重读
     val state = remember(tick) { SafetyStore.getState(ctx) }
@@ -919,7 +773,7 @@ fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
 
     SettingsCard {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            androidx.compose.material3.Text(statusText, color = statusColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(statusText, color = statusColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             InfoLine("连续崩溃计数：$crashCount / $threshold")
             InfoLine("历史累计崩溃：$total 次")
@@ -931,13 +785,13 @@ fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
                 } else "最近一次崩溃：无",
             )
             Spacer(Modifier.height(8.dp))
-            androidx.compose.material3.Text(
+            Text(
                 "崩溃记录",
                 color = semantic.fgPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
-            androidx.compose.material3.Text(
+            Text(
                 if (log.isBlank()) "暂无崩溃记录。" else log,
                 color = semantic.fgSecondary,
                 fontSize = 12.sp,
@@ -962,34 +816,22 @@ fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            if (style == UiStyle.MIUIX) {
-                SuperSwitch(
-                    title = "启用指纹快捷方式增强 (Hook 总开关)",
-                    checked = hookEnabled && !safeMode,
-                    onCheckedChange = { checked ->
-                        val st = SafetyStore.setHookEnabled(ctx, checked)
-                        Toast.makeText(
-                            ctx,
-                            if (checked) "Hook 已启用，重启 SystemUI 后生效" else "Hook 已停用，重启 SystemUI 后生效",
-                            Toast.LENGTH_LONG,
-                        ).show()
-                        onRequestRefresh()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                SwitchRowM3("启用指纹快捷方式增强 (Hook 总开关)", hookEnabled && !safeMode) { checked ->
-                    SafetyStore.setHookEnabled(ctx, checked)
+            SuperSwitch(
+                title = "启用指纹快捷方式增强 (Hook 总开关)",
+                checked = hookEnabled && !safeMode,
+                onCheckedChange = { checked ->
+                    val st = SafetyStore.setHookEnabled(ctx, checked)
                     Toast.makeText(
                         ctx,
                         if (checked) "Hook 已启用，重启 SystemUI 后生效" else "Hook 已停用，重启 SystemUI 后生效",
                         Toast.LENGTH_LONG,
                     ).show()
                     onRequestRefresh()
-                }
-            }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(4.dp))
-            androidx.compose.material3.Text(
+            Text(
                 "当 Hook 导致 SystemUI 在 5 分钟内连续崩溃 2 次时，模块会自动进入安全模式并停用全部 Hook，SystemUI 恢复原生指纹界面。修复配置后点「退出安全模式」即可重新启用。",
                 color = semantic.fgSecondary,
                 fontSize = 12.sp,
@@ -1002,11 +844,11 @@ fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
 @Composable
 fun InfoLine(text: String) {
     val semantic = currentSemantic()
-    androidx.compose.material3.Text(text, color = semantic.fgSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+    Text(text, color = semantic.fgSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 二级页：主题设置（深浅模式 / Monet / 毛玻璃 / 悬浮底栏 / 手势）
+// 二级页：主题设置（深浅模式 / Monet / 底栏液态玻璃 / 悬浮底栏）
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -1015,18 +857,12 @@ fun ThemeSettingsPage(
     semantic: SemanticPalette,
     themeMode: Int, onThemeMode: (Int) -> Unit,
     monet: Boolean, onMonet: (Boolean) -> Unit,
-    barBlur: Boolean, onBarBlur: (Boolean) -> Unit,
+    liquidGlass: Boolean, onLiquidGlass: (Boolean) -> Unit,
     floatingNavBar: Boolean, onFloatingNavBar: (Boolean) -> Unit,
-    predictiveBack: Boolean, onPredictiveBack: (Boolean) -> Unit,
-    edgeBack: Boolean, onEdgeBack: (Boolean) -> Unit,
-    pageGesture: Int, onPageGesture: (Int) -> Unit,
-    onExitSubPage: () -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = padding,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // ── 深浅模式三段选择器 ──────────────────────────────
@@ -1048,66 +884,18 @@ fun ThemeSettingsPage(
         // ── 外观效果 ───────────────────────────────────────
         item {
             SettingsCard {
-                SwitchRowM3("模糊", barBlur) { onBarBlur(it) }
+                SwitchRowM3("底栏液态玻璃", liquidGlass) { onLiquidGlass(it) }
                 DividerRow()
                 SwitchRowM3("悬浮底栏", floatingNavBar) { onFloatingNavBar(it) }
             }
         }
         item {
-            androidx.compose.material3.Text(
-                "模糊：顶栏与底栏使用毛玻璃质感；悬浮底栏：Apple 风格胶囊浮岛。",
+            Text(
+                "底栏液态玻璃：底栏采用 Apple 风格半透明磨砂质感；悬浮底栏：UI 库原生胶囊浮岛底栏。",
                 color = semantic.fgSecondary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
-        }
-
-        // ── 手势 ───────────────────────────────────────────
-        item {
-            SettingsCard {
-                SwitchRowM3("预测性返回手势", predictiveBack) { onPredictiveBack(it) }
-                DividerRow()
-                SwitchRowM3("横移返回手势", edgeBack) { onEdgeBack(it) }
-                DividerRow()
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(onClick = { onPageGesture(if (pageGesture == PageGesture.HORIZONTAL) PageGesture.OFF else PageGesture.HORIZONTAL) })
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        androidx.compose.material3.Text(
-                            "页面切换手势",
-                            color = semantic.fgPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        androidx.compose.material3.Text(
-                            "在页面间切换的触发方式",
-                            color = semantic.fgSecondary,
-                            fontSize = 12.sp,
-                        )
-                    }
-                    androidx.compose.material3.Text(
-                        if (pageGesture == PageGesture.HORIZONTAL) "横滑切换" else "关闭",
-                        color = semantic.primary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-            }
-        }
-        item {
-            androidx.compose.material3.Text(
-                "横移返回手势：在二级页从屏幕边缘横移或点按底栏返回上一页。",
-                color = semantic.fgSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
-        }
-        item {
-            ResetButton("返回设置主页") { onExitSubPage() }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -1140,7 +928,7 @@ fun ThemeSegmented(
                     .padding(vertical = 10.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                androidx.compose.material3.Text(
+                Text(
                     label,
                     color = if (selected) semantic.primary else semantic.fgSecondary,
                     fontSize = 14.sp,

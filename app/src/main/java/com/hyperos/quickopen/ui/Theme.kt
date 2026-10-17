@@ -41,7 +41,7 @@ data class SemanticPalette(
 )
 
 /** 全局共享的语义色板，任何 @Composable 里 currentSemantic() 直接取。 */
-val LocalSemantic = compositionLocalOf { GlassLight }
+val LocalSemantic = compositionLocalOf { MiuixSemLight }
 
 @Composable
 fun currentSemantic(): SemanticPalette = LocalSemantic.current
@@ -132,15 +132,15 @@ object PageGesture {
 }
 
 /**
- * 主题装配根：
+ * 主题装配根（固定 MIUIX 轨道 —— 用户 m01111 要求移除 Material 风格）：
  * 1) themeMode 用户显式覆盖 isSystemInDarkTheme()（修复深色模式不生效——此前硬跟随系统）；
- * 2) 双轨 UI 风格 Material 玻璃 / MIUIX 卡片；
- * 3) Monet 动态取色（Android 12+ 系统动态色板，Material 轨整套映射，MIUIX 轨主色映射）；
- * 4) 同步系统栏外观（底色 + 图标深浅）。
+ * 2) Monet 动态取色（Android 12+ 系统动态色板，主色注入 miuix 配色）；
+ * 3) 同步系统栏外观（底色 + 图标深浅）；
+ * 4) provide LocalUiStyle=MIUIX（此前从未 provide，MIUIX 轨从未真正生效）。
  */
 @Composable
 fun HyperOSQuickOpenTheme(
-    uiStyle: Int,
+    uiStyle: Int = UiStyle.MIUIX.ordinal,
     themeMode: Int,
     monet: Boolean,
     barBlur: Boolean,
@@ -163,36 +163,46 @@ fun HyperOSQuickOpenTheme(
         if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
     } else null
 
-    val semBase = when {
-        uiStyle == UiStyle.MIUIX.ordinal && dark -> MiuixSemDark
-        uiStyle == UiStyle.MIUIX.ordinal -> MiuixSemLight
-        dark -> GlassDark
-        else -> GlassLight
+    val sem = if (dark) MiuixSemDark else MiuixSemLight
+    val semApplied = if (m3Dynamic != null) sem.copy(primary = m3Dynamic.primary) else sem
+
+    ApplySystemBars(dark, semApplied)
+
+    val monetPrimary = m3Dynamic?.primary
+    val colors = if (dark) {
+        miuixDarkColors(monetPrimary ?: Color(0xFFFF6900))
+    } else {
+        miuixLightColors(monetPrimary ?: Color(0xFFFF6900))
     }
-    val sem = if (m3Dynamic != null) semBase.copy(primary = m3Dynamic.primary) else semBase
-
-    val m3Scheme = m3Dynamic ?: if (dark) GlassDarkScheme else GlassLightScheme
-
-    ApplySystemBars(dark, sem)
 
     CompositionLocalProvider(
-        LocalSemantic provides sem,
+        LocalSemantic provides semApplied,
+        LocalUiStyle provides UiStyle.MIUIX,
         LocalGlassSpec provides glassSpec(barBlur),
+        LocalLiquidGlassSpec provides if (dark) {
+            LiquidGlassSpec(
+                barAlpha = 0.56f,
+                surfaceColor = Color(0xFF1D2126),
+                surfaceAltColor = Color(0xFF23282E),
+                dividerColor = Color(0xFF2B3138),
+                fgPrimaryColor = Color(0xFFE8EBEF),
+                fgSecondaryColor = Color(0xFF8B939D),
+            )
+        } else {
+            LiquidGlassSpec(
+                barAlpha = 0.68f,
+                surfaceColor = Color(0xFFFFFFFF),
+                surfaceAltColor = Color(0xFFF8F9FB),
+                dividerColor = Color(0xFFE6E8EB),
+                fgPrimaryColor = Color(0xFF181C21),
+                fgSecondaryColor = Color(0xFF7C838C),
+            )
+        },
         LocalThemePrefs provides ThemePrefs(
             themeMode, monet, barBlur, floatingNavBar, predictiveBack, edgeBack, pageGesture,
         ),
     ) {
-        if (uiStyle == UiStyle.MIUIX.ordinal) {
-            val monetPrimary = m3Dynamic?.primary
-            val colors = if (dark) {
-                miuixDarkColors(monetPrimary ?: Color(0xFFFF6900))
-            } else {
-                miuixLightColors(monetPrimary ?: Color(0xFFFF6900))
-            }
-            MiuixTheme(colors = colors) { content() }
-        } else {
-            MaterialTheme(colorScheme = m3Scheme) { content() }
-        }
+        MiuixTheme(colors = colors) { content() }
     }
 }
 
@@ -280,6 +290,30 @@ private fun miuixDarkColors(primary: Color): Colors = miuixDarkColorScheme(
     onSurfaceVariantSummary = Color(0xFF8B939D),
     dividerLine = Color(0xFF2B3138),
 )
+
+/** 液态玻璃底栏：半透明底栏（浅/深） + 高光边缘。 */
+data class LiquidGlassSpec(
+    val barAlpha: Float,
+    val surfaceColor: Color,
+    val surfaceAltColor: Color,
+    val dividerColor: Color,
+    val fgPrimaryColor: Color,
+    val fgSecondaryColor: Color,
+)
+
+val LocalLiquidGlassSpec = compositionLocalOf {
+    LiquidGlassSpec(
+        barAlpha = 0.78f,
+        surfaceColor = Color(0xFFFFFFFF),
+        surfaceAltColor = Color(0xFFF8F9FB),
+        dividerColor = Color(0xFFE6E8EB),
+        fgPrimaryColor = Color(0xFF181C21),
+        fgSecondaryColor = Color(0xFF7C838C),
+    )
+}
+
+@Composable
+fun currentLiquidGlass(): LiquidGlassSpec = LocalLiquidGlassSpec.current
 
 /** 系统栏外观同步：底色 + 图标深浅（API 23+/30+ 两段兼容）。 */
 @Composable
