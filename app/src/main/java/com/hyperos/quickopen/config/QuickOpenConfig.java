@@ -30,9 +30,32 @@ public class QuickOpenConfig {
     public static final int UI_STYLE_MATERIAL = 0;
     public static final int UI_STYLE_MIUIX = 1;
 
+    /** 主题模式：0=跟随系统, 1=浅色, 2=深色 */
+    public static final int THEME_FOLLOW_SYSTEM = 0;
+    public static final int THEME_LIGHT = 1;
+    public static final int THEME_DARK = 2;
+
+    /** 页面切换手势：0=关闭, 1=横滑切换 */
+    public static final int PAGE_GESTURE_OFF = 0;
+    public static final int PAGE_GESTURE_HORIZONTAL = 1;
+
     public int materialStyle = MATERIAL_SOFT_GLASS;
     /** 设置界面风格（仅 App 内生效）：UI_STYLE_MATERIAL / UI_STYLE_MIUIX */
     public int uiStyle = UI_STYLE_MATERIAL;
+    /** 主题模式（仅 App 内生效）：THEME_FOLLOW_SYSTEM / THEME_LIGHT / THEME_DARK */
+    public int themeMode = THEME_FOLLOW_SYSTEM;
+    /** Monet 动态取色（仅 App 内 Material 轨生效） */
+    public boolean monetColors = false;
+    /** 顶栏/底栏毛玻璃 */
+    public boolean barBlur = true;
+    /** Apple 风格悬浮底栏 */
+    public boolean floatingNavBar = false;
+    /** 预测性返回手势（Android 13+） */
+    public boolean predictiveBack = true;
+    /** 横移返回手势 */
+    public boolean edgeBack = true;
+    /** 页面切换手势：PAGE_GESTURE_OFF / PAGE_GESTURE_HORIZONTAL */
+    public int pageSwitchGesture = PAGE_GESTURE_HORIZONTAL;
     public int offsetY = 280;          // dp
     public int regionDiameter = 330;   // dp
     public boolean showRegionBg = true;
@@ -111,6 +134,13 @@ public class QuickOpenConfig {
         QuickOpenConfig config = new QuickOpenConfig();
         config.materialStyle = sp.getInt("material_style", MATERIAL_SOFT_GLASS);
         config.uiStyle = sp.getInt("ui_style", UI_STYLE_MATERIAL);
+        config.themeMode = sp.getInt("theme_mode", THEME_FOLLOW_SYSTEM);
+        config.monetColors = sp.getBoolean("monet_colors", false);
+        config.barBlur = sp.getBoolean("bar_blur", true);
+        config.floatingNavBar = sp.getBoolean("floating_nav_bar", false);
+        config.predictiveBack = sp.getBoolean("predictive_back", true);
+        config.edgeBack = sp.getBoolean("edge_back", true);
+        config.pageSwitchGesture = sp.getInt("page_switch_gesture", PAGE_GESTURE_HORIZONTAL);
         config.offsetY = sp.getInt("offset_y", 280);
         config.regionDiameter = sp.getInt("region_diameter", 330);
         config.showRegionBg = sp.getBoolean("show_region_bg", true);
@@ -132,6 +162,13 @@ public class QuickOpenConfig {
         sp.edit()
             .putInt("material_style", materialStyle)
             .putInt("ui_style", uiStyle)
+            .putInt("theme_mode", themeMode)
+            .putBoolean("monet_colors", monetColors)
+            .putBoolean("bar_blur", barBlur)
+            .putBoolean("floating_nav_bar", floatingNavBar)
+            .putBoolean("predictive_back", predictiveBack)
+            .putBoolean("edge_back", edgeBack)
+            .putInt("page_switch_gesture", pageSwitchGesture)
             .putInt("offset_y", offsetY)
             .putInt("region_diameter", regionDiameter)
             .putBoolean("show_region_bg", showRegionBg)
