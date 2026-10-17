@@ -89,7 +89,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 滑块初始值
-        sliderOffsetY.setValue(clamp(config.offsetY, 150, 450));
+        sliderOffsetY.setValue(clamp(config.offsetY, 100, 450));
         tvOffsetYVal.setText(String.format(Locale.getDefault(), "%d dp", config.offsetY));
 
         sliderRegionDiameter.setValue(clamp(config.regionDiameter, 220, 420));
