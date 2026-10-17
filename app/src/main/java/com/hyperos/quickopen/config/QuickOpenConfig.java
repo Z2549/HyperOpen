@@ -50,8 +50,6 @@ public class QuickOpenConfig {
     public boolean barBlur = true;
     /** Apple 风格悬浮底栏 */
     public boolean floatingNavBar = false;
-    /** 底栏液态玻璃（半透明玻璃质感 + 高光边缘） */
-    public boolean liquidGlass = true;
     /** 预测性返回手势（Android 13+） */
     public boolean predictiveBack = true;
     /** 横移返回手势 */
@@ -139,7 +137,6 @@ public class QuickOpenConfig {
         config.themeMode = sp.getInt("theme_mode", THEME_FOLLOW_SYSTEM);
         config.monetColors = sp.getBoolean("monet_colors", false);
         config.barBlur = sp.getBoolean("bar_blur", true);
-        config.liquidGlass = sp.getBoolean("liquid_glass", true);
         config.floatingNavBar = sp.getBoolean("floating_nav_bar", false);
         config.predictiveBack = sp.getBoolean("predictive_back", true);
         config.edgeBack = sp.getBoolean("edge_back", true);
@@ -168,7 +165,6 @@ public class QuickOpenConfig {
             .putInt("theme_mode", themeMode)
             .putBoolean("monet_colors", monetColors)
             .putBoolean("bar_blur", barBlur)
-            .putBoolean("liquid_glass", liquidGlass)
             .putBoolean("floating_nav_bar", floatingNavBar)
             .putBoolean("predictive_back", predictiveBack)
             .putBoolean("edge_back", edgeBack)

@@ -134,7 +134,6 @@ fun QuickOpenApp(
     var themeMode by remember { mutableStateOf(initialConfig.themeMode) }
     var monetColors by remember { mutableStateOf(initialConfig.monetColors) }
     var barBlur by remember { mutableStateOf(initialConfig.barBlur) }
-    var liquidGlass by remember { mutableStateOf(initialConfig.liquidGlass) }
     var floatingNavBar by remember { mutableStateOf(initialConfig.floatingNavBar) }
     var predictiveBack by remember { mutableStateOf(initialConfig.predictiveBack) }
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
@@ -155,7 +154,6 @@ fun QuickOpenApp(
         c.themeMode = themeMode
         c.monetColors = monetColors
         c.barBlur = barBlur
-        c.liquidGlass = liquidGlass
         c.floatingNavBar = floatingNavBar
         c.predictiveBack = predictiveBack
         c.shortcuts = ArrayList(shortcuts)
@@ -218,7 +216,6 @@ fun QuickOpenApp(
                         items = navItems,
                         selectedPage = page,
                         floating = floatingNavBar,
-                        liquidGlass = liquidGlass,
                         onPageSelect = { page = it },
                     )
                 }
@@ -236,8 +233,6 @@ fun QuickOpenApp(
                         onThemeMode = { themeMode = it; persist() },
                         monet = monetColors,
                         onMonet = { monetColors = it; persist() },
-                        liquidGlass = liquidGlass,
-                        onLiquidGlass = { liquidGlass = it; persist() },
                         floatingNavBar = floatingNavBar,
                         onFloatingNavBar = { floatingNavBar = it; persist() },
                     )
@@ -261,10 +256,19 @@ fun QuickOpenApp(
                         influenceRadius = influenceRadius,
                         onInfluenceRadius = { influenceRadius = it; persist() },
                         shortcuts = shortcuts,
-                        onShortcutToggle = { item, enabled -> item.enabled = enabled; persist() },
+                        onShortcutToggle = { item, enabled ->
+                            val i = shortcuts.indexOfFirst { it.id == item.id }
+                            if (i >= 0) {
+                                val updated = item.copy().apply { this.enabled = enabled }
+                                shortcuts[i] = updated
+                            }
+                            persist()
+                        },
                         onShortcutEdit = { updated ->
                             val i = shortcuts.indexOfFirst { it.id == updated.id }
-                            if (i >= 0) shortcuts[i] = updated
+                            if (i >= 0) {
+                                shortcuts[i] = updated.copy()
+                            }
                             persist()
                         },
                         onResetShortcuts = {
@@ -321,17 +325,10 @@ private fun AppBottomBar(
     items: List<NavigationItem>,
     selectedPage: Int,
     floating: Boolean,
-    liquidGlass: Boolean,
     onPageSelect: (Int) -> Unit,
 ) {
     if (floating) {
-        val barColor = if (liquidGlass) {
-            MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f)
-        } else {
-            MiuixTheme.colorScheme.surfaceContainer
-        }
         FloatingNavigationBar(
-            color = barColor,
             showDivider = true,
         ) {
             items.forEachIndexed { index, item ->
@@ -344,13 +341,7 @@ private fun AppBottomBar(
             }
         }
     } else {
-        val barColor = if (liquidGlass) {
-            MiuixTheme.colorScheme.surface.copy(alpha = 0.88f)
-        } else {
-            MiuixTheme.colorScheme.surface
-        }
         NavigationBar(
-            color = barColor,
             showDivider = true,
         ) {
             items.forEachIndexed { index, item ->
@@ -895,7 +886,7 @@ fun InfoLine(text: String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// 二级页：主题设置（深浅模式 / Monet / 底栏液态玻璃 / 悬浮底栏）
+// 二级页：主题设置（深浅模式 / Monet / 悬浮底栏）
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -903,7 +894,6 @@ fun ThemeSettingsPage(
     contentPadding: PaddingValues,
     themeMode: Int, onThemeMode: (Int) -> Unit,
     monet: Boolean, onMonet: (Boolean) -> Unit,
-    liquidGlass: Boolean, onLiquidGlass: (Boolean) -> Unit,
     floatingNavBar: Boolean, onFloatingNavBar: (Boolean) -> Unit,
 ) {
     val lazyListState = rememberLazyListState()
@@ -976,7 +966,7 @@ fun ThemeSettingsPage(
         }
 
         // ── 外观效果 ──
-        item(key = "appearance_title") { SmallTitle("外观与导航栏效果") }
+        item(key = "appearance_title") { SmallTitle("导航栏样式") }
         item(key = "appearance_card") {
             Card(
                 modifier = Modifier
@@ -988,12 +978,6 @@ fun ThemeSettingsPage(
                     summary = "Apple / HyperOS 风格胶囊浮岛底栏",
                     checked = floatingNavBar,
                     onCheckedChange = onFloatingNavBar,
-                )
-                SwitchPreference(
-                    title = "底栏液态玻璃",
-                    summary = "底栏采用半透明磨砂质感",
-                    checked = liquidGlass,
-                    onCheckedChange = onLiquidGlass,
                 )
             }
         }

@@ -85,6 +85,13 @@ public class ShortcutItem {
         );
     }
 
+    public ShortcutItem copy() {
+        return new ShortcutItem(
+            id, title, subtitle, actionType, actionPayload,
+            iconPackage, iconGlyph, tintColor, enabled
+        );
+    }
+
     /**
      * 在 SystemUI 上下文中分发执行该快捷方式动作
      */
