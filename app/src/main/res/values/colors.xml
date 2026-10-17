@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 仅保留 XML 主题引用的窗口底色；界面全部语义色由 Compose 层（Theme.kt SemColors）提供 -->
-    <color name="background">#0E1017</color>
+    <!-- 仅保留 XML 主题引用的窗口底色（values-night 提供深色变体）；界面全部语义色由 Compose 层（Theme.kt SemColors）提供 -->
+    <color name="background">#F2F4F7</color>
     <color name="miuix_primary">#FF6900</color>
 </resources>

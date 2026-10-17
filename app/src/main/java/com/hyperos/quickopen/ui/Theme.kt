@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -34,6 +35,13 @@ object SemColors {
     val MiuixDivider = Color(0xFFE6E8EB)
     val MiuixFg = Color(0xFF181C21)
     val MiuixFgDim = Color(0xFF7C838C)
+    // Material 轨浅色玻璃（跟随系统浅色模式）
+    val GlassLightBg = Color(0xFFF2F4F7)
+    val GlassLightSurface = Color(0xFFFFFFFF)
+    val GlassLightSurfaceAlt = Color(0xFFF0F2F5)
+    val GlassLightDivider = Color(0xFFE2E5EA)
+    val GlassLightFg = Color(0xFF17191D)
+    val GlassLightFgDim = Color(0xFF6E7680)
     val Warn = Color(0xFFE94634)
     val Ok = Color(0xFF07C160)
 }
@@ -83,6 +91,19 @@ private val GlassDarkScheme = darkColorScheme(
 private val GlassLightScheme = lightColorScheme(
     primary = SemColors.Brand,
     onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFDCC2),
+    onPrimaryContainer = Color(0xFF3E2A18),
+    secondary = Color(0xFFDDE2E8),
+    onSecondary = SemColors.GlassLightFg,
+    background = SemColors.GlassLightBg,
+    onBackground = SemColors.GlassLightFg,
+    surface = SemColors.GlassLightSurface,
+    onSurface = SemColors.GlassLightFg,
+    surfaceVariant = SemColors.GlassLightSurfaceAlt,
+    onSurfaceVariant = SemColors.GlassLightFgDim,
+    outline = SemColors.GlassLightDivider,
+    outlineVariant = SemColors.GlassLightDivider,
+    error = SemColors.Warn,
 )
 
 // ── MIUIX 浅色卡片 ─────────────────────────────────────────────────────
@@ -121,16 +142,52 @@ fun HyperOSQuickOpenTheme(
     uiStyle: UiStyle,
     content: @Composable () -> Unit,
 ) {
+    val dark = isSystemInDarkTheme()
+    // 窗口底色 + 系统栏跟随深浅模式（XML 主题是静态深色，这里动态校正）
+    val windowBg = when {
+        uiStyle == UiStyle.MATERIAL && dark -> SemColors.GlassBg
+        uiStyle == UiStyle.MATERIAL -> SemColors.GlassLightBg
+        dark -> MiuixDark.background
+        else -> MiuixLight.background
+    }
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    androidx.compose.runtime.SideEffect {
+        activity?.window?.let { w ->
+            w.setStatusBarColor(windowBg.toArgb())
+            w.setNavigationBarColor(windowBg.toArgb())
+            @Suppress("DEPRECATION")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                val insets = w.insetsController
+                if (insets != null) {
+                    val appearance = if (dark) {
+                        0
+                    } else {
+                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    }
+                    insets.setSystemBarsAppearance(appearance, android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+                }
+                w.setDecorFitsSystemWindows(true)
+            } else {
+                @Suppress("DEPRECATION")
+                val view = activity.window.decorView
+                val flags = if (dark) {
+                    view.systemUiVisibility and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+                } else {
+                    view.systemUiVisibility or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                }
+                view.systemUiVisibility = flags
+            }
+        }
+    }
     when (uiStyle) {
         UiStyle.MATERIAL -> {
-            val dark = isSystemInDarkTheme()
             MaterialTheme(
                 colorScheme = if (dark) GlassDarkScheme else GlassLightScheme,
                 content = content,
             )
         }
         UiStyle.MIUIX -> {
-            val dark = isSystemInDarkTheme()
             MiuixTheme(
                 colors = if (dark) MiuixDark else MiuixLight,
                 content = content,

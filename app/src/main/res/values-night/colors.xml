@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式窗口底色（Material 玻璃暗色轨底色） -->
+    <color name="background">#101418</color>
+</resources>
