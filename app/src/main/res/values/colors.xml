@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#00E5FF</color>
-    <color name="primary_dark">#00B0FF</color>
-    <color name="accent">#00F0FF</color>
+    <!-- 仅保留 XML 主题引用的窗口底色；界面全部语义色由 Compose 层（Theme.kt SemColors）提供 -->
     <color name="background">#0E1017</color>
-    <color name="surface">#181A22</color>
-    <color name="surface_variant">#222530</color>
-    <color name="text_primary">#F5F5F7</color>
-    <color name="text_secondary">#9DA2B0</color>
-    <color name="divider">#262A36</color>
+    <color name="miuix_primary">#FF6900</color>
 </resources>

@@ -26,7 +26,13 @@ public class QuickOpenConfig {
     public static final int MATERIAL_SOFT_GLASS = 1;
     public static final int MATERIAL_GAUSSIAN_BLUR = 2;
 
+    /** 界面风格：0=Material You 深色玻璃, 1=MIUIX 浅色卡片 */
+    public static final int UI_STYLE_MATERIAL = 0;
+    public static final int UI_STYLE_MIUIX = 1;
+
     public int materialStyle = MATERIAL_SOFT_GLASS;
+    /** 设置界面风格（仅 App 内生效）：UI_STYLE_MATERIAL / UI_STYLE_MIUIX */
+    public int uiStyle = UI_STYLE_MATERIAL;
     public int offsetY = 280;          // dp
     public int regionDiameter = 330;   // dp
     public boolean showRegionBg = true;
@@ -104,6 +110,7 @@ public class QuickOpenConfig {
         SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         QuickOpenConfig config = new QuickOpenConfig();
         config.materialStyle = sp.getInt("material_style", MATERIAL_SOFT_GLASS);
+        config.uiStyle = sp.getInt("ui_style", UI_STYLE_MATERIAL);
         config.offsetY = sp.getInt("offset_y", 280);
         config.regionDiameter = sp.getInt("region_diameter", 330);
         config.showRegionBg = sp.getBoolean("show_region_bg", true);
@@ -124,6 +131,7 @@ public class QuickOpenConfig {
         SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         sp.edit()
             .putInt("material_style", materialStyle)
+            .putInt("ui_style", uiStyle)
             .putInt("offset_y", offsetY)
             .putInt("region_diameter", regionDiameter)
             .putBoolean("show_region_bg", showRegionBg)

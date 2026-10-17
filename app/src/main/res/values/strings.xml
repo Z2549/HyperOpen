@@ -22,6 +22,11 @@
     <string name="btn_reset_defaults">恢复预设布局</string>
     <string name="hint_instant_apply">提示：所有修改即时保存，长按指纹即可验证效果，无需重启 SystemUI。</string>
 
+    <string name="section_ui_style">界面风格</string>
+    <string name="ui_style_material">Material You（深色玻璃）</string>
+    <string name="ui_style_miuix">MIUIX（浅色卡片）</string>
+    <string name="btn_toggle_style">切换界面风格</string>
+
     <string name="section_safety">安全模式与崩溃保护</string>
     <string name="safety_status_ok">运行正常 · Hook 已启用</string>
     <string name="safety_status_safe">安全模式已激活 · Hook 已停用</string>

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.HyperOSQuickOpen" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
+    <!-- Compose 承担全部界面绘制；XML 主题仅负责窗口底色与系统栏，与 Compose 语义色对齐 -->
+    <!-- Material 玻璃暗色轨（默认） -->
+    <style name="Theme.HyperOSQuickOpen" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/background</item>
         <item name="android:statusBarColor">@color/background</item>
         <item name="android:navigationBarColor">@color/background</item>
