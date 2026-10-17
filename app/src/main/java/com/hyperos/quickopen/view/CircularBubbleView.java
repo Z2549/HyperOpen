@@ -1,7 +1,6 @@
 package com.hyperos.quickopen.view;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -90,17 +89,8 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     private void loadItemIcon() {
-        try {
-            if (ShortcutItem.ACTION_APP.equals(item.actionType)) {
-                Drawable appIcon = getContext().getPackageManager().getApplicationIcon(item.actionPayload);
-                iconView.setImageDrawable(appIcon);
-                return;
-            }
-        } catch (Throwable ignored) {}
-
-        // 默认按图标 tint 渲染内置系统符号
-        iconView.setColorFilter(item.tintColor);
-        // 使用内置圆形矢量图
-        iconView.setImageResource(android.R.drawable.ic_menu_compass);
+        // 统一由 IconGlyphFactory 解析：应用图标 → Intent 目标应用 → 内置矢量符号
+        iconView.setImageDrawable(IconGlyphFactory.resolve(getContext(), item));
+        iconView.setColorFilter(null);
     }
 }

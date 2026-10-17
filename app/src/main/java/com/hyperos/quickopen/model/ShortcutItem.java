@@ -29,15 +29,26 @@ public class ShortcutItem {
     public String subtitle;
     public String actionType;
     public String actionPayload;
+    /** 手动指定图标来源包名（优先级最高，留空则自动解析） */
+    public String iconPackage;
+    /** 手动指定内置符号 key（如 scan/flashlight/camera/calc/note/mic/music/settings/bus/wallet/sparkle） */
+    public String iconGlyph;
     public int tintColor;
     public boolean enabled;
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
+        this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled);
+    }
+
+    public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
+                        String iconPackage, String iconGlyph, int tintColor, boolean enabled) {
         this.id = id;
         this.title = title;
         this.subtitle = subtitle;
         this.actionType = actionType;
         this.actionPayload = actionPayload;
+        this.iconPackage = iconPackage == null ? "" : iconPackage;
+        this.iconGlyph = iconGlyph == null ? "" : iconGlyph;
         this.tintColor = tintColor;
         this.enabled = enabled;
     }
@@ -50,6 +61,8 @@ public class ShortcutItem {
             json.put("subtitle", subtitle);
             json.put("actionType", actionType);
             json.put("actionPayload", actionPayload);
+            json.put("iconPackage", iconPackage == null ? "" : iconPackage);
+            json.put("iconGlyph", iconGlyph == null ? "" : iconGlyph);
             json.put("tintColor", tintColor);
             json.put("enabled", enabled);
         } catch (JSONException e) {
@@ -65,6 +78,8 @@ public class ShortcutItem {
             json.optString("subtitle", ""),
             json.optString("actionType", ACTION_APP),
             json.optString("actionPayload", ""),
+            json.optString("iconPackage", ""),
+            json.optString("iconGlyph", ""),
             json.optInt("tintColor", Color.CYAN),
             json.optBoolean("enabled", true)
         );
