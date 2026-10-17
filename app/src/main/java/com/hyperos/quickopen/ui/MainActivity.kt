@@ -105,7 +105,8 @@ import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Theme
 import top.yukonga.miuix.kmp.icon.extended.Tune
-import top.yukonga.miuix.kmp.window.WindowDialog
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
@@ -1102,13 +1103,32 @@ fun AppListPickerDialog(
         }
     }
 
-    WindowDialog(
-        show = true,
-        title = "选择应用程序",
-        summary = "选取应用作为快捷图标或启动目标",
+    Dialog(
         onDismissRequest = onDismiss,
-        content = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    text = "选择应用程序",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "选取应用作为快捷图标或启动目标",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
                 TextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -1194,8 +1214,8 @@ fun AppListPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        },
-    )
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1210,13 +1230,32 @@ fun MiuixIconPickerDialog(
 ) {
     val icons = MiuixIconRegistry.ICONS
 
-    WindowDialog(
-        show = true,
-        title = "选择 Miuix 图标",
-        summary = "选择矢量图标作为快捷方式图标",
+    Dialog(
         onDismissRequest = onDismiss,
-        content = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    text = "选择 Miuix 图标",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "选择矢量图标作为快捷方式图标",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier
@@ -1265,8 +1304,8 @@ fun MiuixIconPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-        },
-    )
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────
