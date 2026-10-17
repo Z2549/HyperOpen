@@ -68,14 +68,14 @@ import com.hyperos.quickopen.config.QuickOpenConfig
 import com.hyperos.quickopen.model.ShortcutItem
 import com.hyperos.quickopen.safety.SafetyStore
 import com.hyperos.quickopen.view.IconGlyphFactory
+import androidx.compose.ui.window.Dialog
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.extra.SuperDialog
-import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -283,9 +283,16 @@ fun QuickOpenApp(
                 }
             }
 
-            // ── 底栏（二级页不显示） ────────────────────────────
+            // ── 底栏（二级页不显示，固定锚定在屏幕底部） ────────────
             if (subPage == 0) {
-                BottomNavBar(page, floatingNavBar, liquidGlass) { page = it }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    BottomNavBar(page, floatingNavBar, liquidGlass) { page = it }
+                }
             }
         }
     }
@@ -295,9 +302,8 @@ fun QuickOpenApp(
 // 底部导航栏（使用 miuix 官方 NavigationBar 与 FloatingNavigationBar）
 // ─────────────────────────────────────────────────────────────────────
 
-/** BoxScope 扩展：在覆盖层内用 align(BottomCenter) 定位，使用 ui 库组件 */
 @Composable
-fun BoxScope.BottomNavBar(
+fun BottomNavBar(
     page: Int,
     floating: Boolean,
     liquidGlass: Boolean,
@@ -312,7 +318,7 @@ fun BoxScope.BottomNavBar(
         }
         FloatingNavigationBar(
             color = barColor,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            showDivider = true,
         ) {
             FloatingNavigationBarItem(
                 selected = page == 0,
@@ -330,15 +336,14 @@ fun BoxScope.BottomNavBar(
     } else {
         // UI 库官方 NavigationBar 组件（常规贴底底栏）
         val barColor = if (liquidGlass) {
-            MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f)
+            MiuixTheme.colorScheme.surface.copy(alpha = 0.88f)
         } else {
-            MiuixTheme.colorScheme.surfaceContainer
+            MiuixTheme.colorScheme.surface
         }
         NavigationBar(
             color = barColor,
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
+            showDivider = true,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             NavigationBarItem(
                 selected = page == 0,
@@ -658,7 +663,7 @@ fun ShortcutRow(item: ShortcutItem, onToggle: (Boolean) -> Unit, onEdit: (Shortc
     var showEdit by remember { mutableStateOf(false) }
     val painter = remember(item.id, item.iconPackage, item.iconGlyph) { IconPainter.resolve(item, ctx) }
 
-    SuperSwitch(
+    SwitchPreference(
         title = item.title,
         summary = item.subtitle,
         checked = item.enabled,
@@ -685,6 +690,7 @@ fun ShortcutRow(item: ShortcutItem, onToggle: (Boolean) -> Unit, onEdit: (Shortc
 @Composable
 fun IconEditDialog(item: ShortcutItem, onDismiss: () -> Unit, onSave: (ShortcutItem) -> Unit) {
     val ctx = LocalContext.current
+    val semantic = currentSemantic()
     var pkg by remember { mutableStateOf(item.iconPackage) }
     var glyph by remember { mutableStateOf(item.iconGlyph) }
 
@@ -702,26 +708,35 @@ fun IconEditDialog(item: ShortcutItem, onDismiss: () -> Unit, onSave: (ShortcutI
         BitmapPainter(bmp.toComposeImageBitmap())
     }
 
-    SuperDialog(
-        show = true,
-        title = "自定义图标 - ${item.title}",
+    Dialog(
         onDismissRequest = onDismiss,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            androidx.compose.foundation.Image(
-                painter = livePreview,
-                contentDescription = "preview",
-                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
-            )
-            MiuixTextField("图标来源包名（如 com.tencent.mm）", pkg) { pkg = it }
-            MiuixTextField("内置符号 key（${IconGlyphFactory.GLYPH_KEYS.joinToString("/")}）", glyph) { glyph = it }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                Box(Modifier.weight(1f)) { ResetButton("取消", onDismiss) }
-                Box(Modifier.weight(1f)) { ResetButton("保存") {
-                    item.iconPackage = pkg.trim()
-                    item.iconGlyph = glyph.trim()
-                    onSave(item)
-                } }
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "自定义图标 - ${item.title}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = semantic.fgPrimary,
+                )
+                androidx.compose.foundation.Image(
+                    painter = livePreview,
+                    contentDescription = "preview",
+                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)),
+                )
+                MiuixTextField("图标来源包名（如 com.tencent.mm）", pkg) { pkg = it }
+                MiuixTextField("内置符号 key（${IconGlyphFactory.GLYPH_KEYS.joinToString("/")}）", glyph) { glyph = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) { ResetButton("取消", onDismiss) }
+                    Box(Modifier.weight(1f)) { ResetButton("保存") {
+                        item.iconPackage = pkg.trim()
+                        item.iconGlyph = glyph.trim()
+                        onSave(item)
+                    } }
+                }
             }
         }
     }
@@ -816,7 +831,7 @@ fun SafetyCard(tick: Int, onRequestRefresh: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            SuperSwitch(
+            SwitchPreference(
                 title = "启用指纹快捷方式增强 (Hook 总开关)",
                 checked = hookEnabled && !safeMode,
                 onCheckedChange = { checked ->
