@@ -18,17 +18,32 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.key
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -57,10 +72,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 
 /**
  * Compose 重构版设置主页（MiX 材质 / MIUIX 双风格由 [HyperOSQuickOpenTheme] 承载）。
- * 功能与旧 View-XML 版一一对应：
- *   材质三选、offsetY / regionDiameter / iconSize / maxScale / influenceRadius 五滑块、
- *   showRegionBg / showHeaderPillBg 双开关、快捷项列表（真实图标 + 开关 + 长按改图标）、
- *   恢复默认、界面风格切换、安全模式卡片。
+ * 底栏双页：Page0 参数配置（材质/几何/图标物理/快捷项）、Page1 软件设置（界面风格/安全模式/关于）。
  */
 class MainActivity : ComponentActivity() {
 
@@ -107,6 +119,7 @@ fun QuickOpenApp(initialConfig: QuickOpenConfig, onStyleChange: (UiStyle) -> Uni
     var uiStyle by remember { mutableStateOf(if (initialConfig.uiStyle == QuickOpenConfig.UI_STYLE_MIUIX) UiStyle.MIUIX else UiStyle.MATERIAL) }
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
     var safetyTick by remember { mutableStateOf(0) }
+    var page by remember { mutableStateOf(0) }
 
     fun persist() {
         val c = QuickOpenConfig.loadFromApp(ctx)
@@ -134,93 +147,297 @@ fun QuickOpenApp(initialConfig: QuickOpenConfig, onStyleChange: (UiStyle) -> Uni
                 ),
             )
         },
+        bottomBar = { BottomNavBar(page) { page = it } },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // ── 材质 ─────────────────────────────────────────────
-            item { SmallTitle("材质与系统风格") }
-            item {
-                SettingsCard {
-                    MaterialRow("跟随系统", "System Auto", materialStyle == QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM) { materialStyle = QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM; persist() }
-                    DividerRow()
-                    MaterialRow("柔光玻璃", "Soft Light Glass", materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) { materialStyle = QuickOpenConfig.MATERIAL_SOFT_GLASS; persist() }
-                    DividerRow()
-                    MaterialRow("高斯模糊", "Gaussian Blur", materialStyle == QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) { materialStyle = QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR; persist() }
-                }
-            }
-
-            // ── 几何 ─────────────────────────────────────────────
-            item { SmallTitle("几何与位置参数") }
-            item {
-                SettingsCard {
-                    SliderRow("整体垂直高度偏移", "%d dp".format(offsetY.toInt()), offsetY, range = 100f..450f) { offsetY = it; persist() }
-                    DividerRow()
-                    SliderRow("圆形视界直径", "%d dp".format(regionDiameter.toInt()), regionDiameter, range = 220f..420f) { regionDiameter = it; persist() }
-                    DividerRow()
-                    SwitchRowM3("显示圆形区域底衬与边框", showRegionBg) { showRegionBg = it; persist() }
-                    DividerRow()
-                    SwitchRowM3("显示顶部提示胶囊背景", showHeaderPillBg) { showHeaderPillBg = it; persist() }
-                }
-            }
-
-            // ── 图标物理 ────────────────────────────────────────
-            item { SmallTitle("图标与物理动力学") }
-            item {
-                SettingsCard {
-                    SliderRow("图标基础尺寸", "%d dp".format(iconSize.toInt()), iconSize, range = 40f..80f) { iconSize = it; persist() }
-                    DividerRow()
-                    SliderRow("鱼眼最大放大倍率", "%.2f x".format(maxScale), maxScale, range = 1.10f..1.80f) { maxScale = it; persist() }
-                    DividerRow()
-                    SliderRow("感应辐射范围", "%d dp".format(influenceRadius.toInt()), influenceRadius, range = 60f..200f) { influenceRadius = it; persist() }
-                }
-            }
-
-            // ── 快捷项 ──────────────────────────────────────────
-            item { SmallTitle("快捷项目管理与动作排序") }
-            itemsIndexed(shortcuts, key = { _, it -> it.id }) { _, item ->
-                ShortcutRow(
-                    item = item,
-                    onToggle = { item.enabled = it; persist() },
-                    onEdit = { updated ->
-                        val i = shortcuts.indexOfFirst { it.id == updated.id }
-                        if (i >= 0) shortcuts[i] = updated
-                        persist()
-                    },
-                )
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.weight(1f)) { ResetButton("恢复预设布局") {
-                        shortcuts.clear(); shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts()); persist()
-                        Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
-                    } }
-                    Box(Modifier.weight(1f)) { ResetButton(if (uiStyle == UiStyle.MIUIX) "切换 Material 风格" else "切换 MIUIX 风格") {
-                        val next = if (uiStyle == UiStyle.MIUIX) UiStyle.MATERIAL else UiStyle.MIUIX
-                        onStyleChange(next)
-                    } }
-                }
-            }
-
-            // ── 安全 ────────────────────────────────────────────
-            item { SmallTitle("安全模式与崩溃保护") }
-            item {
-                SafetyCard(tick = safetyTick, onRequestRefresh = { safetyTick++ })
-            }
-            item {
-                androidx.compose.material3.Text(
-                    "提示：所有修改即时保存，长按指纹即可验证效果，无需重启 SystemUI。",
-                    color = semantic.fgSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                )
-            }
-            item { Spacer(Modifier.height(24.dp)) }
+        if (page == 0) {
+            ParamsPage(
+                padding = padding,
+                semantic = semantic,
+                materialStyle = materialStyle, onMaterialStyle = { materialStyle = it; persist() },
+                offsetY = offsetY, onOffsetY = { offsetY = it; persist() },
+                regionDiameter = regionDiameter, onRegionDiameter = { regionDiameter = it; persist() },
+                showRegionBg = showRegionBg, onShowRegionBg = { showRegionBg = it; persist() },
+                showHeaderPillBg = showHeaderPillBg, onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
+                iconSize = iconSize, onIconSize = { iconSize = it; persist() },
+                maxScale = maxScale, onMaxScale = { maxScale = it; persist() },
+                influenceRadius = influenceRadius, onInfluenceRadius = { influenceRadius = it; persist() },
+                shortcuts = shortcuts, onShortcutToggle = { item, enabled -> item.enabled = enabled; persist() },
+                onShortcutEdit = { updated ->
+                    val i = shortcuts.indexOfFirst { it.id == updated.id }
+                    if (i >= 0) shortcuts[i] = updated
+                    persist()
+                },
+                onResetShortcuts = {
+                    shortcuts.clear(); shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts()); persist()
+                    Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
+                },
+            )
+        } else {
+            SettingsPage(
+                padding = padding,
+                semantic = semantic,
+                uiStyle = uiStyle,
+                onStyleChange = onStyleChange,
+                safetyTick = safetyTick,
+                onSafetyRefresh = { safetyTick++ },
+            )
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 底部导航栏（Material 轨 NavigationBar / MIUIX 轨自绘 Tab）
+// ─────────────────────────────────────────────────────────────────────
+
+private val NAV_PAGES = listOf(
+    Triple("参数配置", "Parameters", Icons.Filled.Build),
+    Triple("软件设置", "Preferences", Icons.Filled.Settings),
+)
+
+@Composable
+fun BottomNavBar(page: Int, onPageChange: (Int) -> Unit) {
+    val semantic = currentSemantic()
+    val style = LocalUiStyle.current
+    if (style == UiStyle.MIUIX) {
+        // miuix 没有 NavigationBar 组件 —— 自绘澎湃风格底部 Tab（Surface + 权重行 + 图标文字）
+        Surface(
+            color = semantic.surface,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .height(64.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
+                    val selected = page == i
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .combinedClickable(onClick = { onPageChange(i) }),
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = title,
+                            tint = if (selected) semantic.primary else semantic.fgSecondary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        androidx.compose.material3.Text(
+                            title,
+                            color = if (selected) semantic.primary else semantic.fgSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        NavigationBar(
+            containerColor = semantic.surface,
+            contentColor = semantic.fgPrimary,
+        ) {
+            NAV_PAGES.forEachIndexed { i, (title, sub, icon) ->
+                NavigationBarItem(
+                    selected = page == i,
+                    onClick = { onPageChange(i) },
+                    icon = { Icon(icon, contentDescription = title) },
+                    label = { androidx.compose.material3.Text(title, fontSize = 12.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = semantic.primary,
+                        selectedTextColor = semantic.primary,
+                        unselectedIconColor = semantic.fgSecondary,
+                        unselectedTextColor = semantic.fgSecondary,
+                        indicatorColor = semantic.primary.copy(alpha = 0.16f),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page0：参数配置（材质 / 几何 / 图标物理 / 快捷项）
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+fun ParamsPage(
+    padding: PaddingValues,
+    semantic: SemanticPalette,
+    materialStyle: Int, onMaterialStyle: (Int) -> Unit,
+    offsetY: Float, onOffsetY: (Float) -> Unit,
+    regionDiameter: Float, onRegionDiameter: (Float) -> Unit,
+    showRegionBg: Boolean, onShowRegionBg: (Boolean) -> Unit,
+    showHeaderPillBg: Boolean, onShowHeaderPillBg: (Boolean) -> Unit,
+    iconSize: Float, onIconSize: (Float) -> Unit,
+    maxScale: Float, onMaxScale: (Float) -> Unit,
+    influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
+    shortcuts: SnapshotStateList<ShortcutItem>,
+    onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
+    onShortcutEdit: (ShortcutItem) -> Unit,
+    onResetShortcuts: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // ── 材质 ─────────────────────────────────────────────
+        item { SmallTitle("材质与系统风格") }
+        item {
+            SettingsCard {
+                MaterialRow("跟随系统", "System Auto", materialStyle == QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM) { onMaterialStyle(QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM) }
+                DividerRow()
+                MaterialRow("柔光玻璃", "Soft Light Glass", materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) { onMaterialStyle(QuickOpenConfig.MATERIAL_SOFT_GLASS) }
+                DividerRow()
+                MaterialRow("高斯模糊", "Gaussian Blur", materialStyle == QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) { onMaterialStyle(QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) }
+            }
+        }
+
+        // ── 几何 ─────────────────────────────────────────────
+        item { SmallTitle("几何与位置参数") }
+        item {
+            SettingsCard {
+                SliderRow("整体垂直高度偏移", "%d dp".format(offsetY.toInt()), offsetY, range = 100f..450f) { onOffsetY(it) }
+                DividerRow()
+                SliderRow("圆形视界直径", "%d dp".format(regionDiameter.toInt()), regionDiameter, range = 220f..420f) { onRegionDiameter(it) }
+                DividerRow()
+                SwitchRowM3("显示圆形区域底衬与边框", showRegionBg) { onShowRegionBg(it) }
+                DividerRow()
+                SwitchRowM3("显示顶部提示胶囊背景", showHeaderPillBg) { onShowHeaderPillBg(it) }
+            }
+        }
+
+        // ── 图标物理 ────────────────────────────────────────
+        item { SmallTitle("图标与物理动力学") }
+        item {
+            SettingsCard {
+                SliderRow("图标基础尺寸", "%d dp".format(iconSize.toInt()), iconSize, range = 40f..80f) { onIconSize(it) }
+                DividerRow()
+                SliderRow("鱼眼最大放大倍率", "%.2f x".format(maxScale), maxScale, range = 1.10f..1.80f) { onMaxScale(it) }
+                DividerRow()
+                SliderRow("感应辐射范围", "%d dp".format(influenceRadius.toInt()), influenceRadius, range = 60f..200f) { onInfluenceRadius(it) }
+            }
+        }
+
+        // ── 快捷项 ──────────────────────────────────────────
+        item { SmallTitle("快捷项目管理与动作排序") }
+        itemsIndexed(shortcuts, key = { _, it -> it.id }) { _, item ->
+            ShortcutRow(
+                item = item,
+                onToggle = { onShortcutToggle(item, it) },
+                onEdit = onShortcutEdit,
+            )
+        }
+        item {
+            ResetButton("恢复预设布局") { onResetShortcuts() }
+        }
+        item {
+            androidx.compose.material3.Text(
+                "提示：所有修改即时保存，长按指纹即可验证效果，无需重启 SystemUI。",
+                color = semantic.fgSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            )
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page1：软件设置（界面风格 / 安全模式 / 关于）
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+fun SettingsPage(
+    padding: PaddingValues,
+    semantic: SemanticPalette,
+    uiStyle: UiStyle,
+    onStyleChange: (UiStyle) -> Unit,
+    safetyTick: Int,
+    onSafetyRefresh: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // ── 界面风格 ────────────────────────────────────────
+        item { SmallTitle("界面风格") }
+        item {
+            SettingsCard {
+                MaterialRow(
+                    "Material · 玻璃暗色",
+                    "material3 组件 · 深色玻璃质感",
+                    uiStyle == UiStyle.MATERIAL,
+                ) { onStyleChange(UiStyle.MATERIAL) }
+                DividerRow()
+                MaterialRow(
+                    "MIUIX · 澎湃卡片",
+                    "miuix 组件 · 小米 HyperOS 风格",
+                    uiStyle == UiStyle.MIUIX,
+                ) { onStyleChange(UiStyle.MIUIX) }
+            }
+        }
+        item {
+            androidx.compose.material3.Text(
+                "切换后立即生效（界面会刷新一次）。",
+                color = semantic.fgSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
+
+        // ── 安全 ────────────────────────────────────────────
+        item { SmallTitle("安全模式与崩溃保护") }
+        item {
+            SafetyCard(tick = safetyTick, onRequestRefresh = onSafetyRefresh)
+        }
+
+        // ── 关于 ────────────────────────────────────────────
+        item { SmallTitle("关于") }
+        item {
+            SettingsCard {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    AboutLine("模块名称", "HyperOS QuickOpen")
+                    AboutLine("功能", "指纹快捷面板自定义 · 图标与动效增强")
+                    AboutLine("UI 框架", "miuix 0.8.8 + Material3 1.4.0 (Compose)")
+                    AboutLine("使用方式", "指纹解锁时按压指纹传感器唤出快捷面板")
+                    AboutLine("生效条件", "LSPosed 激活模块并勾选 SystemUI 作用域，重启 SystemUI")
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+fun AboutLine(label: String, value: String) {
+    val semantic = currentSemantic()
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        androidx.compose.material3.Text(
+            label,
+            color = semantic.fgSecondary,
+            fontSize = 13.sp,
+            modifier = Modifier.width(84.dp),
+        )
+        androidx.compose.material3.Text(
+            value,
+            color = semantic.fgPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
