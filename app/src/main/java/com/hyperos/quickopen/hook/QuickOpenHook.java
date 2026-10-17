@@ -14,8 +14,14 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 
 import com.hyperos.quickopen.config.QuickOpenConfig;
 import com.hyperos.quickopen.view.CustomQuickOpenContainer;
@@ -29,8 +35,35 @@ public class QuickOpenHook {
     private static final String TAG = "QuickOpen_Hook";
     private static final String CONTAINER_TAG = "hyperos_custom_quickopen_container";
 
+    /**
+     * 全部已安装 Hook 的卸载句柄。
+     *
+     * 安全模式在运行期被触发时，必须能立刻把已经装上去的 Hook 全部拆掉 ——
+     * 只靠「下次启动不装」是不够的：用户此刻的 SystemUI 仍在崩溃，等待重启
+     * 意味着还要再崩若干次。因此这里保存每一个 Unhook，供 {@link #uninstall()} 使用。
+     */
+    private static final List<XC_MethodHook.Unhook> HANDLES =
+        Collections.synchronizedList(new ArrayList<XC_MethodHook.Unhook>());
+
+    /**
+     * Hook 是否处于生效状态。
+     *
+     * 所有回调入口都先查这个 volatile 标志：安全模式一旦触发，标志立刻置 false，
+     * 即使某个回调正在执行、或卸载句柄尚未全部处理完，也不会再有任何本模块逻辑
+     * 作用于 SystemUI。这是一次内存读取，不产生跨进程开销。
+     */
+    private static volatile boolean active = false;
+
+    /** 已被注入 CustomQuickOpenContainer 的宿主 View（弱引用，避免拖住 SystemUI 视图树） */
+    private static final List<WeakReference<FrameLayout>> HOSTS =
+        Collections.synchronizedList(new ArrayList<WeakReference<FrameLayout>>());
+
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         final ClassLoader cl = lpparam.classLoader;
+
+        // 每次部署前清空历史句柄，避免重复部署时句柄表里混入上一轮的失效项
+        HANDLES.clear();
+        active = true;
 
         try {
             final Class<?> quickOpenViewClass = XposedHelpers.findClass(
@@ -38,9 +71,10 @@ public class QuickOpenHook {
             );
 
             // 1. Hook 构造函数：注入 CustomQuickOpenContainer 并挂载到 view 上
-            XposedBridge.hookAllConstructors(quickOpenViewClass, new XC_MethodHook() {
+            record(XposedBridge.hookAllConstructors(quickOpenViewClass, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!active) return;
                     FrameLayout view = (FrameLayout) param.thisObject;
                     Context context = view.getContext();
 
@@ -54,6 +88,7 @@ public class QuickOpenHook {
                     );
                     view.addView(container, lp);
                     XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
+                    rememberHost(view);
 
                     // 注册配置实时更新广播监听
                     try {
@@ -86,12 +121,13 @@ public class QuickOpenHook {
                     // 彻底清除原生初始化注入的所有其它子控件 (包括原生标题、副标题、无用快捷图标和教学视图)
                     purgeNativeViewsAndFields(view, quickOpenViewClass);
                 }
-            });
+            }));
 
             // 拦截 addView，禁止原生继续向 MiuiGxzwQuickOpenView 插入任何系统视图
-            XposedBridge.hookAllMethods(quickOpenViewClass, "addView", new XC_MethodHook() {
+            record(XposedBridge.hookAllMethods(quickOpenViewClass, "addView", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!active) return;
                     if (param.args != null && param.args.length > 0 && param.args[0] instanceof View) {
                         View child = (View) param.args[0];
                         if (child != null && !CONTAINER_TAG.equals(child.getTag())) {
@@ -100,12 +136,13 @@ public class QuickOpenHook {
                         }
                     }
                 }
-            });
+            }));
 
             try {
-                XposedBridge.hookAllMethods(quickOpenViewClass, "addViewInLayout", new XC_MethodHook() {
+                record(XposedBridge.hookAllMethods(quickOpenViewClass, "addViewInLayout", new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
                         if (param.args != null && param.args.length > 0 && param.args[0] instanceof View) {
                             View child = (View) param.args[0];
                             if (child != null && !CONTAINER_TAG.equals(child.getTag())) {
@@ -114,18 +151,19 @@ public class QuickOpenHook {
                             }
                         }
                     }
-                });
+                }));
             } catch (Throwable ignored) {}
 
             // Hook show()：在展示原生快捷面板容器时清除所有残留的原生视图
             try {
-                XposedBridge.hookAllMethods(quickOpenViewClass, "show", new XC_MethodHook() {
+                record(XposedBridge.hookAllMethods(quickOpenViewClass, "show", new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
                         FrameLayout view = (FrameLayout) param.thisObject;
                         purgeNativeViewsAndFields(view, quickOpenViewClass);
                     }
-                });
+                }));
             } catch (Throwable ignored) {}
 
             // 拦截所有原生教学提示、提示文字、快捷图标更新的方法
@@ -136,12 +174,13 @@ public class QuickOpenHook {
                     || name.contains("ItemView") || name.contains("ItemAnimation")) {
                     if (!name.equals("startShowQuickOpenItemAnimation") && !name.equals("dismiss")) {
                         try {
-                            XposedBridge.hookMethod(m, new XC_MethodHook() {
+                            record(XposedBridge.hookMethod(m, new XC_MethodHook() {
                                 @Override
                                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                                    if (!active) return;
                                     param.setResult(null); // 完全拦截原生教学、提示与默认图标逻辑
                                 }
-                            });
+                            }));
                             Log.i(TAG, "已成功屏蔽原生方法: " + name);
                         } catch (Throwable ignored) {}
                     }
@@ -149,9 +188,10 @@ public class QuickOpenHook {
             }
 
             // 2. Hook startShowQuickOpenItemAnimation：完全接管展开流程，阻止系统默认5项图标与扇形黑底
-            XposedHelpers.findAndHookMethod(quickOpenViewClass, "startShowQuickOpenItemAnimation", new XC_MethodHook() {
+            record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "startShowQuickOpenItemAnimation", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!active) return;
                     FrameLayout view = (FrameLayout) param.thisObject;
 
                     // 完全阻止系统原生 startShowQuickOpenItemAnimation 执行 (避免创建原生5项View、动画和扇形黑底)
@@ -262,10 +302,10 @@ public class QuickOpenHook {
                     container.setupAndExpand(fodX, fodY);
                     Log.i(TAG, "CustomQuickOpenContainer 展开成功，指纹中心: (" + fodX + ", " + fodY + ")");
                 }
-            });
+            }));
 
             // 3. Hook dismiss(int)：退出并复位自定义容器
-            XposedHelpers.findAndHookMethod(quickOpenViewClass, "dismiss", int.class, new XC_MethodHook() {
+            record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "dismiss", int.class, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     FrameLayout view = (FrameLayout) param.thisObject;
@@ -290,7 +330,7 @@ public class QuickOpenHook {
                         }
                     } catch (Throwable ignored) {}
                 }
-            });
+            }));
 
             Log.i(TAG, "已成功安装 MiuiGxzwQuickOpenView 核心生命周期接管 Hook！");
 
@@ -303,9 +343,10 @@ public class QuickOpenHook {
             Class<?> iconView2Class = XposedHelpers.findClass(
                 "com.miui.keyguard.biometrics.fod.MiuiGxzwIconView$2", cl
             );
-            XposedHelpers.findAndHookMethod(iconView2Class, "onPointerEvent", MotionEvent.class, new XC_MethodHook() {
+            record(XposedHelpers.findAndHookMethod(iconView2Class, "onPointerEvent", MotionEvent.class, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    if (!active) return;
                     try {
                         Object listener = param.thisObject;
                         Object iconView = XposedHelpers.getObjectField(listener, "this$0");
@@ -379,11 +420,122 @@ public class QuickOpenHook {
                         Log.e(TAG, "onPointerEvent hook error", t);
                     }
                 }
-            });
+            }));
             Log.i(TAG, "已成功安装 MiuiGxzwIconView$2.onPointerEvent 触摸拦截 Hook！");
         } catch (Throwable t) {
             Log.e(TAG, "Hook MiuiGxzwIconView$2 失败", t);
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Hook 卸载：安全模式运行期即时停用
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * 把一次 hook 安装返回的句柄全部登记下来。
+     * hookAllMethods / hookAllConstructors 返回的是句柄集合，hookMethod /
+     * findAndHookMethod 返回单个句柄，这里统一收口，保证没有漏网的 Hook。
+     */
+    private static void record(Object result) {
+        if (result == null) {
+            return;
+        }
+        if (result instanceof XC_MethodHook.Unhook) {
+            HANDLES.add((XC_MethodHook.Unhook) result);
+        } else if (result instanceof Set) {
+            for (Object o : (Set<?>) result) {
+                if (o instanceof XC_MethodHook.Unhook) {
+                    HANDLES.add((XC_MethodHook.Unhook) o);
+                }
+            }
+        }
+    }
+
+    private static void rememberHost(FrameLayout view) {
+        synchronized (HOSTS) {
+            for (WeakReference<FrameLayout> ref : HOSTS) {
+                if (ref.get() == view) {
+                    return;
+                }
+            }
+            HOSTS.add(new WeakReference<>(view));
+        }
+    }
+
+    /** 当前 Hook 是否生效。 */
+    public static boolean isActive() {
+        return active;
+    }
+
+    /**
+     * 立刻停用全部 Hook —— 安全模式的执行端。
+     *
+     * 做三件事，缺一不可：
+     *   1. 先把 active 置 false：从这一刻起所有回调直接 return，不再干预 SystemUI；
+     *   2. 逐个 unhook：把回调从 Xposed 的钩子链上摘掉，彻底消除调用开销；
+     *   3. 把已注入的 CustomQuickOpenContainer 从视图树里摘除并复位，
+     *      否则界面上会残留一个半展开的自定义面板。
+     *
+     * 整个过程被 try/catch 逐项包裹：任何一步失败都不能影响其余步骤，
+     * 更不能让清理动作本身成为新的崩溃源。
+     *
+     * @return 实际卸载成功的 Hook 数量
+     */
+    public static int uninstall() {
+        // 1. 先断逻辑，后拆钩子：避免卸载过程中仍有回调进入本模块代码
+        boolean wasActive = active;
+        active = false;
+
+        if (!wasActive && HANDLES.isEmpty()) {
+            return 0;
+        }
+        Log.e(TAG, "!!! 安全模式触发：正在即时停用全部 Hook !!!");
+
+        // 2. 拆除视图树上已注入的自定义容器
+        synchronized (HOSTS) {
+            for (WeakReference<FrameLayout> ref : HOSTS) {
+                FrameLayout host = ref.get();
+                if (host == null) continue;
+                try {
+                    CustomQuickOpenContainer container = (CustomQuickOpenContainer)
+                        XposedHelpers.getAdditionalInstanceField(host, "customContainer");
+                    if (container != null) {
+                        container.resetBubbles();
+                        container.setVisibility(View.GONE);
+                        if (container.getParent() instanceof ViewGroup) {
+                            ((ViewGroup) container.getParent()).removeView(container);
+                        }
+                    }
+                    XposedHelpers.removeAdditionalInstanceField(host, "customContainer");
+                } catch (Throwable t) {
+                    Log.w(TAG, "移除已注入的自定义容器失败", t);
+                }
+            }
+            HOSTS.clear();
+        }
+
+        // 3. 逐个卸载 Hook
+        int removed = 0;
+        List<XC_MethodHook.Unhook> snapshot;
+        synchronized (HANDLES) {
+            snapshot = new ArrayList<>(HANDLES);
+            HANDLES.clear();
+        }
+        for (XC_MethodHook.Unhook u : snapshot) {
+            try {
+                Member m = u.getHookedMethod();
+                u.unhook();
+                removed++;
+                if (m != null) {
+                    Log.i(TAG, "已卸载 Hook: " + m.getDeclaringClass().getName() + "#" + m.getName());
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "卸载 Hook 失败", t);
+            }
+        }
+
+        Log.e(TAG, "安全模式已停用全部 Hook，共卸载 " + removed + " 个回调，SystemUI 已恢复原生行为");
+        return removed;
     }
 
     private static Point getDisplaySize(Context context) {

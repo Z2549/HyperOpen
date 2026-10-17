@@ -15,7 +15,10 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import com.hyperos.quickopen.R;
 import com.hyperos.quickopen.config.QuickOpenConfig;
+import com.hyperos.quickopen.safety.SafetyStore;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
@@ -32,6 +35,11 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView rvShortcuts;
     private ShortcutAdapter adapter;
 
+    // 安全模式卡片控件
+    private TextView tvSafetyStatus, tvSafetyCrashCount, tvSafetyTotalCrash, tvSafetySession, tvSafetyLastCrash, tvSafetyLog;
+    private MaterialSwitch switchHookEnabled;
+    private boolean safetyBinding = false;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -42,6 +50,12 @@ public class MainActivity extends AppCompatActivity {
         initViews();
         bindData();
         setupListeners();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshSafety();
     }
 
     private void initViews() {
@@ -76,6 +90,89 @@ public class MainActivity extends AppCompatActivity {
             saveConfig();
             Toast.makeText(this, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show();
         });
+
+        // 安全模式卡片控件
+        tvSafetyStatus = findViewById(R.id.tv_safety_status);
+        tvSafetyCrashCount = findViewById(R.id.tv_safety_crash_count);
+        tvSafetyTotalCrash = findViewById(R.id.tv_safety_total_crash);
+        tvSafetySession = findViewById(R.id.tv_safety_session);
+        tvSafetyLastCrash = findViewById(R.id.tv_safety_last_crash);
+        tvSafetyLog = findViewById(R.id.tv_safety_log);
+        switchHookEnabled = findViewById(R.id.switch_hook_enabled);
+
+        findViewById(R.id.btn_exit_safe_mode).setOnClickListener(v -> {
+            Bundle st = SafetyStore.exitSafeMode(this);
+            applySafetyState(st);
+            Toast.makeText(this, R.string.toast_exit_safe_mode, Toast.LENGTH_LONG).show();
+        });
+
+        findViewById(R.id.btn_clear_crash).setOnClickListener(v -> {
+            Bundle st = SafetyStore.clearCrash(this);
+            applySafetyState(st);
+            Toast.makeText(this, R.string.toast_clear_crash, Toast.LENGTH_SHORT).show();
+        });
+
+        switchHookEnabled.setOnCheckedChangeListener((btn, isChecked) -> {
+            if (safetyBinding) return;
+            Bundle st = SafetyStore.setHookEnabled(this, isChecked);
+            applySafetyState(st);
+            Toast.makeText(this, isChecked ? R.string.toast_hook_enabled : R.string.toast_hook_disabled,
+                Toast.LENGTH_LONG).show();
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // 安全模式卡片
+    // ──────────────────────────────────────────────────────────────
+
+    private void refreshSafety() {
+        applySafetyState(SafetyStore.getState(this));
+    }
+
+    private void applySafetyState(@Nullable Bundle st) {
+        if (st == null || tvSafetyStatus == null) {
+            return;
+        }
+        boolean safeMode = st.getBoolean("safe_mode", false);
+        boolean hookEnabled = st.getBoolean("hook_enabled", true);
+        int crashCount = st.getInt("crash_count", 0);
+        int threshold = st.getInt("threshold", SafetyStore.CRASH_THRESHOLD);
+        int total = st.getInt("total_crash", 0);
+        long lastTs = st.getLong("last_crash_ts", 0L);
+        boolean sessionHealthy = st.getBoolean("session_healthy", true);
+        String log = st.getString("crash_log", "");
+
+        if (safeMode) {
+            tvSafetyStatus.setText(R.string.safety_status_safe);
+            tvSafetyStatus.setTextColor(getColor(R.color.accent));
+        } else if (!hookEnabled) {
+            tvSafetyStatus.setText(R.string.safety_status_disabled);
+            tvSafetyStatus.setTextColor(getColor(R.color.text_secondary));
+        } else {
+            tvSafetyStatus.setText(R.string.safety_status_ok);
+            tvSafetyStatus.setTextColor(getColor(R.color.primary));
+        }
+
+        tvSafetyCrashCount.setText(getString(R.string.safety_crash_count, crashCount, threshold));
+        tvSafetyTotalCrash.setText(getString(R.string.safety_total_crash, total));
+        tvSafetySession.setText(getString(R.string.safety_session_state,
+            getString(sessionHealthy ? R.string.safety_session_yes : R.string.safety_session_no)));
+
+        if (lastTs > 0L) {
+            String fmt = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(new Date(lastTs));
+            tvSafetyLastCrash.setText(getString(R.string.safety_last_crash, fmt));
+        } else {
+            tvSafetyLastCrash.setText(R.string.safety_last_crash_none);
+        }
+
+        tvSafetyLog.setText(log == null || log.trim().isEmpty()
+            ? getString(R.string.safety_crash_log_empty) : log);
+
+        safetyBinding = true;
+        // 开关显示的是「Hook 实际生效状态」：安全模式激活时 Hook 已被强制停用，
+        // 此时开关呈关闭态；用户把它重新打开即等同于退出安全模式并恢复 Hook。
+        switchHookEnabled.setChecked(hookEnabled && !safeMode);
+        safetyBinding = false;
     }
 
     private void bindData() {

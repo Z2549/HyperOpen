@@ -1,4 +1,4 @@
-#Sat Oct 17 04:39:22 CST 2026
+#Sat Oct 17 15:33:46 CST 2026
 base.0=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
 base.1=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
 base.2=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\11\\classes.dex
@@ -8,6 +8,7 @@ base.5=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDex
 base.6=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\4\\classes.dex
 base.7=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\6\\classes.dex
 base.8=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\9\\classes.dex
+base.9=D\:\\VS\\systemui\\app\\build\\intermediates\\dex\\debug\\mergeProjectDexDebug\\2\\classes.dex
 path.0=classes.dex
 path.1=0/classes.dex
 path.2=11/classes.dex
@@ -17,6 +18,7 @@ path.5=15/classes.dex
 path.6=4/classes.dex
 path.7=6/classes.dex
 path.8=9/classes.dex
+path.9=2/classes.dex
 renamed.0=classes.dex
 renamed.1=classes2.dex
 renamed.2=classes3.dex
@@ -26,3 +28,4 @@ renamed.5=classes6.dex
 renamed.6=classes7.dex
 renamed.7=classes8.dex
 renamed.8=classes9.dex
+renamed.9=classes10.dex

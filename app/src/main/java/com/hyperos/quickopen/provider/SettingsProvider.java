@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.hyperos.quickopen.config.QuickOpenConfig;
+import com.hyperos.quickopen.safety.SafetyStore;
 
 public class SettingsProvider extends ContentProvider {
     private static final String TAG = "QuickOpen_Provider";
@@ -20,6 +21,23 @@ public class SettingsProvider extends ContentProvider {
     public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY);
 
     public static final String METHOD_GET_CONFIG = "get_config";
+
+    /** 安全模式：启动闸门查询（SystemUI 每次启动时调用，并据此决定是否安装 Hook） */
+    public static final String METHOD_SAFETY_CHECK = "safety_check";
+    /** 安全模式：即时上报一次 Hook 相关崩溃 */
+    public static final String METHOD_SAFETY_REPORT = "safety_report_crash";
+    /** 安全模式：存活确认（Hook 装好后一段时间仍活着 → 本次会话视为健康） */
+    public static final String METHOD_SAFETY_HEARTBEAT = "safety_heartbeat";
+    /** 安全模式：只读状态查询（供模块 UI 显示） */
+    public static final String METHOD_SAFETY_STATE = "safety_state";
+    /** 安全模式：退出安全模式并重新启用 Hook */
+    public static final String METHOD_SAFETY_EXIT = "safety_exit";
+    /** 安全模式：清空崩溃计数与崩溃日志 */
+    public static final String METHOD_SAFETY_CLEAR = "safety_clear";
+    /** 安全模式：Hook 总开关 */
+    public static final String METHOD_SAFETY_SET_ENABLED = "safety_set_enabled";
+    /** 安全模式：把本次 SystemUI 会话登记为「已安装 Hook」，其异常退出才计入崩溃队列 */
+    public static final String METHOD_SAFETY_MARK_HOOKED = "safety_mark_hooked";
 
     @Override
     public boolean onCreate() {
@@ -30,6 +48,47 @@ public class SettingsProvider extends ContentProvider {
     @Nullable
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
+        // ── 安全模式相关方法：写入方只在本进程（模块 App），SystemUI 侧只读或上报 ──
+        // 注意：call() 内的任何未捕获异常都会跨进程抛回 SystemUI 并可能导致其崩溃，
+        // 因此这里必须整段兜底，绝不让异常逃逸出 Provider。
+        if (isSafetyMethod(method)) {
+            Context sctx = getContext();
+            if (sctx == null) {
+                return wrap(null);
+            }
+            try {
+                if (METHOD_SAFETY_CHECK.equals(method)) {
+                    return wrap(SafetyStore.safetyCheck(sctx));
+                }
+                if (METHOD_SAFETY_REPORT.equals(method)) {
+                    return wrap(SafetyStore.reportCrash(sctx, arg));
+                }
+                if (METHOD_SAFETY_HEARTBEAT.equals(method)) {
+                    return wrap(SafetyStore.heartbeat(sctx));
+                }
+                if (METHOD_SAFETY_STATE.equals(method)) {
+                    return wrap(SafetyStore.getState(sctx));
+                }
+                if (METHOD_SAFETY_EXIT.equals(method)) {
+                    Log.w(TAG, "收到退出安全模式请求，Hook 将在 SystemUI 下次启动时恢复");
+                    return wrap(SafetyStore.exitSafeMode(sctx));
+                }
+                if (METHOD_SAFETY_CLEAR.equals(method)) {
+                    return wrap(SafetyStore.clearCrash(sctx));
+                }
+                if (METHOD_SAFETY_SET_ENABLED.equals(method)) {
+                    boolean enabled = extras == null || extras.getBoolean("enabled", true);
+                    return wrap(SafetyStore.setHookEnabled(sctx, enabled));
+                }
+                if (METHOD_SAFETY_MARK_HOOKED.equals(method)) {
+                    return wrap(SafetyStore.markSessionHooked(sctx));
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "安全模式方法 " + method + " 执行异常，返回保守结果", t);
+                return wrap(null);
+            }
+        }
+
         if (METHOD_GET_CONFIG.equals(method)) {
             Context ctx = getContext();
             if (ctx != null) {
@@ -76,5 +135,42 @@ public class SettingsProvider extends ContentProvider {
     @Override
     public int update(@NonNull Uri uri, @Nullable ContentValues values, @Nullable String selection, @Nullable String[] selectionArgs) {
         return 0;
+    }
+
+    private static boolean isSafetyMethod(@Nullable String method) {
+        if (method == null) {
+            return false;
+        }
+        return METHOD_SAFETY_CHECK.equals(method)
+            || METHOD_SAFETY_REPORT.equals(method)
+            || METHOD_SAFETY_HEARTBEAT.equals(method)
+            || METHOD_SAFETY_STATE.equals(method)
+            || METHOD_SAFETY_EXIT.equals(method)
+            || METHOD_SAFETY_CLEAR.equals(method)
+            || METHOD_SAFETY_SET_ENABLED.equals(method)
+            || METHOD_SAFETY_MARK_HOOKED.equals(method);
+    }
+
+    /**
+     * SafetyStore 返回的 Bundle 可能为 null（例如 Context 获取失败），
+     * 这里统一兜底为一个「安全模式已激活」的空结果，绝不把 null 抛回 SystemUI：
+     * 对调用方而言「查不到状态」与「不允许安装 Hook」应当同向处理，宁可少装一次 Hook。
+     */
+    @NonNull
+    private Bundle wrap(@Nullable Bundle b) {
+        if (b != null) {
+            return b;
+        }
+        Log.e(TAG, "安全模式状态读取失败，返回保守结果（禁止安装 Hook）");
+        Bundle fallback = new Bundle();
+        fallback.putBoolean("allowed", false);
+        fallback.putBoolean("safe_mode", true);
+        fallback.putBoolean("hook_enabled", false);
+        fallback.putBoolean("just_triggered", false);
+        fallback.putBoolean("premature_exit", false);
+        fallback.putInt("crash_count", 0);
+        fallback.putInt("total_crash", 0);
+        fallback.putInt("threshold", SafetyStore.CRASH_THRESHOLD);
+        return fallback;
     }
 }
