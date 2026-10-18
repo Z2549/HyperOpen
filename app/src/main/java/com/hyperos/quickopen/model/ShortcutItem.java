@@ -133,7 +133,30 @@ public class ShortcutItem {
                 case ACTION_INTENT_URI: {
                     Intent intent = Intent.parseUri(actionPayload, Intent.URI_INTENT_SCHEME);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    context.startActivity(intent);
+                    if (intent.resolveActivity(context.getPackageManager()) != null) {
+                        context.startActivity(intent);
+                    } else if ("com.tencent.mm".equals(intent.getPackage()) || actionPayload.contains("com.tencent.mm")) {
+                        // 微信未适配快捷 Intent 时的兜底
+                        Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
+                        if (launch != null) {
+                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            context.startActivity(launch);
+                        } else {
+                            showToast(context, "未找到微信应用");
+                        }
+                    } else if (actionPayload.contains("alipays://") || "com.eg.android.AlipayGphone".equals(intent.getPackage())) {
+                        // 支付宝未注册平台协议时的兜底
+                        Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.eg.android.AlipayGphone");
+                        if (launch != null) {
+                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            context.startActivity(launch);
+                        } else {
+                            showToast(context, "未找到支付宝应用");
+                        }
+                    } else {
+                        // 尝试直接启动
+                        context.startActivity(intent);
+                    }
                     break;
                 }
                 case ACTION_BROADCAST: {

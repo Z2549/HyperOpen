@@ -185,6 +185,7 @@ fun QuickOpenApp(
     var subPage by remember { mutableStateOf(0) }
     var editingItem by remember { mutableStateOf<ShortcutItem?>(null) }
     var isNewShortcut by remember { mutableStateOf(false) }
+    var requestEditBackTrigger by remember { mutableIntStateOf(0) }
 
     fun persist() {
         val c = QuickOpenConfig.loadFromApp(ctx)
@@ -213,10 +214,13 @@ fun QuickOpenApp(
         c.save(ctx)
     }
 
-    // 拦截系统返回键与手势返回：在二级页时优先返回主页
+    // 拦截系统返回键与手势返回：在二级页时优先处理
     LaunchedEffect(activity, subPage) {
         activity?.backPressConsumer = {
-            if (subPage != 0) {
+            if (subPage == 2) {
+                requestEditBackTrigger++
+                true
+            } else if (subPage != 0) {
                 subPage = 0
                 editingItem = null
                 true
@@ -226,8 +230,12 @@ fun QuickOpenApp(
         }
     }
     BackHandler(enabled = subPage != 0) {
-        subPage = 0
-        editingItem = null
+        if (subPage == 2) {
+            requestEditBackTrigger++
+        } else {
+            subPage = 0
+            editingItem = null
+        }
     }
 
     HyperOSQuickOpenTheme(
@@ -262,8 +270,12 @@ fun QuickOpenApp(
                     navigationIcon = {
                         if (subPage != 0) {
                             BackNavigationIcon(onClick = {
-                                subPage = 0
-                                editingItem = null
+                                if (subPage == 2) {
+                                    requestEditBackTrigger++
+                                } else {
+                                    subPage = 0
+                                    editingItem = null
+                                }
                             })
                         }
                     },
@@ -307,6 +319,7 @@ fun QuickOpenApp(
                                 contentPadding = innerPadding,
                                 initialItem = currentEdit,
                                 isNew = isNewShortcut,
+                                backTrigger = requestEditBackTrigger,
                                 onSave = { updated ->
                                     if (isNewShortcut) {
                                         shortcuts.add(updated)
@@ -326,6 +339,10 @@ fun QuickOpenApp(
                                     shortcuts.removeAll { it.id == toDelete.id }
                                     persist()
                                     Toast.makeText(ctx, "已删除快捷方式", Toast.LENGTH_SHORT).show()
+                                    subPage = 0
+                                    editingItem = null
+                                },
+                                onExitWithoutSave = {
                                     subPage = 0
                                     editingItem = null
                                 },
@@ -852,8 +869,10 @@ fun ShortcutEditPage(
     contentPadding: PaddingValues,
     initialItem: ShortcutItem,
     isNew: Boolean,
+    backTrigger: Int = 0,
     onSave: (ShortcutItem) -> Unit,
     onDelete: (ShortcutItem) -> Unit,
+    onExitWithoutSave: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val lazyListState = rememberLazyListState()
@@ -871,6 +890,32 @@ fun ShortcutEditPage(
 
     var showAppPicker by remember { mutableStateOf(false) }
     var showMiuixIconPicker by remember { mutableStateOf(false) }
+    var showUnsavedDialog by remember { mutableStateOf(false) }
+
+    // 检查是否有未保存的修改
+    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, enabled) {
+        title != initialItem.title ||
+        subtitle != initialItem.subtitle ||
+        actionType != initialItem.actionType ||
+        actionPayload != initialItem.actionPayload ||
+        iconPackage != initialItem.iconPackage ||
+        iconGlyph != initialItem.iconGlyph ||
+        glyphPadEnabled != initialItem.glyphPadEnabled ||
+        glyphPadColor != initialItem.glyphPadColor ||
+        glyphPadMode != initialItem.glyphPadMode ||
+        enabled != initialItem.enabled
+    }
+
+    // 响应顶部返回键或系统返回手势
+    LaunchedEffect(backTrigger) {
+        if (backTrigger > 0) {
+            if (isModified || isNew) {
+                showUnsavedDialog = true
+            } else {
+                onExitWithoutSave()
+            }
+        }
+    }
 
     // 实时图标预览
     val miuixVector = remember(iconPackage, iconGlyph) {
@@ -1305,6 +1350,73 @@ fun ShortcutEditPage(
                 showMiuixIconPicker = false
             },
         )
+    }
+
+    // ── 退出时未保存确认弹窗（MIUIX 质感弹窗） ──
+    if (showUnsavedDialog) {
+        Dialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.86f)
+                    .padding(vertical = 16.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                ) {
+                    Text(
+                        text = "保存修改？",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = if (isNew) "您刚刚创建的快捷方式尚未保存，是否保存并生效？" else "当前快捷方式的参数已发生更改，退出前是否保存？",
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(Modifier.height(22.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(
+                            text = "放弃",
+                            onClick = {
+                                showUnsavedDialog = false
+                                onExitWithoutSave()
+                            },
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        TextButton(
+                            text = "保存并退出",
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
+                            onClick = {
+                                showUnsavedDialog = false
+                                val newItem = initialItem.copy()
+                                newItem.title = title.trim().ifBlank { "快捷方式" }
+                                newItem.subtitle = subtitle.trim()
+                                newItem.actionType = actionType
+                                newItem.actionPayload = actionPayload.trim()
+                                newItem.iconPackage = iconPackage.trim()
+                                newItem.iconGlyph = iconGlyph.trim()
+                                newItem.glyphPadEnabled = glyphPadEnabled
+                                newItem.glyphPadColor = glyphPadColor
+                                newItem.glyphPadMode = glyphPadMode
+                                newItem.enabled = enabled
+                                onSave(newItem)
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

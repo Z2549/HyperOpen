@@ -291,53 +291,96 @@ public class QuickOpenConfig {
 
     public static List<ShortcutItem> getDefaultShortcuts() {
         List<ShortcutItem> items = new ArrayList<>();
-        items.add(new ShortcutItem("wx_scan", "微信扫一扫", "直接唤起扫码镜头",
-            ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=com.tencent.mm.action.BIZSHORTCUT;S.LauncherUI.From.Scaner.Shortcut=true;end",
-            0xFF07C160, true));
 
-        items.add(new ShortcutItem("alipay_pay", "支付宝付款码", "出示收银台付款",
-            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=20000056#Intent;scheme=alipays;end",
-            0xFF1677FF, true));
+        // 1. 微信扫一扫 (精确指向微信公开 LauncherUI 扫码入口，配 Miuix 扫一扫矢量图标 + 微信绿微透底垫)
+        items.add(new ShortcutItem(
+            "wx_scan", "微信扫一扫", "直接唤起扫码镜头",
+            ShortcutItem.ACTION_INTENT_URI, "intent://dl/scan#Intent;scheme=weixin;package=com.tencent.mm;end",
+            "", "Scan:Regular",
+            0xFF07C160, true,
+            true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("flashlight", "手电筒", "开关后置 LED 强光",
+        // 2. 支付宝付款码 (官方跨端 Scheme，配 Miuix 银行卡/支付矢量图标 + 支付宝蓝微透底垫)
+        items.add(new ShortcutItem(
+            "alipay_pay", "支付宝付款码", "出示收银台付款",
+            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=20000056#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+            "", "BankCards:Regular",
+            0xFF1677FF, true,
+            true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
+
+        // 3. 手电筒 (系统底层 Camera Torch，配 Miuix 手电筒图标 + 暖阳橙微透底垫)
+        items.add(new ShortcutItem(
+            "flashlight", "手电筒", "开关后置 LED 强光",
             ShortcutItem.ACTION_FLASHLIGHT, "",
-            0xFFFAAD14, true));
+            "", "Flashlight:Regular",
+            0xFFFAAD14, true,
+            true, 0xFFFAAD14, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("alipay_scan", "支付宝扫一扫", "扫码识别或骑行单车",
-            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=10000007#Intent;scheme=alipays;end",
-            0xFF1677FF, true));
+        // 4. 支付宝扫一扫 (官方扫码协议，配 Miuix 扫一扫图标 + 支付宝蓝微透底垫)
+        items.add(new ShortcutItem(
+            "alipay_scan", "支付宝扫一扫", "扫码识别或骑行单车",
+            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=10000007#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+            "", "Scan:Regular",
+            0xFF1677FF, true,
+            true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("bus_code", "乘车码", "地铁公交一卡通刷码",
-            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=200011235#Intent;scheme=alipays;end",
-            0xFF52C41A, true));
+        // 5. 乘车码 (交通乘车码统一入口，配 Miuix 二维码矢量图标 + 银联绿底垫)
+        items.add(new ShortcutItem(
+            "bus_code", "乘车码", "地铁公交一卡通刷码",
+            ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=200011235#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+            "", "QrCode:Regular",
+            0xFF52C41A, true,
+            true, 0xFF52C41A, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("camera", "街拍相机", "秒级开启抓拍",
+        // 6. 街拍相机 (系统原生相机标准 Action，配 Miuix 相机图标 + 活力红底垫)
+        items.add(new ShortcutItem(
+            "camera", "街拍相机", "秒级开启抓拍",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end",
-            0xFFFF4D4F, true));
+            "", "Camera:Regular",
+            0xFFFF4D4F, true,
+            true, 0xFFFF4D4F, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("calc", "小窗计算器", "开启悬浮轻量计算",
+        // 7. 小窗计算器 (MIUI/HyperOS 计算器，图标取应用自适应图标)
+        items.add(new ShortcutItem(
+            "calc", "小窗计算器", "开启悬浮轻量计算",
             ShortcutItem.ACTION_APP, "com.miui.calculator",
-            0xFF13C2C2, true));
+            "com.miui.calculator", "",
+            0xFF13C2C2, true,
+            false, 0xFF2A82E4, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("notes", "新建便签", "随时记录脑海灵感",
+        // 8. 新建便签 (MIUI/HyperOS 笔记应用，图标取便签原生自适应图标)
+        items.add(new ShortcutItem(
+            "notes", "新建便签", "随时记录脑海灵感",
             ShortcutItem.ACTION_APP, "com.miui.notes",
-            0xFF722ED1, true));
+            "com.miui.notes", "",
+            0xFF722ED1, true,
+            false, 0xFF2A82E4, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("wx_pay", "微信收款码", "出示面对面收款二维码",
-            ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=com.tencent.mm.action.BIZSHORTCUT;S.LauncherUI.From.Scaner.Shortcut=false;end",
-            0xFF07C160, true));
-
-        items.add(new ShortcutItem("record", "高清录音", "一键启动系统录音机",
+        // 9. 高清录音 (系统录音机，配 Miuix 麦克风图标 + 暖阳橙底垫)
+        items.add(new ShortcutItem(
+            "record", "高清录音", "一键启动系统录音机",
             ShortcutItem.ACTION_APP, "com.android.soundrecorder",
-            0xFFFA541C, true));
+            "", "Mic:Regular",
+            0xFFFA541C, true,
+            true, 0xFFFA541C, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
-        items.add(new ShortcutItem("music", "听歌识曲", "快速识别环境播放音乐",
-            ShortcutItem.ACTION_APP, "com.tencent.qqmusic",
-            0xFFEB2F96, true));
-
-        items.add(new ShortcutItem("settings", "系统设置", "进入常用设置中心",
+        // 10. 系统设置 (标准系统设置，配 Miuix 设置齿轮图标 + 极简暗灰底垫)
+        items.add(new ShortcutItem(
+            "settings", "系统设置", "进入常用设置中心",
             ShortcutItem.ACTION_APP, "com.android.settings",
-            0xFF8C8C8C, true));
+            "", "Settings:Regular",
+            0xFF8C8C8C, true,
+            true, 0xFF1F2329, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
 
         return items;
     }
