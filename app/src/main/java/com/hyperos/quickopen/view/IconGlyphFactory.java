@@ -53,41 +53,59 @@ public final class IconGlyphFactory {
     }
 
     /**
-     * 统一解析入口：返回真实应用图标或内置矢量符号
+     * 统一解析入口：优先使用自定义图标设置（Miuix 矢量图标或手动指定应用图标），
+     * 其次回退到动作目标应用图标或内置符号。
      */
     @NonNull
     public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item) {
         if (ctx == null || item == null) return createGlyph("sparkle", 0xFFFFFFFF);
 
-        // 1) 手动指定包名图标
+        // 1) 优先级最高：手动指定的自定义 Miuix 矢量图标 / 内置符号
+        if (notBlank(item.iconGlyph)) {
+            Drawable d = resolveMiuixIcon(item.iconGlyph.trim(), item.tintColor);
+            if (d != null) return d;
+        }
+
+        // 2) 优先级次之：手动指定应用包名图标
         if (notBlank(item.iconPackage)) {
             Drawable d = appIcon(ctx, item.iconPackage.trim());
             if (d != null) return d;
         }
 
-        // 2) APP 类型直接取目标应用图标
+        // 3) 动作默认行为：APP 类型直接取目标应用图标
         if (ShortcutItem.ACTION_APP.equals(item.actionType) && notBlank(item.actionPayload)) {
             Drawable d = appIcon(ctx, item.actionPayload.trim());
             if (d != null) return d;
         }
 
-        // 3) INTENT_URI 解析目标应用
+        // 4) 动作默认行为：INTENT_URI 解析目标应用图标
         if (ShortcutItem.ACTION_INTENT_URI.equals(item.actionType) && notBlank(item.actionPayload)) {
             Drawable d = iconFromIntent(ctx, item.actionPayload);
             if (d != null) return d;
         }
 
-        // 4) 手动指定内置符号 / Miuix 符号
-        if (notBlank(item.iconGlyph)) {
-            String key = item.iconGlyph.trim();
-            if (key.contains(":")) {
-                key = key.split(":")[0].trim();
-            }
-            return createGlyph(key.toLowerCase(), item.tintColor);
-        }
-
-        // 5) 关键词匹配内置符号
+        // 5) 关键词匹配内置符号兜底
         return createGlyph(glyphForItem(item), item.tintColor);
+    }
+
+    /**
+     * 解析 Miuix 矢量图标或兼容内置符号
+     */
+    @Nullable
+    public static Drawable resolveMiuixIcon(@NonNull String glyphKey, int tintColor) {
+        try {
+            androidx.compose.ui.graphics.vector.ImageVector v =
+                com.hyperos.quickopen.ui.MiuixIconRegistry.INSTANCE.find(glyphKey, null);
+            if (v != null) {
+                return new MiuixVectorDrawable(v, tintColor);
+            }
+        } catch (Throwable ignored) {}
+
+        String clean = glyphKey;
+        if (clean.contains(":")) {
+            clean = clean.split(":")[0].trim();
+        }
+        return createGlyph(clean.toLowerCase(), tintColor);
     }
 
     /**
