@@ -65,8 +65,12 @@ public class CustomQuickOpenContainer extends FrameLayout {
         regionBackdrop.setStyle(resolvedStyle);
         addView(regionBackdrop);
 
-        // 图标容器
+        // 图标容器 (允许子 View 放大溢出，不被矩形容器拦截)
         bubblesContainer = new FrameLayout(getContext());
+        bubblesContainer.setClipChildren(false);
+        bubblesContainer.setClipToPadding(false);
+        setClipChildren(false);
+        setClipToPadding(false);
         addView(bubblesContainer, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
 

@@ -36,12 +36,23 @@ public class ShortcutItem {
     public int tintColor;
     public boolean enabled;
 
+    /** 该快捷方式独享的 Miuix 矢量底垫配置 */
+    public boolean glyphPadEnabled = false;
+    public int glyphPadColor = 0xFF2A82E4;
+    public int glyphPadMode = 1; // 0=SOLID, 1=TRANSLUCENT, 2=INVERTED
+
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
-        this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled);
+        this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled, false, 0xFF2A82E4, 1);
     }
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
                         String iconPackage, String iconGlyph, int tintColor, boolean enabled) {
+        this(id, title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, tintColor, enabled, false, 0xFF2A82E4, 1);
+    }
+
+    public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
+                        String iconPackage, String iconGlyph, int tintColor, boolean enabled,
+                        boolean glyphPadEnabled, int glyphPadColor, int glyphPadMode) {
         this.id = id;
         this.title = title;
         this.subtitle = subtitle;
@@ -51,6 +62,9 @@ public class ShortcutItem {
         this.iconGlyph = iconGlyph == null ? "" : iconGlyph;
         this.tintColor = tintColor;
         this.enabled = enabled;
+        this.glyphPadEnabled = glyphPadEnabled;
+        this.glyphPadColor = glyphPadColor;
+        this.glyphPadMode = glyphPadMode;
     }
 
     public JSONObject toJson() {
@@ -65,6 +79,9 @@ public class ShortcutItem {
             json.put("iconGlyph", iconGlyph == null ? "" : iconGlyph);
             json.put("tintColor", tintColor);
             json.put("enabled", enabled);
+            json.put("glyphPadEnabled", glyphPadEnabled);
+            json.put("glyphPadColor", glyphPadColor);
+            json.put("glyphPadMode", glyphPadMode);
         } catch (JSONException e) {
             Log.e(TAG, "Error serializing ShortcutItem to JSON", e);
         }
@@ -81,14 +98,18 @@ public class ShortcutItem {
             json.optString("iconPackage", ""),
             json.optString("iconGlyph", ""),
             json.optInt("tintColor", Color.CYAN),
-            json.optBoolean("enabled", true)
+            json.optBoolean("enabled", true),
+            json.optBoolean("glyphPadEnabled", false),
+            json.optInt("glyphPadColor", 0xFF2A82E4),
+            json.optInt("glyphPadMode", 1)
         );
     }
 
     public ShortcutItem copy() {
         return new ShortcutItem(
             id, title, subtitle, actionType, actionPayload,
-            iconPackage, iconGlyph, tintColor, enabled
+            iconPackage, iconGlyph, tintColor, enabled,
+            glyphPadEnabled, glyphPadColor, glyphPadMode
         );
     }
 

@@ -342,12 +342,6 @@ fun QuickOpenApp(
                                 onInfluenceRadius = { influenceRadius = it; persist() },
                                 appIconCropMode = appIconCropMode,
                                 onAppIconCropMode = { appIconCropMode = it; persist() },
-                                glyphPadEnabled = glyphPadEnabled,
-                                onGlyphPadEnabled = { glyphPadEnabled = it; persist() },
-                                glyphPadColor = glyphPadColor,
-                                onGlyphPadColor = { glyphPadColor = it; persist() },
-                                glyphPadMode = glyphPadMode,
-                                onGlyphPadMode = { glyphPadMode = it; persist() },
                                 iconGlowEffect = iconGlowEffect,
                                 onIconGlowEffect = { iconGlowEffect = it; persist() },
                                 shortcuts = shortcuts,
@@ -482,9 +476,6 @@ fun ParamsPage(
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
     appIconCropMode: Int, onAppIconCropMode: (Int) -> Unit,
-    glyphPadEnabled: Boolean, onGlyphPadEnabled: (Boolean) -> Unit,
-    glyphPadColor: Int, onGlyphPadColor: (Int) -> Unit,
-    glyphPadMode: Int, onGlyphPadMode: (Int) -> Unit,
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
     shortcuts: SnapshotStateList<ShortcutItem>,
     onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
@@ -652,100 +643,6 @@ fun ParamsPage(
             }
         }
 
-        // ── Miuix 矢量图标底垫与质感 ──
-        item(key = "glyph_pad_title") { SmallTitle("Miuix 矢量图标底垫与色彩") }
-        item(key = "glyph_pad_card") {
-            Card(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp)
-                    .fillMaxWidth(),
-            ) {
-                SwitchPreference(
-                    title = "启用 Miuix 图标圆形纯色/微透底垫",
-                    summary = "为镂空矢量图标添加独立圆形底板，媲美原生独立图标质感",
-                    checked = glyphPadEnabled,
-                    onCheckedChange = onGlyphPadEnabled,
-                )
-
-                if (glyphPadEnabled) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                    Text(
-                        text = "底垫渲染质感",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-                    )
-
-                    RadioButtonPreference(
-                        title = "磨砂微透底板 (推荐)",
-                        summary = "65% 半透明高光底板，颜色与背景毛玻璃相互交融",
-                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT,
-                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT) },
-                    )
-                    RadioButtonPreference(
-                        title = "饱满纯色底板",
-                        summary = "100% 不透明纯色实心圆，上方呈现白色高对比矢量",
-                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_SOLID,
-                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_SOLID) },
-                    )
-                    RadioButtonPreference(
-                        title = "反色渲染模式",
-                        summary = "微透亮白底板 + 彩色矢量图标",
-                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED,
-                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) },
-                    )
-
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-                    Text(
-                        text = "快捷品牌色预设",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
-                    )
-
-                    // 预设品牌色盘
-                    val brandColors = listOf(
-                        "微信绿" to 0xFF07C160.toInt(),
-                        "支付宝蓝" to 0xFF1677FF.toInt(),
-                        "小米橙" to 0xFFFF6900.toInt(),
-                        "网易红" to 0xFFE60026.toInt(),
-                        "极客紫" to 0xFF7928CA.toInt(),
-                        "暗夜黑" to 0xFF1F2329.toInt(),
-                        "科技蓝" to 0xFF2A82E4.toInt(),
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        brandColors.forEach { (name, colorValue) ->
-                            val isSelectedColor = glyphPadColor == colorValue
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(colorValue))
-                                    .clickable { onGlyphPadColor(colorValue) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (isSelectedColor) {
-                                    Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                }
-            }
-        }
-
         // ── 快捷项目列表 ──
         item(key = "shortcuts_title") { SmallTitle("快捷项目管理与动作排序") }
         itemsIndexed(shortcuts, key = { _, it -> it.id }) { _, item ->
@@ -827,6 +724,22 @@ fun ShortcutRow(
         if (item.iconPackage.isBlank()) MiuixIconRegistry.find(item.iconGlyph) else null
     }
 
+    val itemPadBg = if (miuixIcon != null && item.glyphPadEnabled) {
+        when (item.glyphPadMode) {
+            QuickOpenConfig.GLYPH_PAD_MODE_SOLID -> Color(item.glyphPadColor)
+            QuickOpenConfig.GLYPH_PAD_MODE_INVERTED -> Color(0x30FFFFFF)
+            else -> Color(item.glyphPadColor).copy(alpha = 0.65f)
+        }
+    } else {
+        MiuixTheme.colorScheme.surfaceVariant
+    }
+    val itemIconTint = if (miuixIcon != null && item.glyphPadEnabled) {
+        if (item.glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) Color(item.glyphPadColor)
+        else Color.White
+    } else {
+        MiuixTheme.colorScheme.primary
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         BasicComponent(
             title = item.title,
@@ -835,16 +748,16 @@ fun ShortcutRow(
                 Box(
                     modifier = Modifier
                         .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MiuixTheme.colorScheme.surfaceVariant),
+                        .clip(CircleShape)
+                        .background(itemPadBg),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (miuixIcon != null) {
                         Icon(
                             imageVector = miuixIcon,
                             contentDescription = item.title,
-                            tint = MiuixTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp),
+                            tint = itemIconTint,
+                            modifier = Modifier.size(if (item.glyphPadEnabled) 20.dp else 24.dp),
                         )
                     } else if (painter != null) {
                         Image(
@@ -887,6 +800,9 @@ fun ShortcutEditPage(
     var actionPayload by remember { mutableStateOf(initialItem.actionPayload) }
     var iconPackage by remember { mutableStateOf(initialItem.iconPackage) }
     var iconGlyph by remember { mutableStateOf(initialItem.iconGlyph) }
+    var glyphPadEnabled by remember { mutableStateOf(initialItem.glyphPadEnabled) }
+    var glyphPadColor by remember { mutableIntStateOf(initialItem.glyphPadColor) }
+    var glyphPadMode by remember { mutableIntStateOf(initialItem.glyphPadMode) }
     var enabled by remember { mutableStateOf(initialItem.enabled) }
 
     var showAppPicker by remember { mutableStateOf(false) }
@@ -941,19 +857,36 @@ fun ShortcutEditPage(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
+                        val isMiuixSelected = miuixVector != null && iconPackage.isBlank()
+                        val previewPadBg = if (isMiuixSelected && glyphPadEnabled) {
+                            when (glyphPadMode) {
+                                QuickOpenConfig.GLYPH_PAD_MODE_SOLID -> Color(glyphPadColor)
+                                QuickOpenConfig.GLYPH_PAD_MODE_INVERTED -> Color(0x30FFFFFF)
+                                else -> Color(glyphPadColor).copy(alpha = 0.65f)
+                            }
+                        } else {
+                            MiuixTheme.colorScheme.surfaceVariant
+                        }
+                        val previewIconTint = if (isMiuixSelected && glyphPadEnabled) {
+                            if (glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) Color(glyphPadColor)
+                            else Color.White
+                        } else {
+                            MiuixTheme.colorScheme.primary
+                        }
+
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(MiuixTheme.colorScheme.surfaceVariant),
+                                .clip(CircleShape)
+                                .background(previewPadBg),
                             contentAlignment = Alignment.Center,
                         ) {
                             if (miuixVector != null) {
                                 Icon(
                                     imageVector = miuixVector,
                                     contentDescription = title,
-                                    tint = MiuixTheme.colorScheme.primary,
-                                    modifier = Modifier.size(38.dp),
+                                    tint = previewIconTint,
+                                    modifier = Modifier.size(if (glyphPadEnabled) 32.dp else 38.dp),
                                 )
                             } else if (appDrawablePainter != null) {
                                 Image(
@@ -1025,6 +958,101 @@ fun ShortcutEditPage(
                             iconGlyph = ""
                         },
                     )
+                }
+            }
+        }
+
+        // ── 仅当选择 Miuix 矢量图标时，展示独享的底垫与色彩配置 ──
+        if (miuixVector != null && iconPackage.isBlank()) {
+            item(key = "single_miuix_pad_title") { SmallTitle("Miuix 矢量图标底垫与色彩") }
+            item(key = "single_miuix_pad_card") {
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth(),
+                ) {
+                    SwitchPreference(
+                        title = "启用此图标圆形底垫",
+                        summary = "为当前矢量图标添加独立圆形底板",
+                        checked = glyphPadEnabled,
+                        onCheckedChange = { glyphPadEnabled = it },
+                    )
+
+                    if (glyphPadEnabled) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        Text(
+                            text = "底垫渲染质感",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                        )
+
+                        RadioButtonPreference(
+                            title = "磨砂微透底板 (推荐)",
+                            summary = "65% 半透明高光底板，颜色与背景毛玻璃相互交融",
+                            selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT,
+                            onClick = { glyphPadMode = QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT },
+                        )
+                        RadioButtonPreference(
+                            title = "饱满纯色底板",
+                            summary = "100% 不透明纯色实心圆，上方呈现白色高对比矢量",
+                            selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_SOLID,
+                            onClick = { glyphPadMode = QuickOpenConfig.GLYPH_PAD_MODE_SOLID },
+                        )
+                        RadioButtonPreference(
+                            title = "反色渲染模式",
+                            summary = "微透亮白底板 + 彩色矢量图标",
+                            selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED,
+                            onClick = { glyphPadMode = QuickOpenConfig.GLYPH_PAD_MODE_INVERTED },
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        Text(
+                            text = "快捷品牌色预设",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                        )
+
+                        val brandColors = listOf(
+                            "微信绿" to 0xFF07C160.toInt(),
+                            "支付宝蓝" to 0xFF1677FF.toInt(),
+                            "小米橙" to 0xFFFF6900.toInt(),
+                            "网易红" to 0xFFE60026.toInt(),
+                            "极客紫" to 0xFF7928CA.toInt(),
+                            "暗夜黑" to 0xFF1F2329.toInt(),
+                            "科技蓝" to 0xFF2A82E4.toInt(),
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            brandColors.forEach { (name, colorValue) ->
+                                val isSelectedColor = glyphPadColor == colorValue
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(colorValue))
+                                        .clickable { glyphPadColor = colorValue },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (isSelectedColor) {
+                                        Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                    }
                 }
             }
         }
@@ -1160,6 +1188,9 @@ fun ShortcutEditPage(
                             newItem.actionPayload = actionPayload.trim()
                             newItem.iconPackage = iconPackage.trim()
                             newItem.iconGlyph = iconGlyph.trim()
+                            newItem.glyphPadEnabled = glyphPadEnabled
+                            newItem.glyphPadColor = glyphPadColor
+                            newItem.glyphPadMode = glyphPadMode
                             newItem.enabled = enabled
                             onSave(newItem)
                         },

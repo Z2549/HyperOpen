@@ -34,6 +34,15 @@ public class CircularBubbleView extends FrameLayout {
         this.config = config;
 
         setLayoutParams(new LayoutParams(sizePx, sizePx));
+        setClipChildren(false);
+
+        // 设置纯正圆形 OutlineProvider，并在放大时以真正圆形向外扩张，绝不出现矩形边界裁切
+        setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, android.graphics.Outline outline) {
+                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+            }
+        });
         setClipToOutline(true);
 
         // 【方案一】：优先尝试添加官方 miuix.blur.widget.BlurView 控件

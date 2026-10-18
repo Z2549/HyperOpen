@@ -62,9 +62,9 @@ public final class IconGlyphFactory {
 
         // 1) 优先级最高：手动指定的自定义 Miuix 矢量图标 / 内置符号
         if (notBlank(item.iconGlyph)) {
-            boolean padEnabled = config != null && config.glyphPadEnabled;
-            int padColor = config != null ? config.glyphPadColor : 0xFF2A82E4;
-            int padMode = config != null ? config.glyphPadMode : QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT;
+            boolean padEnabled = item.glyphPadEnabled;
+            int padColor = item.glyphPadColor;
+            int padMode = item.glyphPadMode;
             Drawable d = resolveMiuixIcon(item.iconGlyph.trim(), item.tintColor, padEnabled, padColor, padMode);
             if (d != null) return d;
         }
