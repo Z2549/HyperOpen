@@ -268,22 +268,24 @@ fun QuickOpenApp(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
-                TopAppBar(
-                    title = title,
-                    scrollBehavior = topAppBarScrollBehavior,
-                    navigationIcon = {
-                        if (subPage != 0) {
-                            BackNavigationIcon(onClick = {
-                                if (subPage == 2) {
-                                    requestEditBackTrigger++
-                                } else {
-                                    subPage = 0
-                                    editingItem = null
-                                }
-                            })
-                        }
-                    },
-                )
+                if (subPage != 3) {
+                    TopAppBar(
+                        title = title,
+                        scrollBehavior = topAppBarScrollBehavior,
+                        navigationIcon = {
+                            if (subPage != 0) {
+                                BackNavigationIcon(onClick = {
+                                    if (subPage == 2) {
+                                        requestEditBackTrigger++
+                                    } else {
+                                        subPage = 0
+                                        editingItem = null
+                                    }
+                                })
+                            }
+                        },
+                    )
+                }
             },
             bottomBar = {
                 AnimatedVisibility(
@@ -300,6 +302,7 @@ fun QuickOpenApp(
                 }
             },
         ) { innerPadding ->
+            val pagePadding = if (subPage == 3) PaddingValues(0.dp) else innerPadding
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -308,7 +311,7 @@ fun QuickOpenApp(
                 when (subPage) {
                     1 -> {
                         ThemeSettingsPage(
-                            contentPadding = innerPadding,
+                            contentPadding = pagePadding,
                             themeMode = themeMode,
                             onThemeMode = { themeMode = it; persist() },
                             monet = monetColors,
@@ -320,7 +323,7 @@ fun QuickOpenApp(
                     2 -> {
                         editingItem?.let { currentEdit ->
                             ShortcutEditPage(
-                                contentPadding = innerPadding,
+                                contentPadding = pagePadding,
                                 initialItem = currentEdit,
                                 isNew = isNewShortcut,
                                 backTrigger = requestEditBackTrigger,
@@ -377,7 +380,6 @@ fun QuickOpenApp(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(innerPadding)
                                 .background(Color(0xFF0C0E14)),
                         ) {
                             AndroidView(
@@ -386,6 +388,9 @@ fun QuickOpenApp(
                                     QuickOpenPreviewView(
                                         context = viewCtx,
                                         config = currentConfig,
+                                        onBackClick = {
+                                            subPage = 0
+                                        },
                                         onOrderChanged = { newOrder ->
                                             // 保持启用/未启用项与整体列表同步重排
                                             val reordered = ArrayList<ShortcutItem>()

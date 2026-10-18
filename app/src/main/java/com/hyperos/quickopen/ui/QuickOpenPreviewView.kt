@@ -32,6 +32,7 @@ import com.hyperos.quickopen.view.CircularRegionBackdropView
 class QuickOpenPreviewView(
     context: Context,
     private val config: QuickOpenConfig,
+    private val onBackClick: () -> Unit,
     private val onOrderChanged: (List<ShortcutItem>) -> Unit,
 ) : FrameLayout(context) {
 
@@ -109,6 +110,43 @@ class QuickOpenPreviewView(
             clipToPadding = false
         }
         addView(bubblesContainer, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        // 4. 左上角小悬浮返回按钮
+        buildFloatingBackButton()
+    }
+
+    private var floatingBackButton: FrameLayout? = null
+
+    private fun buildFloatingBackButton() {
+        val btnSize = dpToPx(40f).toInt()
+        val backBtn = FrameLayout(context).apply {
+            background = HyperOSMaterialFactory.createCircularBubbleDrawable(resolvedStyle, 0xFFFFFFFF.toInt(), false)
+            elevation = dpToPx(8f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                if (isEditMode) {
+                    exitEditMode()
+                }
+                onBackClick()
+            }
+        }
+
+        val iconView = android.widget.ImageView(context).apply {
+            val arrowDrawable = com.hyperos.quickopen.view.IconGlyphFactory.createGlyph("arrow_left", 0xFFFFFFFF.toInt())
+            setImageDrawable(arrowDrawable)
+            val p = dpToPx(10f).toInt()
+            setPadding(p, p, p, p)
+        }
+        backBtn.addView(iconView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        val btnLp = LayoutParams(btnSize, btnSize).apply {
+            gravity = Gravity.TOP or Gravity.START
+            leftMargin = dpToPx(18f).toInt()
+            topMargin = dpToPx(46f).toInt()
+        }
+        addView(backBtn, btnLp)
+        floatingBackButton = backBtn
     }
 
     private fun buildHeader() {
@@ -135,9 +173,9 @@ class QuickOpenPreviewView(
         }
 
         headerSubtitle = TextView(context).apply {
-            text = "移至目标图标后松手直接打开"
+            text = "长按图标编辑位置 · 松手直接打开"
             textSize = 11.5f
-            setTextColor(Color.argb(175, 255, 255, 255))
+            setTextColor(Color.argb(190, 255, 255, 255))
             gravity = Gravity.CENTER
         }
 
@@ -164,7 +202,7 @@ class QuickOpenPreviewView(
         topContainer.addView(editBanner, bannerLp)
 
         val topLp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dpToPx(24f).toInt()
+            topMargin = dpToPx(42f).toInt()
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         }
         addView(topContainer, topLp)
@@ -181,7 +219,9 @@ class QuickOpenPreviewView(
      * 重建蜂窝网格布局并绑定气泡
      */
     fun setupLayout(w: Int = width, h: Int = height) {
-        if (w <= 0 || h <= 0) return
+        val targetW = if (w > 0) w else resources.displayMetrics.widthPixels
+        val targetH = if (h > 0) h else resources.displayMetrics.heightPixels
+        if (targetW <= 0 || targetH <= 0) return
 
         bubblesContainer.removeAllViews()
         bubbleViews.clear()
@@ -189,8 +229,8 @@ class QuickOpenPreviewView(
         gridPoints.clear()
         currentSelectedBubble = null
 
-        val fodX = w / 2f
-        val fodY = h - dpToPx(60f)
+        val fodX = targetW / 2f
+        val fodY = targetH - dpToPx(60f)
         val regionCenterY = fodY - dpToPx(config.offsetY.toFloat())
         val regionDiameterPx = dpToPx(config.regionDiameter.toFloat())
         val regionRadiusPx = regionDiameterPx / 2f
@@ -242,6 +282,13 @@ class QuickOpenPreviewView(
             bubbleViews.add(bubble)
         }
 
+        // 强制气泡及图标进行初次绘制刷新，杜绝黑屏或未更新状态
+        bubblesContainer.requestLayout()
+        bubblesContainer.invalidate()
+        for (b in bubbleViews) {
+            b.loadItemIcon()
+        }
+
         // 播放弹射散开动效
         playExpandAnimation(fodX, fodY)
     }
@@ -272,7 +319,22 @@ class QuickOpenPreviewView(
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        // 拦截触摸事件以便处理全局滑动动力学与拖拽
+        // 如果点击发生在左上角悬浮返回按钮区域，放行给子 View 处理点击
+        floatingBackButton?.let { btn ->
+            if (btn.visibility == View.VISIBLE) {
+                val btnLp = btn.layoutParams as? LayoutParams
+                if (btnLp != null) {
+                    val l = btnLp.leftMargin
+                    val t = btnLp.topMargin
+                    val r = l + btn.width.coerceAtLeast(dpToPx(48f).toInt())
+                    val b = t + btn.height.coerceAtLeast(dpToPx(48f).toInt())
+                    if (ev.x >= l && ev.x <= r && ev.y >= t && ev.y <= b) {
+                        return false
+                    }
+                }
+            }
+        }
+        // 其余区域拦截触摸事件以便处理全局滑动动力学与拖拽
         return true
     }
 

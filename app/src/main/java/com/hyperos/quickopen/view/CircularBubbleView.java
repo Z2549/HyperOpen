@@ -112,9 +112,12 @@ public class CircularBubbleView extends FrameLayout {
         setScaleY(scale);
     }
 
-    private void loadItemIcon() {
+    public void loadItemIcon() {
         // 统一由 IconGlyphFactory 解析，传入当前实时配置（裁切模式、Miuix 底垫及颜色等）
-        iconView.setImageDrawable(IconGlyphFactory.resolve(getContext(), item, config));
+        Drawable d = IconGlyphFactory.resolve(getContext(), item, config);
+        iconView.setImageDrawable(d);
         iconView.setColorFilter(null);
+        iconView.invalidate();
+        invalidate();
     }
 }

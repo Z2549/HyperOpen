@@ -297,6 +297,14 @@ public final class IconGlyphFactory {
 
     private static void buildGlyph(String key, Path sp, Path fp) {
         switch (key) {
+            case "arrow_left":
+            case "back": {
+                // 左箭头 (用于悬浮返回按钮)
+                sp.moveTo(15, 5);
+                sp.lineTo(8, 12);
+                sp.lineTo(15, 19);
+                break;
+            }
             case "scan": {
                 // 二维码取景框：四角括号 + 中心码块
                 sp.moveTo(3, 8.5f); sp.lineTo(3, 4.8f); sp.quadTo(3, 3, 4.8f, 3); sp.lineTo(8.5f, 3);

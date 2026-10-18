@@ -59,11 +59,21 @@ class MiuixVectorDrawable(
             padBorderPaint.color = Color.argb(45, 255, 255, 255)
         }
 
-        fun traverse(group: VectorGroup) {
+        fun traverse(group: VectorGroup, parentMatrix: android.graphics.Matrix) {
+            val groupMatrix = android.graphics.Matrix(parentMatrix).apply {
+                preTranslate(group.pivotX + group.translationX, group.pivotY + group.translationY)
+                preRotate(group.rotation)
+                preScale(group.scaleX, group.scaleY)
+                preTranslate(-group.pivotX, -group.pivotY)
+            }
+
             for (node in group) {
                 when (node) {
                     is VectorPath -> {
-                        val p = node.pathData.toPath().asAndroidPath()
+                        val originalPath = node.pathData.toPath().asAndroidPath()
+                        val transformedPath = android.graphics.Path()
+                        originalPath.transform(groupMatrix, transformedPath)
+
                         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                             color = iconColor
                         }
@@ -86,13 +96,13 @@ class MiuixVectorDrawable(
                             paint.style = Paint.Style.FILL
                         }
 
-                        elements.add(PathElement(p, paint))
+                        elements.add(PathElement(transformedPath, paint))
                     }
-                    is VectorGroup -> traverse(node)
+                    is VectorGroup -> traverse(node, groupMatrix)
                 }
             }
         }
-        traverse(vector.root)
+        traverse(vector.root, android.graphics.Matrix())
     }
 
     override fun draw(canvas: Canvas) {
@@ -136,6 +146,9 @@ class MiuixVectorDrawable(
             elem.paint.colorFilter = colorFilter
         }
     }
+
+    override fun getIntrinsicWidth(): Int = (if (vector.viewportWidth > 0f) vector.viewportWidth else 24f).toInt() * 4
+    override fun getIntrinsicHeight(): Int = (if (vector.viewportHeight > 0f) vector.viewportHeight else 24f).toInt() * 4
 
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
