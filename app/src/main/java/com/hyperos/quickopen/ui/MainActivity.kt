@@ -90,6 +90,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -1142,6 +1143,7 @@ fun AppListPickerDialog(
                     tabs = listOf("全部 (${allApps.size})", "用户应用", "系统应用"),
                     selectedTabIndex = filterTab,
                     onTabSelected = { filterTab = it },
+                    colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
                 TextField(
@@ -1318,6 +1320,7 @@ fun MiuixIconPickerDialog(
                     tabs = MiuixIconRegistry.WEIGHTS,
                     selectedTabIndex = weightIndex,
                     onTabSelected = { selectedWeight = MiuixIconRegistry.WEIGHTS[it] },
+                    colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
 
