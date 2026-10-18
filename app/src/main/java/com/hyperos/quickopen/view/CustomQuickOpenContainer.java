@@ -329,8 +329,12 @@ public class CustomQuickOpenContainer extends FrameLayout {
             if (currentSelectedBubble != closest) {
                 if (currentSelectedBubble != null) {
                     currentSelectedBubble.setSelectedState(false);
+                    currentSelectedBubble.setTranslationZ(0f);
                 }
                 closest.setSelectedState(true);
+                // 将被选中的气泡置于最顶层，避免放大时被相邻气泡遮挡
+                closest.bringToFront();
+                closest.setTranslationZ(20f);
                 currentSelectedBubble = closest;
 
                 // 更新顶部标题
@@ -343,6 +347,7 @@ public class CustomQuickOpenContainer extends FrameLayout {
         } else {
             if (currentSelectedBubble != null) {
                 currentSelectedBubble.setSelectedState(false);
+                currentSelectedBubble.setTranslationZ(0f);
                 currentSelectedBubble = null;
                 headerTitle.setText("滑动选择快捷方式");
                 headerTitle.setTextColor(Color.WHITE);
@@ -367,6 +372,7 @@ public class CustomQuickOpenContainer extends FrameLayout {
         for (CircularBubbleView b : bubbles) {
             b.setSelectedState(false);
             b.applyScale(1.0f);
+            b.setTranslationZ(0f);
         }
         currentSelectedBubble = null;
     }

@@ -25,16 +25,12 @@ object AppIconCropProcessor {
     @JvmStatic
     fun process(src: Drawable?, cropMode: Int): Drawable? {
         if (src == null) return null
-        if (cropMode == QuickOpenConfig.CROP_DEFAULT_PADDING) {
-            return src
-        }
 
         return try {
             when (cropMode) {
+                QuickOpenConfig.CROP_BITMAP_CIRCLE -> createStandardCircle(src)
                 QuickOpenConfig.CROP_ADAPTIVE_EXPAND -> createAdaptiveExpandedCircle(src)
-                QuickOpenConfig.CROP_BITMAP_CIRCLE,
-                QuickOpenConfig.CROP_FULL_BLEED -> createStandardCircle(src)
-                else -> src
+                else -> createAdaptiveExpandedCircle(src)
             }
         } catch (t: Throwable) {
             src

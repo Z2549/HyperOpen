@@ -26,11 +26,9 @@ public class QuickOpenConfig {
     public static final int MATERIAL_SOFT_GLASS = 1;
     public static final int MATERIAL_GAUSSIAN_BLUR = 2;
 
-    /** 应用图标裁切方案：0=默认气泡留白, 1=抗锯齿圆形裁切, 2=自适应外扩满铺, 3=全屏满铺气泡 */
-    public static final int CROP_DEFAULT_PADDING = 0;
+    /** 应用图标裁切方案：1=抗锯齿圆形裁切, 2=自适应外扩满铺 (留白大小由留白滑块独立控制) */
     public static final int CROP_BITMAP_CIRCLE = 1;
     public static final int CROP_ADAPTIVE_EXPAND = 2;
-    public static final int CROP_FULL_BLEED = 3;
 
     /** Miuix 矢量图标底垫渲染模式：0=彩色底板+白色图标, 1=微透磨砂底板, 2=反色(微透浅底+彩色图标) */
     public static final int GLYPH_PAD_MODE_SOLID = 0;

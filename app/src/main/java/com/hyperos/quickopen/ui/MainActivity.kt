@@ -652,18 +652,6 @@ fun ParamsPage(
                     selected = appIconCropMode == QuickOpenConfig.CROP_BITMAP_CIRCLE,
                     onClick = { onAppIconCropMode(QuickOpenConfig.CROP_BITMAP_CIRCLE) },
                 )
-                RadioButtonPreference(
-                    title = "全屏无边距满铺 (大图标)",
-                    summary = "移除 22% 呼吸边距，应用图标完全撑满整个气泡",
-                    selected = appIconCropMode == QuickOpenConfig.CROP_FULL_BLEED,
-                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_FULL_BLEED) },
-                )
-                RadioButtonPreference(
-                    title = "原始气泡留白 (默认)",
-                    summary = "保持应用原本方形或异形外轮廓，居中悬浮并保留呼吸边距",
-                    selected = appIconCropMode == QuickOpenConfig.CROP_DEFAULT_PADDING,
-                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_DEFAULT_PADDING) },
-                )
             }
         }
 
