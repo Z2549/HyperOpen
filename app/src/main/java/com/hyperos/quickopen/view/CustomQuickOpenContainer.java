@@ -250,7 +250,7 @@ public class CustomQuickOpenContainer extends FrameLayout {
             PointF pt = points.get(i);
 
             CircularBubbleView bubble = new CircularBubbleView(
-                getContext(), item, resolvedStyle, (int) iconSizePx, systemuiClassLoader
+                getContext(), item, resolvedStyle, (int) iconSizePx, systemuiClassLoader, config
             );
             bubble.targetX = pt.x;
             bubble.targetY = pt.y;

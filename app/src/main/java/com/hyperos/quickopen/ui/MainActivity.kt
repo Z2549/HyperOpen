@@ -163,6 +163,11 @@ fun QuickOpenApp(
     var iconSize by remember { mutableFloatStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableFloatStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableFloatStateOf(initialConfig.influenceRadius.toFloat()) }
+    var appIconCropMode by remember { mutableIntStateOf(initialConfig.appIconCropMode) }
+    var glyphPadEnabled by remember { mutableStateOf(initialConfig.glyphPadEnabled) }
+    var glyphPadColor by remember { mutableIntStateOf(initialConfig.glyphPadColor) }
+    var glyphPadMode by remember { mutableIntStateOf(initialConfig.glyphPadMode) }
+    var iconGlowEffect by remember { mutableStateOf(initialConfig.iconGlowEffect) }
     var themeMode by remember { mutableStateOf(initialConfig.themeMode) }
     var monetColors by remember { mutableStateOf(initialConfig.monetColors) }
     var barBlur by remember { mutableStateOf(initialConfig.barBlur) }
@@ -187,6 +192,11 @@ fun QuickOpenApp(
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
+        c.appIconCropMode = appIconCropMode
+        c.glyphPadEnabled = glyphPadEnabled
+        c.glyphPadColor = glyphPadColor
+        c.glyphPadMode = glyphPadMode
+        c.iconGlowEffect = iconGlowEffect
         c.themeMode = themeMode
         c.monetColors = monetColors
         c.barBlur = barBlur
@@ -330,6 +340,16 @@ fun QuickOpenApp(
                                 onMaxScale = { maxScale = it; persist() },
                                 influenceRadius = influenceRadius,
                                 onInfluenceRadius = { influenceRadius = it; persist() },
+                                appIconCropMode = appIconCropMode,
+                                onAppIconCropMode = { appIconCropMode = it; persist() },
+                                glyphPadEnabled = glyphPadEnabled,
+                                onGlyphPadEnabled = { glyphPadEnabled = it; persist() },
+                                glyphPadColor = glyphPadColor,
+                                onGlyphPadColor = { glyphPadColor = it; persist() },
+                                glyphPadMode = glyphPadMode,
+                                onGlyphPadMode = { glyphPadMode = it; persist() },
+                                iconGlowEffect = iconGlowEffect,
+                                onIconGlowEffect = { iconGlowEffect = it; persist() },
                                 shortcuts = shortcuts,
                                 onShortcutToggle = { item, enabled ->
                                     val i = shortcuts.indexOfFirst { it.id == item.id }
@@ -461,6 +481,11 @@ fun ParamsPage(
     iconSize: Float, onIconSize: (Float) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
+    appIconCropMode: Int, onAppIconCropMode: (Int) -> Unit,
+    glyphPadEnabled: Boolean, onGlyphPadEnabled: (Boolean) -> Unit,
+    glyphPadColor: Int, onGlyphPadColor: (Int) -> Unit,
+    glyphPadMode: Int, onGlyphPadMode: (Int) -> Unit,
+    iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
     shortcuts: SnapshotStateList<ShortcutItem>,
     onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
     onShortcutClick: (ShortcutItem) -> Unit,
@@ -583,6 +608,141 @@ fun ParamsPage(
                     valueRange = 60f..200f,
                     onValueChange = onInfluenceRadius,
                 )
+                SwitchPreference(
+                    title = "图标激活呼吸辉光动效",
+                    summary = "手指滑过选中目标时泛起柔光微晕反馈",
+                    checked = iconGlowEffect,
+                    onCheckedChange = onIconGlowEffect,
+                )
+            }
+        }
+
+        // ── 应用图标裁切与样式方案 ──
+        item(key = "app_icon_crop_title") { SmallTitle("应用图标形状方案") }
+        item(key = "app_icon_crop_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                RadioButtonPreference(
+                    title = "自适应外扩满铺 (推荐)",
+                    summary = "消除白底留白隔阂，图标背景自然铺满圆形气泡",
+                    selected = appIconCropMode == QuickOpenConfig.CROP_ADAPTIVE_EXPAND,
+                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_ADAPTIVE_EXPAND) },
+                )
+                RadioButtonPreference(
+                    title = "标准抗锯齿圆形裁切",
+                    summary = "无论方形还是异形应用图标，强制高精度裁切为圆徽章",
+                    selected = appIconCropMode == QuickOpenConfig.CROP_BITMAP_CIRCLE,
+                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_BITMAP_CIRCLE) },
+                )
+                RadioButtonPreference(
+                    title = "全屏无边距满铺 (大图标)",
+                    summary = "移除 22% 呼吸边距，应用图标完全撑满整个气泡",
+                    selected = appIconCropMode == QuickOpenConfig.CROP_FULL_BLEED,
+                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_FULL_BLEED) },
+                )
+                RadioButtonPreference(
+                    title = "原始气泡留白 (默认)",
+                    summary = "保持应用原本方形或异形外轮廓，居中悬浮并保留呼吸边距",
+                    selected = appIconCropMode == QuickOpenConfig.CROP_DEFAULT_PADDING,
+                    onClick = { onAppIconCropMode(QuickOpenConfig.CROP_DEFAULT_PADDING) },
+                )
+            }
+        }
+
+        // ── Miuix 矢量图标底垫与质感 ──
+        item(key = "glyph_pad_title") { SmallTitle("Miuix 矢量图标底垫与色彩") }
+        item(key = "glyph_pad_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                SwitchPreference(
+                    title = "启用 Miuix 图标圆形纯色/微透底垫",
+                    summary = "为镂空矢量图标添加独立圆形底板，媲美原生独立图标质感",
+                    checked = glyphPadEnabled,
+                    onCheckedChange = onGlyphPadEnabled,
+                )
+
+                if (glyphPadEnabled) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Text(
+                        text = "底垫渲染质感",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    )
+
+                    RadioButtonPreference(
+                        title = "磨砂微透底板 (推荐)",
+                        summary = "65% 半透明高光底板，颜色与背景毛玻璃相互交融",
+                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT,
+                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT) },
+                    )
+                    RadioButtonPreference(
+                        title = "饱满纯色底板",
+                        summary = "100% 不透明纯色实心圆，上方呈现白色高对比矢量",
+                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_SOLID,
+                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_SOLID) },
+                    )
+                    RadioButtonPreference(
+                        title = "反色渲染模式",
+                        summary = "微透亮白底板 + 彩色矢量图标",
+                        selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED,
+                        onClick = { onGlyphPadMode(QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) },
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Text(
+                        text = "快捷品牌色预设",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                    )
+
+                    // 预设品牌色盘
+                    val brandColors = listOf(
+                        "微信绿" to 0xFF07C160.toInt(),
+                        "支付宝蓝" to 0xFF1677FF.toInt(),
+                        "小米橙" to 0xFFFF6900.toInt(),
+                        "网易红" to 0xFFE60026.toInt(),
+                        "极客紫" to 0xFF7928CA.toInt(),
+                        "暗夜黑" to 0xFF1F2329.toInt(),
+                        "科技蓝" to 0xFF2A82E4.toInt(),
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        brandColors.forEach { (name, colorValue) ->
+                            val isSelectedColor = glyphPadColor == colorValue
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(colorValue))
+                                    .clickable { onGlyphPadColor(colorValue) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isSelectedColor) {
+                                    Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                }
             }
         }
 
@@ -746,10 +906,11 @@ fun ShortcutEditPage(
                 else -> IconGlyphFactory.createGlyph(iconGlyph.ifBlank { "sparkle" }, initialItem.tintColor)
             }
             if (d != null) {
+                val processed = com.hyperos.quickopen.view.AppIconCropProcessor.process(d, QuickOpenConfig.CROP_ADAPTIVE_EXPAND) ?: d
                 val bmp = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888)
                 val canvas = android.graphics.Canvas(bmp)
-                d.setBounds(0, 0, 96, 96)
-                d.draw(canvas)
+                processed.setBounds(0, 0, 96, 96)
+                processed.draw(canvas)
                 BitmapPainter(bmp.toComposeImageBitmap())
             } else null
         }

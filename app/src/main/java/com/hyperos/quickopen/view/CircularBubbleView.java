@@ -10,6 +10,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 
+import com.hyperos.quickopen.config.QuickOpenConfig;
 import com.hyperos.quickopen.factory.HyperOSMaterialFactory;
 import com.hyperos.quickopen.model.ShortcutItem;
 
@@ -22,13 +23,15 @@ public class CircularBubbleView extends FrameLayout {
     private boolean isSelected = false;
 
     private int activeStyle;
+    private final QuickOpenConfig config;
     private final ImageView iconView;
     private View systemBlurView;
 
-    public CircularBubbleView(@NonNull Context context, ShortcutItem item, int style, int sizePx, ClassLoader classLoader) {
+    public CircularBubbleView(@NonNull Context context, ShortcutItem item, int style, int sizePx, ClassLoader classLoader, QuickOpenConfig config) {
         super(context);
         this.item = item;
         this.activeStyle = style;
+        this.config = config;
 
         setLayoutParams(new LayoutParams(sizePx, sizePx));
         setClipToOutline(true);
@@ -45,7 +48,9 @@ public class CircularBubbleView extends FrameLayout {
         // 中心图标
         iconView = new ImageView(context);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int iconPadding = (int) (sizePx * 0.22f);
+
+        boolean isFullBleed = config != null && config.appIconCropMode == QuickOpenConfig.CROP_FULL_BLEED;
+        int iconPadding = isFullBleed ? 0 : (int) (sizePx * 0.22f);
         iconView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
 
         // 绑定图标 (优先从包名解析应用图标，或使用默认彩色矢量图形)
@@ -54,6 +59,10 @@ public class CircularBubbleView extends FrameLayout {
         LayoutParams iconLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
         iconLp.gravity = Gravity.CENTER;
         addView(iconView, iconLp);
+    }
+
+    public CircularBubbleView(@NonNull Context context, ShortcutItem item, int style, int sizePx, ClassLoader classLoader) {
+        this(context, item, style, sizePx, classLoader, null);
     }
 
     private void refreshBackground() {
@@ -69,10 +78,13 @@ public class CircularBubbleView extends FrameLayout {
         if (this.isSelected != selected) {
             this.isSelected = selected;
             refreshBackground();
-            // 选中时图标轻微放大与提亮
+
+            boolean glow = config == null || config.iconGlowEffect;
+            float targetScale = selected ? (glow ? 1.18f : 1.12f) : 1.0f;
+
             iconView.animate()
-                .scaleX(selected ? 1.12f : 1.0f)
-                .scaleY(selected ? 1.12f : 1.0f)
+                .scaleX(targetScale)
+                .scaleY(targetScale)
                 .setDuration(120)
                 .start();
         }
@@ -89,8 +101,8 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     private void loadItemIcon() {
-        // 统一由 IconGlyphFactory 解析：应用图标 → Intent 目标应用 → 内置矢量符号
-        iconView.setImageDrawable(IconGlyphFactory.resolve(getContext(), item));
+        // 统一由 IconGlyphFactory 解析，传入当前实时配置（裁切模式、Miuix 底垫及颜色等）
+        iconView.setImageDrawable(IconGlyphFactory.resolve(getContext(), item, config));
         iconView.setColorFilter(null);
     }
 }

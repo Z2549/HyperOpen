@@ -17,6 +17,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.hyperos.quickopen.config.QuickOpenConfig;
 import com.hyperos.quickopen.model.ShortcutItem;
 
 import java.util.HashMap;
@@ -53,35 +54,39 @@ public final class IconGlyphFactory {
     }
 
     /**
-     * 统一解析入口：优先使用自定义图标设置（Miuix 矢量图标或手动指定应用图标），
-     * 其次回退到动作目标应用图标或内置符号。
+     * 统一解析入口（重载 1：带 QuickOpenConfig 参数，支持裁切模式与底垫配置）
      */
     @NonNull
-    public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item) {
+    public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item, @Nullable QuickOpenConfig config) {
         if (ctx == null || item == null) return createGlyph("sparkle", 0xFFFFFFFF);
 
         // 1) 优先级最高：手动指定的自定义 Miuix 矢量图标 / 内置符号
         if (notBlank(item.iconGlyph)) {
-            Drawable d = resolveMiuixIcon(item.iconGlyph.trim(), item.tintColor);
+            boolean padEnabled = config != null && config.glyphPadEnabled;
+            int padColor = config != null ? config.glyphPadColor : 0xFF2A82E4;
+            int padMode = config != null ? config.glyphPadMode : QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT;
+            Drawable d = resolveMiuixIcon(item.iconGlyph.trim(), item.tintColor, padEnabled, padColor, padMode);
             if (d != null) return d;
         }
+
+        int cropMode = config != null ? config.appIconCropMode : QuickOpenConfig.CROP_ADAPTIVE_EXPAND;
 
         // 2) 优先级次之：手动指定应用包名图标
         if (notBlank(item.iconPackage)) {
             Drawable d = appIcon(ctx, item.iconPackage.trim());
-            if (d != null) return d;
+            if (d != null) return AppIconCropProcessor.process(d, cropMode);
         }
 
         // 3) 动作默认行为：APP 类型直接取目标应用图标
         if (ShortcutItem.ACTION_APP.equals(item.actionType) && notBlank(item.actionPayload)) {
             Drawable d = appIcon(ctx, item.actionPayload.trim());
-            if (d != null) return d;
+            if (d != null) return AppIconCropProcessor.process(d, cropMode);
         }
 
         // 4) 动作默认行为：INTENT_URI 解析目标应用图标
         if (ShortcutItem.ACTION_INTENT_URI.equals(item.actionType) && notBlank(item.actionPayload)) {
             Drawable d = iconFromIntent(ctx, item.actionPayload);
-            if (d != null) return d;
+            if (d != null) return AppIconCropProcessor.process(d, cropMode);
         }
 
         // 5) 关键词匹配内置符号兜底
@@ -89,15 +94,23 @@ public final class IconGlyphFactory {
     }
 
     /**
+     * 统一解析入口（重载 2：默认回退到默认设置）
+     */
+    @NonNull
+    public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item) {
+        return resolve(ctx, item, null);
+    }
+
+    /**
      * 解析 Miuix 矢量图标或兼容内置符号
      */
     @Nullable
-    public static Drawable resolveMiuixIcon(@NonNull String glyphKey, int tintColor) {
+    public static Drawable resolveMiuixIcon(@NonNull String glyphKey, int tintColor, boolean padEnabled, int padColor, int padMode) {
         try {
             androidx.compose.ui.graphics.vector.ImageVector v =
                 com.hyperos.quickopen.ui.MiuixIconRegistry.INSTANCE.find(glyphKey, null);
             if (v != null) {
-                return new MiuixVectorDrawable(v, tintColor);
+                return new MiuixVectorDrawable(v, tintColor, padEnabled, padColor, padMode);
             }
         } catch (Throwable ignored) {}
 
@@ -106,6 +119,11 @@ public final class IconGlyphFactory {
             clean = clean.split(":")[0].trim();
         }
         return createGlyph(clean.toLowerCase(), tintColor);
+    }
+
+    @Nullable
+    public static Drawable resolveMiuixIcon(@NonNull String glyphKey, int tintColor) {
+        return resolveMiuixIcon(glyphKey, tintColor, false, 0, QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT);
     }
 
     /**

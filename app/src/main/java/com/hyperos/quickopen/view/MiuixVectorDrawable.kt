@@ -14,14 +14,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.toPath
+import com.hyperos.quickopen.config.QuickOpenConfig
 
 /**
  * 将 Compose Miuix [ImageVector] 真实矢量指令转为 Android 平台 [Drawable]，
- * 可直接用于 SystemUI View 视图层（如 ImageView / CircularBubbleView）。
+ * 支持圆形纯色/微透/反色衬底渲染与呼吸辉光。
  */
 class MiuixVectorDrawable(
     val vector: ImageVector,
     tintColor: Int,
+    private val padEnabled: Boolean = false,
+    private val padColor: Int = 0xFF2A82E4.toInt(),
+    private val padMode: Int = QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT,
 ) : Drawable() {
 
     private data class PathElement(
@@ -30,16 +34,38 @@ class MiuixVectorDrawable(
     )
 
     private val elements = mutableListOf<PathElement>()
-    private val renderColor: Int = blendWithWhite(if (tintColor == 0) 0xFFFFFFFF.toInt() else tintColor, 0.18f)
+    private val padPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val padBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // 图标前景色
+    private val iconColor: Int = when {
+        !padEnabled -> blendWithWhite(if (tintColor == 0) 0xFFFFFFFF.toInt() else tintColor, 0.18f)
+        padMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED -> if (tintColor != 0) tintColor else padColor
+        else -> 0xFFFFFFFF.toInt() // 饱满底色或微透底色上始终使用高清晰纯白
+    }
 
     init {
+        if (padEnabled) {
+            val baseColor = if (padColor != 0) padColor else tintColor
+            padPaint.style = Paint.Style.FILL
+            padPaint.color = when (padMode) {
+                QuickOpenConfig.GLYPH_PAD_MODE_SOLID -> Color.rgb(Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor))
+                QuickOpenConfig.GLYPH_PAD_MODE_INVERTED -> Color.argb(48, 255, 255, 255)
+                else -> Color.argb(165, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)) // 微透
+            }
+
+            padBorderPaint.style = Paint.Style.STROKE
+            padBorderPaint.strokeWidth = 2.5f
+            padBorderPaint.color = Color.argb(45, 255, 255, 255)
+        }
+
         fun traverse(group: VectorGroup) {
             for (node in group) {
                 when (node) {
                     is VectorPath -> {
                         val p = node.pathData.toPath().asAndroidPath()
                         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = renderColor
+                            color = iconColor
                         }
 
                         if (node.stroke != null) {
@@ -73,9 +99,18 @@ class MiuixVectorDrawable(
         val b: Rect = bounds
         if (b.width() <= 0 || b.height() <= 0) return
 
+        // 1) 绘制圆形底垫（如启用）
+        if (padEnabled) {
+            val radius = Math.min(b.width(), b.height()) / 2f
+            canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius, padPaint)
+            canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius - 1.25f, padBorderPaint)
+        }
+
+        // 2) 绘制 Miuix 矢量线条
         val vw = if (vector.viewportWidth > 0f) vector.viewportWidth else 24f
         val vh = if (vector.viewportHeight > 0f) vector.viewportHeight else 24f
-        val scale = Math.min(b.width() / vw, b.height() / vh) * 0.82f
+        val contentScaleFactor = if (padEnabled) 0.58f else 0.82f
+        val scale = Math.min(b.width() / vw, b.height() / vh) * contentScaleFactor
 
         canvas.save()
         canvas.translate(b.centerX() - (vw / 2f) * scale, b.centerY() - (vh / 2f) * scale)
@@ -92,6 +127,8 @@ class MiuixVectorDrawable(
         for (elem in elements) {
             elem.paint.alpha = alpha
         }
+        padPaint.alpha = alpha
+        padBorderPaint.alpha = alpha
     }
 
     override fun setColorFilter(colorFilter: ColorFilter?) {

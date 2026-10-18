@@ -20,11 +20,14 @@ object IconPainter {
     private const val SIZE = 96
     private val cache = LinkedHashMap<String, BitmapPainter>(64, 0.75f, true)
 
-    fun resolve(item: ShortcutItem, ctx: Context): Painter {
-        val key = "${item.id}|${item.iconPackage}|${item.iconGlyph}|${item.actionType}|${item.actionPayload}"
+    fun resolve(item: ShortcutItem, ctx: Context, cropMode: Int = 2): Painter {
+        val key = "${item.id}|${item.iconPackage}|${item.iconGlyph}|${item.actionType}|${item.actionPayload}|$cropMode"
         synchronized(cache) { cache[key]?.let { return it } }
         val d: Drawable = IconGlyphFactory.resolve(ctx, item)
-        val painter = rasterize(key, d)
+        val processed = if (item.iconGlyph.isBlank()) {
+            com.hyperos.quickopen.view.AppIconCropProcessor.process(d, cropMode) ?: d
+        } else d
+        val painter = rasterize(key, processed)
         return painter
     }
 

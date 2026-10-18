@@ -26,6 +26,17 @@ public class QuickOpenConfig {
     public static final int MATERIAL_SOFT_GLASS = 1;
     public static final int MATERIAL_GAUSSIAN_BLUR = 2;
 
+    /** 应用图标裁切方案：0=默认气泡留白, 1=抗锯齿圆形裁切, 2=自适应外扩满铺, 3=全屏满铺气泡 */
+    public static final int CROP_DEFAULT_PADDING = 0;
+    public static final int CROP_BITMAP_CIRCLE = 1;
+    public static final int CROP_ADAPTIVE_EXPAND = 2;
+    public static final int CROP_FULL_BLEED = 3;
+
+    /** Miuix 矢量图标底垫渲染模式：0=彩色底板+白色图标, 1=微透磨砂底板, 2=反色(微透浅底+彩色图标) */
+    public static final int GLYPH_PAD_MODE_SOLID = 0;
+    public static final int GLYPH_PAD_MODE_TRANSLUCENT = 1;
+    public static final int GLYPH_PAD_MODE_INVERTED = 2;
+
     /** 界面风格：0=Material You 深色玻璃, 1=MIUIX 浅色卡片 */
     public static final int UI_STYLE_MATERIAL = 0;
     public static final int UI_STYLE_MIUIX = 1;
@@ -63,6 +74,18 @@ public class QuickOpenConfig {
     public int iconSize = 58;          // dp
     public float maxScale = 1.40f;
     public int influenceRadius = 120;  // dp
+
+    /** 应用图标裁切方案 (CROP_DEFAULT_PADDING / CROP_BITMAP_CIRCLE / CROP_ADAPTIVE_EXPAND / CROP_FULL_BLEED) */
+    public int appIconCropMode = CROP_ADAPTIVE_EXPAND;
+    /** Miuix 矢量图标是否启用圆形底垫 */
+    public boolean glyphPadEnabled = true;
+    /** Miuix 矢量图标底垫颜色 (ARGB) */
+    public int glyphPadColor = 0xFF2A82E4;
+    /** Miuix 矢量图标底垫质感模式 (GLYPH_PAD_MODE_SOLID / TRANSLUCENT / INVERTED) */
+    public int glyphPadMode = GLYPH_PAD_MODE_TRANSLUCENT;
+    /** 图标呼吸/激活外发光辉光动效 */
+    public boolean iconGlowEffect = true;
+
     public List<ShortcutItem> shortcuts = new ArrayList<>();
 
     private static XSharedPreferences xPrefs;
@@ -87,6 +110,11 @@ public class QuickOpenConfig {
                     config.iconSize = bundle.getInt("icon_size", 58);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 120);
+                    config.appIconCropMode = bundle.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
+                    config.glyphPadEnabled = bundle.getBoolean("glyph_pad_enabled", true);
+                    config.glyphPadColor = bundle.getInt("glyph_pad_color", 0xFF2A82E4);
+                    config.glyphPadMode = bundle.getInt("glyph_pad_mode", GLYPH_PAD_MODE_TRANSLUCENT);
+                    config.iconGlowEffect = bundle.getBoolean("icon_glow_effect", true);
 
                     String jsonStr = bundle.getString("shortcuts_json", null);
                     config.shortcuts = parseShortcutsJson(jsonStr);
@@ -120,6 +148,11 @@ public class QuickOpenConfig {
         config.iconSize = xPrefs.getInt("icon_size", 58);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 120);
+        config.appIconCropMode = xPrefs.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
+        config.glyphPadEnabled = xPrefs.getBoolean("glyph_pad_enabled", true);
+        config.glyphPadColor = xPrefs.getInt("glyph_pad_color", 0xFF2A82E4);
+        config.glyphPadMode = xPrefs.getInt("glyph_pad_mode", GLYPH_PAD_MODE_TRANSLUCENT);
+        config.iconGlowEffect = xPrefs.getBoolean("icon_glow_effect", true);
 
         String jsonStr = xPrefs.getString("shortcuts_json", null);
         config.shortcuts = parseShortcutsJson(jsonStr);
@@ -148,6 +181,11 @@ public class QuickOpenConfig {
         config.iconSize = sp.getInt("icon_size", 58);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 120);
+        config.appIconCropMode = sp.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
+        config.glyphPadEnabled = sp.getBoolean("glyph_pad_enabled", true);
+        config.glyphPadColor = sp.getInt("glyph_pad_color", 0xFF2A82E4);
+        config.glyphPadMode = sp.getInt("glyph_pad_mode", GLYPH_PAD_MODE_TRANSLUCENT);
+        config.iconGlowEffect = sp.getBoolean("icon_glow_effect", true);
 
         String jsonStr = sp.getString("shortcuts_json", null);
         config.shortcuts = parseShortcutsJson(jsonStr);
@@ -176,6 +214,11 @@ public class QuickOpenConfig {
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
+            .putInt("app_icon_crop_mode", appIconCropMode)
+            .putBoolean("glyph_pad_enabled", glyphPadEnabled)
+            .putInt("glyph_pad_color", glyphPadColor)
+            .putInt("glyph_pad_mode", glyphPadMode)
+            .putBoolean("icon_glow_effect", iconGlowEffect)
             .putString("shortcuts_json", serializeShortcutsJson(shortcuts))
             .apply();
 
