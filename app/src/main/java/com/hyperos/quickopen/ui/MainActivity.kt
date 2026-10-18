@@ -163,6 +163,8 @@ fun QuickOpenApp(
     var iconSize by remember { mutableFloatStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableFloatStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableFloatStateOf(initialConfig.influenceRadius.toFloat()) }
+    var bubblePaddingPercent by remember { mutableFloatStateOf(initialConfig.bubblePaddingPercent.toFloat()) }
+    var selectedIconScale by remember { mutableFloatStateOf(initialConfig.selectedIconScale) }
     var appIconCropMode by remember { mutableIntStateOf(initialConfig.appIconCropMode) }
     var glyphPadEnabled by remember { mutableStateOf(initialConfig.glyphPadEnabled) }
     var glyphPadColor by remember { mutableIntStateOf(initialConfig.glyphPadColor) }
@@ -192,6 +194,8 @@ fun QuickOpenApp(
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
+        c.bubblePaddingPercent = bubblePaddingPercent.toInt()
+        c.selectedIconScale = selectedIconScale
         c.appIconCropMode = appIconCropMode
         c.glyphPadEnabled = glyphPadEnabled
         c.glyphPadColor = glyphPadColor
@@ -340,6 +344,10 @@ fun QuickOpenApp(
                                 onMaxScale = { maxScale = it; persist() },
                                 influenceRadius = influenceRadius,
                                 onInfluenceRadius = { influenceRadius = it; persist() },
+                                bubblePaddingPercent = bubblePaddingPercent,
+                                onBubblePaddingPercent = { bubblePaddingPercent = it; persist() },
+                                selectedIconScale = selectedIconScale,
+                                onSelectedIconScale = { selectedIconScale = it; persist() },
                                 appIconCropMode = appIconCropMode,
                                 onAppIconCropMode = { appIconCropMode = it; persist() },
                                 iconGlowEffect = iconGlowEffect,
@@ -475,6 +483,8 @@ fun ParamsPage(
     iconSize: Float, onIconSize: (Float) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
+    bubblePaddingPercent: Float, onBubblePaddingPercent: (Float) -> Unit,
+    selectedIconScale: Float, onSelectedIconScale: (Float) -> Unit,
     appIconCropMode: Int, onAppIconCropMode: (Int) -> Unit,
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
     shortcuts: SnapshotStateList<ShortcutItem>,
@@ -598,6 +608,20 @@ fun ParamsPage(
                     value = influenceRadius,
                     valueRange = 60f..200f,
                     onValueChange = onInfluenceRadius,
+                )
+                SliderPreference(
+                    title = "气泡内部留白比例",
+                    valueText = "${bubblePaddingPercent.toInt()} %",
+                    value = bubblePaddingPercent,
+                    valueRange = 0f..40f,
+                    onValueChange = onBubblePaddingPercent,
+                )
+                SliderPreference(
+                    title = "选中时图标缩放倍率",
+                    valueText = "%.2f x".format(selectedIconScale),
+                    value = selectedIconScale,
+                    valueRange = 1.00f..1.50f,
+                    onValueChange = onSelectedIconScale,
                 )
                 SwitchPreference(
                     title = "图标激活呼吸辉光动效",

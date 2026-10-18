@@ -58,8 +58,12 @@ public class CircularBubbleView extends FrameLayout {
         iconView = new ImageView(context);
         iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
 
-        boolean isFullBleed = config != null && config.appIconCropMode == QuickOpenConfig.CROP_FULL_BLEED;
-        int iconPadding = isFullBleed ? 0 : (int) (sizePx * 0.22f);
+        // 留白比例计算：如果设置为全屏无边距满铺则为 0%，否则使用自定义百分比（默认 18%）
+        int paddingPercent = 18;
+        if (config != null) {
+            paddingPercent = config.appIconCropMode == QuickOpenConfig.CROP_FULL_BLEED ? 0 : config.bubblePaddingPercent;
+        }
+        int iconPadding = (int) (sizePx * (paddingPercent / 100f));
         iconView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
 
         // 绑定图标 (优先从包名解析应用图标，或使用默认彩色矢量图形)
@@ -88,8 +92,10 @@ public class CircularBubbleView extends FrameLayout {
             this.isSelected = selected;
             refreshBackground();
 
-            boolean glow = config == null || config.iconGlowEffect;
-            float targetScale = selected ? (glow ? 1.18f : 1.12f) : 1.0f;
+            float targetScale = 1.0f;
+            if (selected) {
+                targetScale = config != null ? config.selectedIconScale : 1.15f;
+            }
 
             iconView.animate()
                 .scaleX(targetScale)

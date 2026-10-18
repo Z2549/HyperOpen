@@ -75,6 +75,11 @@ public class QuickOpenConfig {
     public float maxScale = 1.40f;
     public int influenceRadius = 120;  // dp
 
+    /** 气泡内部图标留白比例 (0% ~ 40%，默认 18%，0% 即全屏满铺) */
+    public int bubblePaddingPercent = 18;
+    /** 手指选中图标时气泡内图标的缩放倍率 (1.00x ~ 1.50x，默认 1.15x) */
+    public float selectedIconScale = 1.15f;
+
     /** 应用图标裁切方案 (CROP_DEFAULT_PADDING / CROP_BITMAP_CIRCLE / CROP_ADAPTIVE_EXPAND / CROP_FULL_BLEED) */
     public int appIconCropMode = CROP_ADAPTIVE_EXPAND;
     /** Miuix 矢量图标是否启用圆形底垫 */
@@ -110,6 +115,8 @@ public class QuickOpenConfig {
                     config.iconSize = bundle.getInt("icon_size", 58);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 120);
+                    config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
+                    config.selectedIconScale = bundle.getFloat("selected_icon_scale", 1.15f);
                     config.appIconCropMode = bundle.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
                     config.glyphPadEnabled = bundle.getBoolean("glyph_pad_enabled", true);
                     config.glyphPadColor = bundle.getInt("glyph_pad_color", 0xFF2A82E4);
@@ -148,6 +155,8 @@ public class QuickOpenConfig {
         config.iconSize = xPrefs.getInt("icon_size", 58);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 120);
+        config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
+        config.selectedIconScale = xPrefs.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = xPrefs.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
         config.glyphPadEnabled = xPrefs.getBoolean("glyph_pad_enabled", true);
         config.glyphPadColor = xPrefs.getInt("glyph_pad_color", 0xFF2A82E4);
@@ -181,6 +190,8 @@ public class QuickOpenConfig {
         config.iconSize = sp.getInt("icon_size", 58);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 120);
+        config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
+        config.selectedIconScale = sp.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = sp.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
         config.glyphPadEnabled = sp.getBoolean("glyph_pad_enabled", true);
         config.glyphPadColor = sp.getInt("glyph_pad_color", 0xFF2A82E4);
@@ -214,6 +225,8 @@ public class QuickOpenConfig {
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
+            .putInt("bubble_padding_percent", bubblePaddingPercent)
+            .putFloat("selected_icon_scale", selectedIconScale)
             .putInt("app_icon_crop_mode", appIconCropMode)
             .putBoolean("glyph_pad_enabled", glyphPadEnabled)
             .putInt("glyph_pad_color", glyphPadColor)
