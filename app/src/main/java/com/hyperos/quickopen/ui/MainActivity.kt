@@ -396,11 +396,13 @@ fun QuickOpenApp(
                                         persist()
                                     },
                                     onShortcutClick = { item ->
+                                        requestEditBackTrigger = 0
                                         editingItem = item.copy()
                                         isNewShortcut = false
                                         subPage = 2
                                     },
                                     onAddShortcut = {
+                                        requestEditBackTrigger = 0
                                         editingItem = ShortcutItem(
                                             UUID.randomUUID().toString(),
                                             "新快捷方式",
@@ -907,9 +909,11 @@ fun ShortcutEditPage(
         enabled != initialItem.enabled
     }
 
-    // 响应顶部返回键或系统返回手势
+    // 响应顶部返回键或系统返回手势（记录初始 trigger，只有在当前页面内新发生点击时才响应）
+    var lastHandledTrigger by remember { mutableIntStateOf(backTrigger) }
     LaunchedEffect(backTrigger) {
-        if (backTrigger > 0) {
+        if (backTrigger > lastHandledTrigger) {
+            lastHandledTrigger = backTrigger
             if (isModified || isNew) {
                 showUnsavedDialog = true
             } else {
