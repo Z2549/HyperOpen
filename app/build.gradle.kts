@@ -22,7 +22,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -50,16 +52,8 @@ dependencies {
 
     implementation("androidx.activity:activity-compose:1.11.0")
 
-    implementation("androidx.compose.material:material-icons-core-android:1.7.8")
-    implementation("androidx.compose.material3:material3:1.4.0")
-    implementation("androidx.compose.ui:ui-android:1.10.5")
-
     // ---- MIUIX 0.9.4（官方推荐模块化依赖）----
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
-    implementation("org.jetbrains.compose.runtime:runtime:1.12.0")
-    implementation("org.jetbrains.compose.foundation:foundation:1.12.0")
-    implementation("org.jetbrains.compose.material3:material3-window-size-class:1.12.0-alpha03")
-    implementation("org.jetbrains.compose.ui:ui:1.12.0")
 }
