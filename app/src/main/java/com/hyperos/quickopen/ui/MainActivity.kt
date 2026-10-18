@@ -104,10 +104,12 @@ import top.yukonga.miuix.kmp.icon.extended.ListView
 import top.yukonga.miuix.kmp.icon.extended.Photos
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Reset
+import top.yukonga.miuix.kmp.icon.extended.ScreenMirroring
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Theme
 import top.yukonga.miuix.kmp.icon.extended.Tune
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -247,6 +249,7 @@ fun QuickOpenApp(
         val title = when (subPage) {
             1 -> "主题设置"
             2 -> if (isNewShortcut) "新建快捷方式" else "快捷方式参数设置"
+            3 -> "指纹快捷整体预览"
             else -> when (page) {
                 0 -> "参数配置"
                 1 -> "快捷项目"
@@ -350,6 +353,61 @@ fun QuickOpenApp(
                             )
                         }
                     }
+                    3 -> {
+                        // 指纹快捷方式整体预览与长按自由排版界面
+                        val currentConfig = remember(materialStyle, offsetY, regionDiameter, showRegionBg, showHeaderPillBg, iconSize, maxScale, influenceRadius, iconSpacingOffset, bubblePaddingPercent, selectedIconScale, appIconCropMode, iconGlowEffect, shortcuts) {
+                            val c = QuickOpenConfig.loadFromApp(ctx)
+                            c.materialStyle = materialStyle
+                            c.offsetY = offsetY.toInt()
+                            c.regionDiameter = regionDiameter.toInt()
+                            c.showRegionBg = showRegionBg
+                            c.showHeaderPillBg = showHeaderPillBg
+                            c.iconSize = iconSize.toInt()
+                            c.maxScale = maxScale
+                            c.influenceRadius = influenceRadius.toInt()
+                            c.iconSpacingOffset = iconSpacingOffset.toInt()
+                            c.bubblePaddingPercent = bubblePaddingPercent.toInt()
+                            c.selectedIconScale = selectedIconScale
+                            c.appIconCropMode = appIconCropMode
+                            c.iconGlowEffect = iconGlowEffect
+                            c.shortcuts = ArrayList(shortcuts)
+                            c
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)
+                                .background(Color(0xFF0C0E14)),
+                        ) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { viewCtx ->
+                                    QuickOpenPreviewView(
+                                        context = viewCtx,
+                                        config = currentConfig,
+                                        onOrderChanged = { newOrder ->
+                                            // 保持启用/未启用项与整体列表同步重排
+                                            val reordered = ArrayList<ShortcutItem>()
+                                            reordered.addAll(newOrder)
+                                            for (orig in shortcuts) {
+                                                if (reordered.none { it.id == orig.id }) {
+                                                    reordered.add(orig)
+                                                }
+                                            }
+                                            shortcuts.clear()
+                                            shortcuts.addAll(reordered)
+                                            persist()
+                                            Toast.makeText(viewCtx, "已更新并保存快捷方式排版", Toast.LENGTH_SHORT).show()
+                                        },
+                                    )
+                                },
+                                update = { previewView ->
+                                    previewView.setupLayout()
+                                },
+                            )
+                        }
+                    }
                     else -> {
                         when (page) {
                             0 -> {
@@ -387,6 +445,9 @@ fun QuickOpenApp(
                                 ShortcutsManagementPage(
                                     contentPadding = innerPadding,
                                     shortcuts = shortcuts,
+                                    onOpenPreview = {
+                                        subPage = 3
+                                    },
                                     onShortcutToggle = { item, enabled ->
                                         val i = shortcuts.indexOfFirst { it.id == item.id }
                                         if (i >= 0) {
@@ -711,6 +772,7 @@ fun ParamsPage(
 fun ShortcutsManagementPage(
     contentPadding: PaddingValues,
     shortcuts: SnapshotStateList<ShortcutItem>,
+    onOpenPreview: () -> Unit,
     onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
     onShortcutClick: (ShortcutItem) -> Unit,
     onAddShortcut: () -> Unit,
@@ -731,6 +793,19 @@ fun ShortcutsManagementPage(
         item(key = "actions_card") {
             Box(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Card(modifier = Modifier.fillMaxWidth()) {
+                    ArrowPreference(
+                        title = "快捷方式整体预览",
+                        summary = "所见即所得，支持长按图标拖拽调整蜂窝顺序",
+                        startAction = {
+                            Icon(
+                                imageVector = MiuixIcons.ScreenMirroring,
+                                contentDescription = null,
+                                tint = MiuixTheme.colorScheme.primary,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                        },
+                        onClick = onOpenPreview,
+                    )
                     ArrowPreference(
                         title = "新建快捷方式",
                         summary = "添加自定义应用、Intent 或快捷指令",
