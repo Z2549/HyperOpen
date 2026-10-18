@@ -102,6 +102,7 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.icon.extended.ListView
 import top.yukonga.miuix.kmp.icon.extended.Photos
+import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Settings
@@ -1019,6 +1020,18 @@ fun ShortcutEditPage(
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
+                        Spacer(Modifier.height(14.dp))
+                        TextButton(
+                            text = "立即启动测试",
+                            onClick = {
+                                val testItem = initialItem.copy().apply {
+                                    this.title = title.trim().ifBlank { "测试快捷方式" }
+                                    this.actionType = actionType
+                                    this.actionPayload = actionPayload.trim()
+                                }
+                                testItem.execute(ctx)
+                            },
+                        )
                     }
                 }
             }
