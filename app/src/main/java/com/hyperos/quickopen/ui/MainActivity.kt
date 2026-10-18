@@ -100,6 +100,7 @@ import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Edit
+import top.yukonga.miuix.kmp.icon.extended.ListView
 import top.yukonga.miuix.kmp.icon.extended.Photos
 import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Scan
@@ -163,6 +164,7 @@ fun QuickOpenApp(
     var iconSize by remember { mutableFloatStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableFloatStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableFloatStateOf(initialConfig.influenceRadius.toFloat()) }
+    var iconSpacingOffset by remember { mutableFloatStateOf(initialConfig.iconSpacingOffset.toFloat()) }
     var bubblePaddingPercent by remember { mutableFloatStateOf(initialConfig.bubblePaddingPercent.toFloat()) }
     var selectedIconScale by remember { mutableFloatStateOf(initialConfig.selectedIconScale) }
     var appIconCropMode by remember { mutableIntStateOf(initialConfig.appIconCropMode) }
@@ -194,6 +196,7 @@ fun QuickOpenApp(
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
+        c.iconSpacingOffset = iconSpacingOffset.toInt()
         c.bubblePaddingPercent = bubblePaddingPercent.toInt()
         c.selectedIconScale = selectedIconScale
         c.appIconCropMode = appIconCropMode
@@ -235,12 +238,17 @@ fun QuickOpenApp(
         val title = when (subPage) {
             1 -> "主题设置"
             2 -> if (isNewShortcut) "新建快捷方式" else "快捷方式参数设置"
-            else -> if (page == 0) "参数配置" else "软件设置"
+            else -> when (page) {
+                0 -> "参数配置"
+                1 -> "快捷项目"
+                else -> "软件设置"
+            }
         }
 
         val navItems = remember {
             listOf(
                 NavigationItem("参数配置", MiuixIcons.Tune),
+                NavigationItem("快捷项目", MiuixIcons.ListView),
                 NavigationItem("软件设置", MiuixIcons.Settings),
             )
         }
@@ -325,76 +333,86 @@ fun QuickOpenApp(
                         }
                     }
                     else -> {
-                        if (page == 0) {
-                            ParamsPage(
-                                contentPadding = innerPadding,
-                                materialStyle = materialStyle,
-                                onMaterialStyle = { materialStyle = it; persist() },
-                                offsetY = offsetY,
-                                onOffsetY = { offsetY = it; persist() },
-                                regionDiameter = regionDiameter,
-                                onRegionDiameter = { regionDiameter = it; persist() },
-                                showRegionBg = showRegionBg,
-                                onShowRegionBg = { showRegionBg = it; persist() },
-                                showHeaderPillBg = showHeaderPillBg,
-                                onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
-                                iconSize = iconSize,
-                                onIconSize = { iconSize = it; persist() },
-                                maxScale = maxScale,
-                                onMaxScale = { maxScale = it; persist() },
-                                influenceRadius = influenceRadius,
-                                onInfluenceRadius = { influenceRadius = it; persist() },
-                                bubblePaddingPercent = bubblePaddingPercent,
-                                onBubblePaddingPercent = { bubblePaddingPercent = it; persist() },
-                                selectedIconScale = selectedIconScale,
-                                onSelectedIconScale = { selectedIconScale = it; persist() },
-                                appIconCropMode = appIconCropMode,
-                                onAppIconCropMode = { appIconCropMode = it; persist() },
-                                iconGlowEffect = iconGlowEffect,
-                                onIconGlowEffect = { iconGlowEffect = it; persist() },
-                                shortcuts = shortcuts,
-                                onShortcutToggle = { item, enabled ->
-                                    val i = shortcuts.indexOfFirst { it.id == item.id }
-                                    if (i >= 0) {
-                                        val updated = item.copy().apply { this.enabled = enabled }
-                                        shortcuts[i] = updated
-                                    }
-                                    persist()
-                                },
-                                onShortcutClick = { item ->
-                                    editingItem = item.copy()
-                                    isNewShortcut = false
-                                    subPage = 2
-                                },
-                                onAddShortcut = {
-                                    editingItem = ShortcutItem(
-                                        UUID.randomUUID().toString(),
-                                        "新快捷方式",
-                                        "轻触打开",
-                                        ShortcutItem.ACTION_APP,
-                                        "",
-                                        "",
-                                        "sparkle",
-                                        0xFF3482FF.toInt(),
-                                        true,
-                                    )
-                                    isNewShortcut = true
-                                    subPage = 2
-                                },
-                                onResetShortcuts = {
-                                    shortcuts.clear()
-                                    shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts())
-                                    persist()
-                                    Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
-                                },
-                            )
-                        } else {
-                            SettingsPage(
-                                contentPadding = innerPadding,
-                                safetyTick = safetyTick,
-                                onSafetyRefresh = { safetyTick++ },
-                                onOpenThemePage = { subPage = 1 },
-                            )
+                        when (page) {
+                            0 -> {
+                                ParamsPage(
+                                    contentPadding = innerPadding,
+                                    materialStyle = materialStyle,
+                                    onMaterialStyle = { materialStyle = it; persist() },
+                                    offsetY = offsetY,
+                                    onOffsetY = { offsetY = it; persist() },
+                                    regionDiameter = regionDiameter,
+                                    onRegionDiameter = { regionDiameter = it; persist() },
+                                    showRegionBg = showRegionBg,
+                                    onShowRegionBg = { showRegionBg = it; persist() },
+                                    showHeaderPillBg = showHeaderPillBg,
+                                    onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
+                                    iconSize = iconSize,
+                                    onIconSize = { iconSize = it; persist() },
+                                    maxScale = maxScale,
+                                    onMaxScale = { maxScale = it; persist() },
+                                    influenceRadius = influenceRadius,
+                                    onInfluenceRadius = { influenceRadius = it; persist() },
+                                    iconSpacingOffset = iconSpacingOffset,
+                                    onIconSpacingOffset = { iconSpacingOffset = it; persist() },
+                                    bubblePaddingPercent = bubblePaddingPercent,
+                                    onBubblePaddingPercent = { bubblePaddingPercent = it; persist() },
+                                    selectedIconScale = selectedIconScale,
+                                    onSelectedIconScale = { selectedIconScale = it; persist() },
+                                    appIconCropMode = appIconCropMode,
+                                    onAppIconCropMode = { appIconCropMode = it; persist() },
+                                    iconGlowEffect = iconGlowEffect,
+                                    onIconGlowEffect = { iconGlowEffect = it; persist() },
+                                )
+                            }
+                            1 -> {
+                                ShortcutsManagementPage(
+                                    contentPadding = innerPadding,
+                                    shortcuts = shortcuts,
+                                    onShortcutToggle = { item, enabled ->
+                                        val i = shortcuts.indexOfFirst { it.id == item.id }
+                                        if (i >= 0) {
+                                            val updated = item.copy().apply { this.enabled = enabled }
+                                            shortcuts[i] = updated
+                                        }
+                                        persist()
+                                    },
+                                    onShortcutClick = { item ->
+                                        editingItem = item.copy()
+                                        isNewShortcut = false
+                                        subPage = 2
+                                    },
+                                    onAddShortcut = {
+                                        editingItem = ShortcutItem(
+                                            UUID.randomUUID().toString(),
+                                            "新快捷方式",
+                                            "轻触打开",
+                                            ShortcutItem.ACTION_APP,
+                                            "",
+                                            "",
+                                            "sparkle",
+                                            0xFF3482FF.toInt(),
+                                            true,
+                                        )
+                                        isNewShortcut = true
+                                        subPage = 2
+                                    },
+                                    onResetShortcuts = {
+                                        shortcuts.clear()
+                                        shortcuts.addAll(QuickOpenConfig.getDefaultShortcuts())
+                                        persist()
+                                        Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+                            }
+                            else -> {
+                                SettingsPage(
+                                    contentPadding = innerPadding,
+                                    safetyTick = safetyTick,
+                                    onSafetyRefresh = { safetyTick++ },
+                                    onOpenThemePage = { subPage = 1 },
+                                )
+                            }
                         }
                     }
                 }
@@ -483,15 +501,11 @@ fun ParamsPage(
     iconSize: Float, onIconSize: (Float) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
+    iconSpacingOffset: Float, onIconSpacingOffset: (Float) -> Unit,
     bubblePaddingPercent: Float, onBubblePaddingPercent: (Float) -> Unit,
     selectedIconScale: Float, onSelectedIconScale: (Float) -> Unit,
     appIconCropMode: Int, onAppIconCropMode: (Int) -> Unit,
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
-    shortcuts: SnapshotStateList<ShortcutItem>,
-    onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
-    onShortcutClick: (ShortcutItem) -> Unit,
-    onAddShortcut: () -> Unit,
-    onResetShortcuts: () -> Unit,
 ) {
     val lazyListState = rememberLazyListState()
 
@@ -596,6 +610,17 @@ fun ParamsPage(
                     onValueChange = onIconSize,
                 )
                 SliderPreference(
+                    title = "蜂窝图标紧凑程度",
+                    valueText = when {
+                        iconSpacingOffset.toInt() < 0 -> "紧凑 (${iconSpacingOffset.toInt()} dp)"
+                        iconSpacingOffset.toInt() > 0 -> "松散 (+${iconSpacingOffset.toInt()} dp)"
+                        else -> "标准 (0 dp)"
+                    },
+                    value = iconSpacingOffset,
+                    valueRange = -10f..20f,
+                    onValueChange = onIconSpacingOffset,
+                )
+                SliderPreference(
                     title = "鱼眼最大放大倍率",
                     valueText = "%.2f x".format(maxScale),
                     value = maxScale,
@@ -654,20 +679,35 @@ fun ParamsPage(
                 )
             }
         }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
 
-        // ── 快捷项目列表 ──
-        item(key = "shortcuts_title") { SmallTitle("快捷项目管理与动作排序") }
-        itemsIndexed(shortcuts, key = { _, it -> it.id }) { _, item ->
-            Box(modifier = Modifier.padding(horizontal = 12.dp)) {
-                ShortcutRow(
-                    item = item,
-                    onToggle = { onShortcutToggle(item, it) },
-                    onClick = { onShortcutClick(item) },
-                )
-            }
-        }
+// ─────────────────────────────────────────────────────────────────────
+// Page1：快捷项目管理（独立底栏页面）
+// ─────────────────────────────────────────────────────────────────────
 
-        // ── 新建与重置操作 ──
+@Composable
+fun ShortcutsManagementPage(
+    contentPadding: PaddingValues,
+    shortcuts: SnapshotStateList<ShortcutItem>,
+    onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
+    onShortcutClick: (ShortcutItem) -> Unit,
+    onAddShortcut: () -> Unit,
+    onResetShortcuts: () -> Unit,
+) {
+    val lazyListState = rememberLazyListState()
+
+    LazyColumn(
+        state = lazyListState,
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .scrollEndHaptic(),
+        contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // ── 操作按钮卡片 ──
         item(key = "actions_card") {
             Box(modifier = Modifier.padding(horizontal = 12.dp)) {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -701,9 +741,21 @@ fun ParamsPage(
             }
         }
 
+        // ── 快捷项目列表 ──
+        item(key = "shortcuts_title") { SmallTitle("快捷项目列表 (${shortcuts.size})") }
+        itemsIndexed(shortcuts, key = { _, it -> it.id }) { _, item ->
+            Box(modifier = Modifier.padding(horizontal = 12.dp)) {
+                ShortcutRow(
+                    item = item,
+                    onToggle = { onShortcutToggle(item, it) },
+                    onClick = { onShortcutClick(item) },
+                )
+            }
+        }
+
         item(key = "footer_tips") {
             Text(
-                "提示：轻触快捷卡片可编辑参数（修改图标、名称、启动选项等），右侧开关控制是否在面板显示。",
+                "提示：轻触卡片可修改参数（图标、字重底垫、名称及启动选项），右侧开关控制是否在指纹面板中展示。",
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),

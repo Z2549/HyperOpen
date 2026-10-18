@@ -239,13 +239,15 @@ public class CustomQuickOpenContainer extends FrameLayout {
             if (item.enabled) activeItems.add(item);
         }
 
-        // 计算圆形蜂窝坐标
+        // 计算圆形蜂窝坐标（传入紧凑度偏移量）
+        float spacingOffsetPx = dpToPx(config.iconSpacingOffset);
         List<PointF> points = CircularHoneycombPacking.calculatePoints(
             activeItems.size(),
             fodCenterX,
             regionCenterY,
             regionRadiusPx,
-            iconSizePx
+            iconSizePx,
+            spacingOffsetPx
         );
 
         // 实例化圆形气泡

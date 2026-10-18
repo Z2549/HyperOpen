@@ -73,6 +73,8 @@ public class QuickOpenConfig {
     public float maxScale = 1.40f;
     public int influenceRadius = 120;  // dp
 
+    /** 图标分布紧凑度间距微调 (-10dp ~ 20dp，默认 0dp，负值更紧凑，正值更松散) */
+    public int iconSpacingOffset = 0;
     /** 气泡内部图标留白比例 (0% ~ 40%，默认 18%，0% 即全屏满铺) */
     public int bubblePaddingPercent = 18;
     /** 手指选中图标时气泡内图标的缩放倍率 (1.00x ~ 1.50x，默认 1.15x) */
@@ -113,6 +115,7 @@ public class QuickOpenConfig {
                     config.iconSize = bundle.getInt("icon_size", 58);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 120);
+                    config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 0);
                     config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
                     config.selectedIconScale = bundle.getFloat("selected_icon_scale", 1.15f);
                     config.appIconCropMode = bundle.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
@@ -153,6 +156,7 @@ public class QuickOpenConfig {
         config.iconSize = xPrefs.getInt("icon_size", 58);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 120);
+        config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
         config.selectedIconScale = xPrefs.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = xPrefs.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
@@ -188,6 +192,7 @@ public class QuickOpenConfig {
         config.iconSize = sp.getInt("icon_size", 58);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 120);
+        config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
         config.selectedIconScale = sp.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = sp.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
@@ -223,6 +228,7 @@ public class QuickOpenConfig {
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
+            .putInt("icon_spacing_offset", iconSpacingOffset)
             .putInt("bubble_padding_percent", bubblePaddingPercent)
             .putFloat("selected_icon_scale", selectedIconScale)
             .putInt("app_icon_crop_mode", appIconCropMode)

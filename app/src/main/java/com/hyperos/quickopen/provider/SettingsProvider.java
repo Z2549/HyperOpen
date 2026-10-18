@@ -102,6 +102,7 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putInt("icon_size", sp.getInt("icon_size", 58));
                 bundle.putFloat("max_scale", sp.getFloat("max_scale", 1.40f));
                 bundle.putInt("influence_radius", sp.getInt("influence_radius", 120));
+                bundle.putInt("icon_spacing_offset", sp.getInt("icon_spacing_offset", 0));
                 bundle.putInt("bubble_padding_percent", sp.getInt("bubble_padding_percent", 18));
                 bundle.putFloat("selected_icon_scale", sp.getFloat("selected_icon_scale", 1.15f));
                 bundle.putInt("app_icon_crop_mode", sp.getInt("app_icon_crop_mode", QuickOpenConfig.CROP_ADAPTIVE_EXPAND));
