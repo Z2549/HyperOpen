@@ -118,7 +118,7 @@ public final class IconGlyphFactory {
         if (clean.contains(":")) {
             clean = clean.split(":")[0].trim();
         }
-        return createGlyph(clean.toLowerCase(), tintColor);
+        return new GlyphDrawable(clean.toLowerCase(), tintColor, padEnabled, padColor, padMode);
     }
 
     @Nullable
@@ -231,10 +231,47 @@ public final class IconGlyphFactory {
         private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final String key;
+        private boolean padEnabled = false;
+        private int padColor = 0;
+        private int padMode = QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT;
+        private final Paint padPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint padBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         GlyphDrawable(String key, int tintColor) {
+            this(key, tintColor, false, 0, QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT);
+        }
+
+        GlyphDrawable(String key, int tintColor, boolean padEnabled, int padColor, int padMode) {
             this.key = key;
-            int color = blend(tintColor, 0xFFFFFFFF, 0.18f);
+            this.padEnabled = padEnabled;
+            this.padColor = padColor;
+            this.padMode = padMode;
+
+            int baseColor = padColor != 0 ? padColor : tintColor;
+            int color;
+            if (padEnabled) {
+                if (padMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) {
+                    color = blend(baseColor, 0xFFFFFFFF, 0.15f);
+                } else {
+                    color = 0xFFFFFFFF;
+                }
+
+                padPaint.setStyle(Paint.Style.FILL);
+                if (padMode == QuickOpenConfig.GLYPH_PAD_MODE_SOLID) {
+                    padPaint.setColor(Color.rgb(Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)));
+                } else if (padMode == QuickOpenConfig.GLYPH_PAD_MODE_INVERTED) {
+                    padPaint.setColor(Color.argb(48, 255, 255, 255));
+                } else {
+                    padPaint.setColor(Color.argb(165, Color.red(baseColor), Color.green(baseColor), Color.blue(baseColor)));
+                }
+
+                padBorderPaint.setStyle(Paint.Style.STROKE);
+                padBorderPaint.setStrokeWidth(2.5f);
+                padBorderPaint.setColor(Color.argb(45, 255, 255, 255));
+            } else {
+                color = blend(tintColor, 0xFFFFFFFF, 0.18f);
+            }
+
             strokePaint.setStyle(Paint.Style.STROKE);
             strokePaint.setStrokeWidth(1.75f);
             strokePaint.setStrokeCap(Paint.Cap.ROUND);
@@ -249,7 +286,15 @@ public final class IconGlyphFactory {
         public void draw(@NonNull Canvas canvas) {
             android.graphics.Rect b = getBounds();
             if (b.width() <= 0 || b.height() <= 0) return;
-            float scale = Math.min(b.width(), b.height()) / GRID * 0.82f;
+
+            if (padEnabled) {
+                float radius = Math.min(b.width(), b.height()) / 2f;
+                canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius, padPaint);
+                canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius - 1.25f, padBorderPaint);
+            }
+
+            float contentFactor = padEnabled ? 0.58f : 0.82f;
+            float scale = Math.min(b.width(), b.height()) / GRID * contentFactor;
             canvas.save();
             canvas.translate(b.centerX() - (GRID / 2f) * scale, b.centerY() - (GRID / 2f) * scale);
             canvas.scale(scale, scale);
@@ -262,6 +307,8 @@ public final class IconGlyphFactory {
         public void setAlpha(int alpha) {
             strokePaint.setAlpha(alpha);
             fillPaint.setAlpha(alpha);
+            padPaint.setAlpha(alpha);
+            padBorderPaint.setAlpha(alpha);
         }
 
         @Override
@@ -273,6 +320,16 @@ public final class IconGlyphFactory {
         @Override
         public int getOpacity() {
             return PixelFormat.TRANSLUCENT;
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return (int) (GRID * 4);
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return (int) (GRID * 4);
         }
 
         public String getKey() {
@@ -303,6 +360,24 @@ public final class IconGlyphFactory {
                 sp.moveTo(15, 5);
                 sp.lineTo(8, 12);
                 sp.lineTo(15, 19);
+                break;
+            }
+            case "qrcode": {
+                // 二维码：三个角回字取景码 + 点阵
+                // 左上回字
+                rrect(sp, 3.2f, 3.2f, 9.8f, 9.8f, 1.2f);
+                rrect(fp, 5.2f, 5.2f, 7.8f, 7.8f, 0.6f);
+                // 右上回字
+                rrect(sp, 14.2f, 3.2f, 20.8f, 9.8f, 1.2f);
+                rrect(fp, 16.2f, 5.2f, 18.8f, 7.8f, 0.6f);
+                // 左下回字
+                rrect(sp, 3.2f, 14.2f, 9.8f, 20.8f, 1.2f);
+                rrect(fp, 5.2f, 16.2f, 7.8f, 18.8f, 0.6f);
+                // 右下与中间点阵
+                dot(fp, 12f, 12f, 1.1f);
+                dot(fp, 17.5f, 14f, 1.1f);
+                dot(fp, 14f, 17.5f, 1.1f);
+                dot(fp, 18.5f, 18.5f, 1.1f);
                 break;
             }
             case "scan": {

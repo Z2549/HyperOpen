@@ -358,23 +358,21 @@ fun QuickOpenApp(
                     }
                     3 -> {
                         // 指纹快捷方式整体预览与长按自由排版界面
-                        val currentConfig = remember(materialStyle, offsetY, regionDiameter, showRegionBg, showHeaderPillBg, iconSize, maxScale, influenceRadius, iconSpacingOffset, bubblePaddingPercent, selectedIconScale, appIconCropMode, iconGlowEffect, shortcuts) {
-                            val c = QuickOpenConfig.loadFromApp(ctx)
-                            c.materialStyle = materialStyle
-                            c.offsetY = offsetY.toInt()
-                            c.regionDiameter = regionDiameter.toInt()
-                            c.showRegionBg = showRegionBg
-                            c.showHeaderPillBg = showHeaderPillBg
-                            c.iconSize = iconSize.toInt()
-                            c.maxScale = maxScale
-                            c.influenceRadius = influenceRadius.toInt()
-                            c.iconSpacingOffset = iconSpacingOffset.toInt()
-                            c.bubblePaddingPercent = bubblePaddingPercent.toInt()
-                            c.selectedIconScale = selectedIconScale
-                            c.appIconCropMode = appIconCropMode
-                            c.iconGlowEffect = iconGlowEffect
-                            c.shortcuts = ArrayList(shortcuts)
-                            c
+                        val currentConfig = QuickOpenConfig.loadFromApp(ctx).apply {
+                            this.materialStyle = materialStyle
+                            this.offsetY = offsetY.toInt()
+                            this.regionDiameter = regionDiameter.toInt()
+                            this.showRegionBg = showRegionBg
+                            this.showHeaderPillBg = showHeaderPillBg
+                            this.iconSize = iconSize.toInt()
+                            this.maxScale = maxScale
+                            this.influenceRadius = influenceRadius.toInt()
+                            this.iconSpacingOffset = iconSpacingOffset.toInt()
+                            this.bubblePaddingPercent = bubblePaddingPercent.toInt()
+                            this.selectedIconScale = selectedIconScale
+                            this.appIconCropMode = appIconCropMode
+                            this.iconGlowEffect = iconGlowEffect
+                            this.shortcuts = ArrayList(shortcuts)
                         }
 
                         Box(
@@ -408,7 +406,7 @@ fun QuickOpenApp(
                                     )
                                 },
                                 update = { previewView ->
-                                    previewView.setupLayout()
+                                    previewView.updateConfig(currentConfig)
                                 },
                             )
                         }

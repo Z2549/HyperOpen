@@ -63,12 +63,12 @@ public class CircularBubbleView extends FrameLayout {
         int iconPadding = (int) (sizePx * (paddingPercent / 100f));
         iconView.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
 
-        // 绑定图标 (优先从包名解析应用图标，或使用默认彩色矢量图形)
-        loadItemIcon();
-
         LayoutParams iconLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
         iconLp.gravity = Gravity.CENTER;
         addView(iconView, iconLp);
+
+        // 绑定图标 (优先从包名解析应用图标，或使用默认彩色矢量图形)
+        loadItemIcon();
     }
 
     public CircularBubbleView(@NonNull Context context, ShortcutItem item, int style, int sizePx, ClassLoader classLoader) {
@@ -117,6 +117,10 @@ public class CircularBubbleView extends FrameLayout {
         Drawable d = IconGlyphFactory.resolve(getContext(), item, config);
         iconView.setImageDrawable(d);
         iconView.setColorFilter(null);
+        if (d != null) {
+            d.setCallback(iconView);
+        }
+        iconView.requestLayout();
         iconView.invalidate();
         invalidate();
     }

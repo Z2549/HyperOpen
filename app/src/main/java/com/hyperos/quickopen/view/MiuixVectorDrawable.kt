@@ -36,6 +36,7 @@ class MiuixVectorDrawable(
     private val elements = mutableListOf<PathElement>()
     private val padPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val padBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val totalBounds = android.graphics.RectF()
 
     // 图标前景色
     private val iconColor: Int = when {
@@ -45,6 +46,8 @@ class MiuixVectorDrawable(
     }
 
     init {
+        val totalCombinedPath = android.graphics.Path()
+
         if (padEnabled) {
             val baseColor = if (padColor != 0) padColor else tintColor
             padPaint.style = Paint.Style.FILL
@@ -61,7 +64,8 @@ class MiuixVectorDrawable(
 
         fun traverse(group: VectorGroup, parentMatrix: android.graphics.Matrix) {
             val groupMatrix = android.graphics.Matrix(parentMatrix).apply {
-                preTranslate(group.pivotX + group.translationX, group.pivotY + group.translationY)
+                preTranslate(group.translationX, group.translationY)
+                preTranslate(group.pivotX, group.pivotY)
                 preRotate(group.rotation)
                 preScale(group.scaleX, group.scaleY)
                 preTranslate(-group.pivotX, -group.pivotY)
@@ -73,6 +77,7 @@ class MiuixVectorDrawable(
                         val originalPath = node.pathData.toPath().asAndroidPath()
                         val transformedPath = android.graphics.Path()
                         originalPath.transform(groupMatrix, transformedPath)
+                        totalCombinedPath.addPath(transformedPath)
 
                         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                             color = iconColor
@@ -103,6 +108,7 @@ class MiuixVectorDrawable(
             }
         }
         traverse(vector.root, android.graphics.Matrix())
+        totalCombinedPath.computeBounds(totalBounds, true)
     }
 
     override fun draw(canvas: Canvas) {
@@ -117,14 +123,20 @@ class MiuixVectorDrawable(
         }
 
         // 2) 绘制 Miuix 矢量线条
-        val vw = if (vector.viewportWidth > 0f) vector.viewportWidth else 24f
-        val vh = if (vector.viewportHeight > 0f) vector.viewportHeight else 24f
+        // 自动计算内容实际外接矩形或声明的 viewport，实现精准自适应居中与缩放
+        val hasBounds = totalBounds.width() > 0f && totalBounds.height() > 0f
+        val contentW = if (hasBounds) totalBounds.width() else (if (vector.viewportWidth > 0f) vector.viewportWidth else 24f)
+        val contentH = if (hasBounds) totalBounds.height() else (if (vector.viewportHeight > 0f) vector.viewportHeight else 24f)
+        val contentCenterX = if (hasBounds) totalBounds.centerX() else (if (vector.viewportWidth > 0f) vector.viewportWidth / 2f else 12f)
+        val contentCenterY = if (hasBounds) totalBounds.centerY() else (if (vector.viewportHeight > 0f) vector.viewportHeight / 2f else 12f)
+
         val contentScaleFactor = if (padEnabled) 0.58f else 0.82f
-        val scale = Math.min(b.width() / vw, b.height() / vh) * contentScaleFactor
+        val scale = Math.min(b.width() / contentW, b.height() / contentH) * contentScaleFactor
 
         canvas.save()
-        canvas.translate(b.centerX() - (vw / 2f) * scale, b.centerY() - (vh / 2f) * scale)
+        canvas.translate(b.exactCenterX(), b.exactCenterY())
         canvas.scale(scale, scale)
+        canvas.translate(-contentCenterX, -contentCenterY)
 
         for (elem in elements) {
             canvas.drawPath(elem.path, elem.paint)

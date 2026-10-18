@@ -31,12 +31,12 @@ import com.hyperos.quickopen.view.CircularRegionBackdropView
  */
 class QuickOpenPreviewView(
     context: Context,
-    private val config: QuickOpenConfig,
+    private var config: QuickOpenConfig,
     private val onBackClick: () -> Unit,
     private val onOrderChanged: (List<ShortcutItem>) -> Unit,
 ) : FrameLayout(context) {
 
-    private val resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
+    private var resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
     private var vibrator: Vibrator? = null
 
     private lateinit var headerPill: LinearLayout
@@ -161,7 +161,6 @@ class QuickOpenPreviewView(
             val padH = dpToPx(24f).toInt()
             val padV = dpToPx(10f).toInt()
             setPadding(padH, padV, padH, padV)
-            background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
         }
 
         headerTitle = TextView(context).apply {
@@ -181,6 +180,9 @@ class QuickOpenPreviewView(
 
         headerPill.addView(headerTitle)
         headerPill.addView(headerSubtitle)
+
+        // 应用最新配置的胶囊背景与材质
+        applyHeaderPillBackground()
 
         // 编辑模式横幅
         editBanner = TextView(context).apply {
@@ -202,10 +204,26 @@ class QuickOpenPreviewView(
         topContainer.addView(editBanner, bannerLp)
 
         val topLp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dpToPx(42f).toInt()
+            topMargin = dpToPx(100f).toInt()
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         }
         addView(topContainer, topLp)
+    }
+
+    /**
+     * 按 showHeaderPillBg 开关与 materialStyle 材质动态设置顶部提示胶囊背景
+     */
+    private fun applyHeaderPillBackground() {
+        if (!::headerPill.isInitialized) return
+        val show = config.showHeaderPillBg
+        if (show) {
+            headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
+            headerPill.clipToOutline = true
+        } else {
+            headerPill.background = null
+            headerPill.clipToOutline = false
+        }
+        headerPill.invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -213,6 +231,37 @@ class QuickOpenPreviewView(
         if (w > 0 && h > 0) {
             setupLayout(w, h)
         }
+    }
+
+    private fun calculateFodCoordinates(targetW: Float, targetH: Float): PointF {
+        try {
+            val utilsClass = Class.forName("com.miui.keyguard.biometrics.fod.MiuiGxzwUtils")
+            val caculateMethod = utilsClass.getMethod("caculateGxzwIconSize", Context::class.java)
+            caculateMethod.invoke(null, context)
+            val iconX = utilsClass.getField("GXZW_ICON_X").getInt(null)
+            val iconY = utilsClass.getField("GXZW_ICON_Y").getInt(null)
+            val iconW = utilsClass.getField("GXZW_ICON_WIDTH").getInt(null)
+            val iconH = utilsClass.getField("GXZW_ICON_HEIGHT").getInt(null)
+            if (iconW > 0 && iconH > 0 && iconY > 0) {
+                return PointF(iconX + iconW / 2.0f, iconY + iconH / 2.0f)
+            }
+        } catch (_: Throwable) {}
+
+        // 备用兜底逻辑（与锁屏 SystemUI 异常兜底完全统一：屏幕中心 X 与 0.795f 屏高 Y）
+        return PointF(targetW / 2.0f, targetH * 0.795f)
+    }
+
+    /**
+     * 参数热更新：材质、胶囊背景开关、尺寸与偏移行即生效
+     */
+    fun updateConfig(newConfig: QuickOpenConfig) {
+        this.config = newConfig
+        this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
+        if (::regionBackdrop.isInitialized) {
+            regionBackdrop.setStyle(resolvedStyle)
+        }
+        applyHeaderPillBackground()
+        setupLayout()
     }
 
     /**
@@ -229,8 +278,9 @@ class QuickOpenPreviewView(
         gridPoints.clear()
         currentSelectedBubble = null
 
-        val fodX = targetW / 2f
-        val fodY = targetH - dpToPx(60f)
+        val fod = calculateFodCoordinates(targetW.toFloat(), targetH.toFloat())
+        val fodX = fod.x
+        val fodY = fod.y
         val regionCenterY = fodY - dpToPx(config.offsetY.toFloat())
         val regionDiameterPx = dpToPx(config.regionDiameter.toFloat())
         val regionRadiusPx = regionDiameterPx / 2f
@@ -243,6 +293,9 @@ class QuickOpenPreviewView(
             topMargin = (regionCenterY - regionRadiusPx).toInt()
         }
         regionBackdrop.layoutParams = rLp
+
+        // 确保顶部提示胶囊背景与材质即时更新
+        applyHeaderPillBackground()
 
         // 筛选有效快捷项
         for (item in config.shortcuts) {
@@ -290,7 +343,7 @@ class QuickOpenPreviewView(
         }
 
         // 播放弹射散开动效
-        playExpandAnimation(fodX, fodY)
+        // playExpandAnimation(fodX, fodY)
     }
 
     private fun playExpandAnimation(fodX: Float, fodY: Float) {
