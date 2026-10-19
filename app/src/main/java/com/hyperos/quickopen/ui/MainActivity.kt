@@ -1447,7 +1447,7 @@ fun ShortcutEditPage(
                         .fillMaxWidth(),
                 ) {
                     RadioButtonPreference(
-                        title = "自适应外扩满铺 (推荐)",
+                        title = "自适应外扩满铺",
                         summary = "分离前景与背景图层并外扩满铺正圆，彻底消除直角白边",
                         selected = appIconCropMode == QuickOpenConfig.CROP_ADAPTIVE_EXPAND,
                         onClick = { appIconCropMode = QuickOpenConfig.CROP_ADAPTIVE_EXPAND },
@@ -1490,7 +1490,7 @@ fun ShortcutEditPage(
                         )
 
                         RadioButtonPreference(
-                            title = "磨砂微透底板 (推荐)",
+                            title = "磨砂微透底板",
                             summary = "65% 半透明高光底板，颜色与背景毛玻璃相互交融",
                             selected = glyphPadMode == QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT,
                             onClick = { glyphPadMode = QuickOpenConfig.GLYPH_PAD_MODE_TRANSLUCENT },

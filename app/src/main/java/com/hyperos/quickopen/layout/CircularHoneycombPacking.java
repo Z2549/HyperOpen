@@ -29,21 +29,7 @@ public class CircularHoneycombPacking {
      * @param iconSize      单个图标的基础直径
      * @return 排序好的网格坐标列表 (由内圈向外圈扩散)
      */
-    public static List<PointF> calculatePoints(int count, float centerX, float centerY, float regionRadius, float iconSize) {
-        return calculatePoints(count, centerX, centerY, regionRadius, iconSize, 0f);
-    }
 
-    /**
-     * 在给定的圆形区域 (center, regionRadius) 内，生成紧密贴合整个圆形的蜂窝网格坐标
-     *
-     * @param count         需要的图标数量
-     * @param centerX       圆盘中心 X (通常与指纹中心对齐)
-     * @param centerY       圆盘中心 Y (指纹中心 - offsetY)
-     * @param regionRadius  圆形区域半径
-     * @param iconSize      单个图标的基础直径
-     * @param spacingOffset 间距紧凑度微调 (px，正值更松散，负值更紧凑)
-     * @return 排序好的网格坐标列表 (由内圈向外圈扩散)
-     */
     public static List<PointF> calculatePoints(int count, float centerX, float centerY, float regionRadius, float iconSize, float spacingOffset) {
         List<PackPoint> candidates = new ArrayList<>();
         
