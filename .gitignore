@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+app/build/
+*/build/
+
+# Build outputs
+*.apk
+*.aar
+*.aab
+*.dex
+*.class
+
+# Local configuration
+local.properties
+
+# Android Studio / IntelliJ IDEA / VS Code
+.idea/
+*.iml
+.vscode/
+
+# System and logs
+.DS_Store
+Thumbs.db
+*.log
+
+# Local test & debug databases
+*.db
+
+.tmp_miuix/

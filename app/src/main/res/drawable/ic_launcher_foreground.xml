@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. 柔和圆形视界浅蓝底衬 (r=23) -->
+    <path android:pathData="M54,31 A23,23 0 1,0 54,77 A23,23 0 1,0 54,31 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="36"
+                android:startY="34"
+                android:endX="72"
+                android:endY="74"
+                android:startColor="#5262B0FF"
+                android:endColor="#1F1E6FFF" />
+        </aapt:attr>
+    </path>
+
+    <!-- 2. 外层几何触控指纹波纹弧 -->
+    <path
+        android:pathData="M40.5,57 C40.5,47.8 46.5,41.5 54,41.5 C61.5,41.5 67.5,47.8 67.5,57"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="34"
+                android:startY="32"
+                android:endX="74"
+                android:endY="76"
+                android:startColor="#FF2E8BFF"
+                android:endColor="#FF155EEF" />
+        </aapt:attr>
+    </path>
+
+    <!-- 3. 内层几何触控指纹波纹弧 -->
+    <path
+        android:pathData="M46,60.5 C46,54.2 49.5,49.5 54,49.5 C58.5,49.5 62,54.2 62,60.5"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="34"
+                android:startY="32"
+                android:endX="74"
+                android:endY="76"
+                android:startColor="#FF2E8BFF"
+                android:endColor="#FF155EEF" />
+        </aapt:attr>
+    </path>
+
+    <!-- 4. 中心触控激活圆点 (cx=54, cy=59.5, r=3.2) -->
+    <path
+        android:pathData="M54,56.3 A3.2,3.2 0 1,0 54,62.7 A3.2,3.2 0 1,0 54,56.3 Z"
+        android:fillColor="#FF155EEF" />
+
+    <!-- 5. 顶部散开的 3 颗快捷气泡 -->
+    <!-- 正上方主气泡 (cx=54, cy=33, r=3.4) -->
+    <path
+        android:pathData="M54,29.6 A3.4,3.4 0 1,0 54,36.4 A3.4,3.4 0 1,0 54,29.6 Z"
+        android:fillColor="#FF1E6FFF" />
+
+    <!-- 左上方卫星气泡 (cx=38.5, cy=39.5, r=2.7) -->
+    <path
+        android:pathData="M38.5,36.8 A2.7,2.7 0 1,0 38.5,42.2 A2.7,2.7 0 1,0 38.5,36.8 Z"
+        android:fillColor="#FF4DA1FF" />
+
+    <!-- 右上方卫星气泡 (cx=69.5, cy=39.5, r=2.7) -->
+    <path
+        android:pathData="M69.5,36.8 A2.7,2.7 0 1,0 69.5,42.2 A2.7,2.7 0 1,0 69.5,36.8 Z"
+        android:fillColor="#FF4DA1FF" />
+
+</vector>
