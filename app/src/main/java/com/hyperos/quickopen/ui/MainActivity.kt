@@ -904,14 +904,14 @@ fun ParamsPage(
                     title = "整体垂直高度偏移",
                     valueText = "${offsetY.toInt()} dp",
                     value = offsetY,
-                    valueRange = 100f..450f,
+                    valueRange = 50f..450f,
                     onValueChange = onOffsetY,
                 )
                 SliderPreference(
                     title = "圆形视界直径",
                     valueText = "${regionDiameter.toInt()} dp",
                     value = regionDiameter,
-                    valueRange = 220f..420f,
+                    valueRange = 150f..420f,
                     onValueChange = onRegionDiameter,
                 )
                 SwitchPreference(
