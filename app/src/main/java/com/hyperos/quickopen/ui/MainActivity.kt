@@ -576,7 +576,7 @@ fun QuickOpenApp(
                             // 5. 图标气泡留白区域的独立毛玻璃底衬 (与圆形视界区域底衬统一风格，随鱼眼缩放与拖拽实时同步)
                             if (currentConfig.bubbleBlurRadius > 0) {
                                 blurScene.bubbles.forEach { spot ->
-                                    if (spot.diameterPx > 2f) {
+                                    if (spot.diameterPx > 2f && spot.alpha > 0.01f) {
                                         val bubbleRadiusPx = spot.diameterPx / 2f
                                         val bubbleDiameterDp = with(density) { spot.diameterPx.toDp() }
                                         Box(
@@ -590,7 +590,7 @@ fun QuickOpenApp(
                                                     backdrop = previewBackdrop,
                                                     shape = CircleShape,
                                                     blurRadius = currentConfig.bubbleBlurRadius.toFloat(),
-                                                    colors = unifiedBlurColors(currentConfig.iconAlpha)
+                                                    colors = unifiedBlurColors(spot.alpha)
                                                 )
                                         )
                                     }
@@ -625,9 +625,6 @@ fun QuickOpenApp(
                                             blurScene = scene
                                         },
                                     )
-                                },
-                                update = { previewView ->
-                                    previewView.updateConfig(currentConfig)
                                 },
                             )
                         }

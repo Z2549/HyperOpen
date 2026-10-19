@@ -79,13 +79,13 @@ public class HyperOSMaterialFactory {
         }
         int w = view.getWidth() > 0 ? view.getWidth() : (view.getLayoutParams() != null && view.getLayoutParams().width > 0 ? view.getLayoutParams().width : 160);
         int h = view.getHeight() > 0 ? view.getHeight() : (view.getLayoutParams() != null && view.getLayoutParams().height > 0 ? view.getLayoutParams().height : 160);
-        float radiusPx = Math.max(1f, Math.min(w, h) / 2f - 2f);
+        float radiusPx = Math.max(1f, Math.min(w, h) / 2f - 3f);
         int tint = getUnifiedBlurTint(style);
-        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, radiusPx, blurRadiusPx, tint);
+        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, radiusPx + 2f, blurRadiusPx, tint);
         if (blurDrawable != null) {
             android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{blurDrawable, opticDrawable});
-            // 内缩 2px 使硬件高斯模糊圆与光学圆 (maxRadius - 2f) 严丝合缝，且绝不触碰正方形四边
-            layer.setLayerInset(0, 2, 2, 2, 2);
+            // 内缩 3px 使硬件高斯模糊圆完全收拢于 2.2px 光学描边 (maxRadius - 2f) 内侧，绝不溢出边框
+            layer.setLayerInset(0, 3, 3, 3, 3);
             return layer;
         }
         return opticDrawable;

@@ -87,6 +87,37 @@ public final class HyperOSBlurHelper {
         return null;
     }
 
+    private static Method sSetBlurRadiusMethod;
+    private static boolean sSetBlurRadiusSearched = false;
+    private static Method sSetCornerRadiusMethod;
+    private static boolean sSetCornerRadiusSearched = false;
+    private static Method sSetColorMethod;
+    private static boolean sSetColorSearched = false;
+
+    /**
+     * 仅高频更新已有 BackgroundBlurDrawable 的圆角半径（供气泡鱼眼/选中缩放动画逐帧同步，避免圆角小于缩放后 बॉर्डर导致变成圆角矩形或溢出边框）
+     */
+    public static void updateCornerRadius(@Nullable Drawable blurDrawable, float cornerRadiusPx) {
+        if (blurDrawable == null) return;
+        try {
+            if (!sSetCornerRadiusSearched) {
+                sSetCornerRadiusSearched = true;
+                try {
+                    sSetCornerRadiusMethod = blurDrawable.getClass().getMethod("setCornerRadius", float.class);
+                    sSetCornerRadiusMethod.setAccessible(true);
+                } catch (Throwable t) {
+                    try {
+                        sSetCornerRadiusMethod = blurDrawable.getClass().getDeclaredMethod("setCornerRadius", float.class);
+                        sSetCornerRadiusMethod.setAccessible(true);
+                    } catch (Throwable ignored) {}
+                }
+            }
+            if (sSetCornerRadiusMethod != null) {
+                sSetCornerRadiusMethod.invoke(blurDrawable, Math.max(0f, cornerRadiusPx));
+            }
+        } catch (Throwable ignored) {}
+    }
+
     /**
      * 更新已有 BackgroundBlurDrawable 的模糊半径、圆角和颜色
      */
@@ -95,41 +126,43 @@ public final class HyperOSBlurHelper {
 
         // 1. 设置模糊半径
         try {
-            Method m = blurDrawable.getClass().getMethod("setBlurRadius", int.class);
-            m.setAccessible(true);
-            m.invoke(blurDrawable, Math.max(0, blurRadiusPx));
-        } catch (Throwable t) {
-            try {
-                Method m = blurDrawable.getClass().getDeclaredMethod("setBlurRadius", int.class);
-                m.setAccessible(true);
-                m.invoke(blurDrawable, Math.max(0, blurRadiusPx));
-            } catch (Throwable ignored) {}
-        }
+            if (!sSetBlurRadiusSearched) {
+                sSetBlurRadiusSearched = true;
+                try {
+                    sSetBlurRadiusMethod = blurDrawable.getClass().getMethod("setBlurRadius", int.class);
+                    sSetBlurRadiusMethod.setAccessible(true);
+                } catch (Throwable t) {
+                    try {
+                        sSetBlurRadiusMethod = blurDrawable.getClass().getDeclaredMethod("setBlurRadius", int.class);
+                        sSetBlurRadiusMethod.setAccessible(true);
+                    } catch (Throwable ignored) {}
+                }
+            }
+            if (sSetBlurRadiusMethod != null) {
+                sSetBlurRadiusMethod.invoke(blurDrawable, Math.max(0, blurRadiusPx));
+            }
+        } catch (Throwable ignored) {}
 
         // 2. 设置圆角
-        try {
-            Method m = blurDrawable.getClass().getMethod("setCornerRadius", float.class);
-            m.setAccessible(true);
-            m.invoke(blurDrawable, Math.max(0f, cornerRadiusPx));
-        } catch (Throwable t) {
-            try {
-                Method m = blurDrawable.getClass().getDeclaredMethod("setCornerRadius", float.class);
-                m.setAccessible(true);
-                m.invoke(blurDrawable, Math.max(0f, cornerRadiusPx));
-            } catch (Throwable ignored) {}
-        }
+        updateCornerRadius(blurDrawable, cornerRadiusPx);
 
         // 3. 设置混合颜色 (带微透 Alpha)
         try {
-            Method m = blurDrawable.getClass().getMethod("setColor", int.class);
-            m.setAccessible(true);
-            m.invoke(blurDrawable, tintColor);
-        } catch (Throwable t) {
-            try {
-                Method m = blurDrawable.getClass().getDeclaredMethod("setColor", int.class);
-                m.setAccessible(true);
-                m.invoke(blurDrawable, tintColor);
-            } catch (Throwable ignored) {}
-        }
+            if (!sSetColorSearched) {
+                sSetColorSearched = true;
+                try {
+                    sSetColorMethod = blurDrawable.getClass().getMethod("setColor", int.class);
+                    sSetColorMethod.setAccessible(true);
+                } catch (Throwable t) {
+                    try {
+                        sSetColorMethod = blurDrawable.getClass().getDeclaredMethod("setColor", int.class);
+                        sSetColorMethod.setAccessible(true);
+                    } catch (Throwable ignored) {}
+                }
+            }
+            if (sSetColorMethod != null) {
+                sSetColorMethod.invoke(blurDrawable, tintColor);
+            }
+        } catch (Throwable ignored) {}
     }
 }

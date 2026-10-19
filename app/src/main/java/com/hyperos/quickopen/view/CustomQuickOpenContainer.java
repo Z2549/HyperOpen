@@ -308,6 +308,8 @@ public class CustomQuickOpenContainer extends FrameLayout {
                 .setInterpolator(new OvershootInterpolator(1.2f))
                 .setDuration(320)
                 .setStartDelay(i * 15L)
+                .setUpdateListener(anim -> b.syncBlurCornerRadiusWithViewScale())
+                .withEndAction(() -> b.applyScale(1.0f))
                 .start();
         }
     }

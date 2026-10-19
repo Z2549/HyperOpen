@@ -34,6 +34,7 @@ data class BubbleBlurSpot(
     val centerX: Float,
     val centerY: Float,
     val diameterPx: Float,
+    val alpha: Float = 1.0f,
 )
 
 data class PreviewBlurSceneState(
@@ -90,12 +91,18 @@ class QuickOpenPreviewView(
     // 拖拽排版相关状态
     var isEditMode: Boolean = false
         private set
+    private var isTouching: Boolean = false
     private var draggingBubble: CircularBubbleView? = null
     private var dragTouchStartX = 0f
     private var dragTouchStartY = 0f
     private var isDraggingActive = false
     private val longPressRunnable = Runnable {
-        enterEditMode(pendingPressBubble)
+        val target = pendingPressBubble
+        if (target != null && !isEditMode && !isDraggingActive) {
+            currentSelectedBubble?.setSelectedState(false)
+            currentSelectedBubble = null
+            enterEditMode(target)
+        }
     }
     private var pendingPressBubble: CircularBubbleView? = null
 
@@ -297,6 +304,15 @@ class QuickOpenPreviewView(
         }
     }
 
+    override fun onDetachedFromWindow() {
+        removeCallbacks(longPressRunnable)
+        if (isEditMode && bubbleViews.isNotEmpty()) {
+            isEditMode = false
+            onOrderChanged(bubbleViews.map { it.item })
+        }
+        super.onDetachedFromWindow()
+    }
+
     private fun calculateFodCoordinates(targetW: Float, targetH: Float): PointF {
         try {
             val utilsClass = Class.forName("com.miui.keyguard.biometrics.fod.MiuiGxzwUtils")
@@ -321,9 +337,26 @@ class QuickOpenPreviewView(
     }
 
     /**
-     * 参数热更新：材质、胶囊背景开关、尺寸、气泡模糊半径与偏移即刻生效
+     * 参数热更新：材质、胶囊背景开关、尺寸、气泡模糊半径与偏移即刻生效。
+     * 若当前正处于手指按压、悬停放大或长按拖拽排版过程中，绝不重建视图树，避免打断手势或重置缩放。
      */
     fun updateConfig(newConfig: QuickOpenConfig) {
+        if (isTouching || isEditMode || isDraggingActive) {
+            this.config = newConfig
+            return
+        }
+        val old = this.config
+        val needRebuild = old.offsetY != newConfig.offsetY ||
+            old.regionDiameter != newConfig.regionDiameter ||
+            old.showRegionBg != newConfig.showRegionBg ||
+            old.iconSize != newConfig.iconSize ||
+            old.iconSpacingOffset != newConfig.iconSpacingOffset ||
+            old.materialStyle != newConfig.materialStyle ||
+            old.bubblePaddingPercent != newConfig.bubblePaddingPercent ||
+            old.bubbleBlurRadius != newConfig.bubbleBlurRadius ||
+            old.appIconCropMode != newConfig.appIconCropMode ||
+            old.shortcuts.size != newConfig.shortcuts.size
+
         this.config = newConfig
         this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
         refreshBackdropMask()
@@ -334,7 +367,11 @@ class QuickOpenPreviewView(
         }
         applyHeaderPillBackground()
         refreshFloatingBackButtonBackground()
-        setupLayout()
+        if (needRebuild || bubbleViews.isEmpty()) {
+            setupLayout()
+        } else {
+            notifyBlurSceneChanged()
+        }
     }
 
     /**
@@ -405,6 +442,9 @@ class QuickOpenPreviewView(
                 context, item, resolvedStyle, iconSizePx.toInt(), context.classLoader, config
             )
             bubble.setIconAlpha(config.iconAlpha)
+            bubble.setOnScaleChangedListener {
+                notifyBlurSceneChanged()
+            }
             bubble.targetX = pt.x
             bubble.targetY = pt.y
 
@@ -480,6 +520,7 @@ class QuickOpenPreviewView(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                isTouching = true
                 dragTouchStartX = x
                 dragTouchStartY = y
                 pendingPressBubble = findTouchedBubble(x, y)
@@ -489,17 +530,21 @@ class QuickOpenPreviewView(
                         // 编辑模式下直接抓取拖拽
                         startDragging(pendingPressBubble!!, x, y)
                     } else {
-                        // 准备长按识别 (450ms 进入自定义排版)
-                        handler?.postDelayed(longPressRunnable, 450)
+                        // 准备长按识别 (450ms 进入自定义排版)，同时立即展现按压鱼眼放大反馈
+                        removeCallbacks(longPressRunnable)
+                        postDelayed(longPressRunnable, 450)
+                        handleFingerHover(x, y)
                     }
+                } else if (!isEditMode) {
+                    handleFingerHover(x, y)
                 }
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
                 val distFromDown = Math.hypot((x - dragTouchStartX).toDouble(), (y - dragTouchStartY).toDouble()).toFloat()
-                if (distFromDown > dpToPx(10f) && !isDraggingActive) {
-                    handler?.removeCallbacks(longPressRunnable)
+                if (distFromDown > dpToPx(12f) && !isDraggingActive) {
+                    removeCallbacks(longPressRunnable)
                 }
 
                 if (isDraggingActive && draggingBubble != null) {
@@ -514,14 +559,15 @@ class QuickOpenPreviewView(
                     checkDragReorder(x, y)
                     notifyBlurSceneChanged()
                 } else if (!isEditMode) {
-                    // 普通模拟指纹滑动模式：物理鱼眼动力学
+                    // 普通模拟指纹滑动模式：物理鱼眼动力学（手指停住时保持当前放大状态，绝不失效）
                     handleFingerHover(x, y)
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handler?.removeCallbacks(longPressRunnable)
+                isTouching = false
+                removeCallbacks(longPressRunnable)
 
                 if (isDraggingActive && draggingBubble != null) {
                     // 结束拖拽：吸附回最终目标槽位
@@ -540,14 +586,17 @@ class QuickOpenPreviewView(
     }
 
     private fun findTouchedBubble(x: Float, y: Float): CircularBubbleView? {
-        val threshold = dpToPx(config.iconSize.toFloat()) * 0.7f
+        val threshold = dpToPx(config.iconSize.toFloat()) * 0.75f
+        var best: CircularBubbleView? = null
+        var minDist = Float.MAX_VALUE
         for (b in bubbleViews) {
             val dist = Math.hypot((x - b.targetX).toDouble(), (y - b.targetY).toDouble()).toFloat()
-            if (dist <= threshold) {
-                return b
+            if (dist <= threshold && dist < minDist) {
+                minDist = dist
+                best = b
             }
         }
-        return null
+        return best
     }
 
     /**
@@ -566,14 +615,17 @@ class QuickOpenPreviewView(
         headerTitle.setTextColor(0xFFFF9933.toInt())
         headerSubtitle.text = "长按并拖动图标交换位置，点击空白完成"
 
-        // 所有气泡进入轻微呼吸抖动
+        // 所有气泡进入统一排版微放状态，清除单点悬停缩放
         for (b in bubbleViews) {
+            b.setSelectedState(false)
+            b.setIconAlpha(config.iconAlpha)
             b.applyScale(1.05f)
         }
-        notifyBlurSceneChanged()
 
         if (initialTarget != null) {
             startDragging(initialTarget, dragTouchStartX, dragTouchStartY)
+        } else {
+            notifyBlurSceneChanged()
         }
     }
 
@@ -588,9 +640,10 @@ class QuickOpenPreviewView(
 
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
-        headerSubtitle.text = "移至目标图标后松手直接打开"
+        headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
 
         for (b in bubbleViews) {
+            b.setSelectedState(false)
             b.applyScale(1.0f)
         }
         notifyBlurSceneChanged()
@@ -603,6 +656,7 @@ class QuickOpenPreviewView(
     private fun startDragging(bubble: CircularBubbleView, touchX: Float, touchY: Float) {
         isDraggingActive = true
         draggingBubble = bubble
+        bubble.setSelectedState(false)
         bubble.bringToFront()
         bubble.applyScale(1.22f)
         notifyBlurSceneChanged()
@@ -684,6 +738,8 @@ class QuickOpenPreviewView(
             lp.leftMargin = targetLeft
             lp.topMargin = targetTop
             b.layoutParams = lp
+            b.translationX = 0f
+            b.translationY = 0f
         }
         draggingBubble = null
         notifyBlurSceneChanged()
@@ -738,7 +794,7 @@ class QuickOpenPreviewView(
                 currentSelectedBubble = null
                 headerTitle.text = "滑动选择快捷方式"
                 headerTitle.setTextColor(Color.WHITE)
-                headerSubtitle.text = "移至目标图标后松手直接打开"
+                headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
             }
         }
         notifyBlurSceneChanged()
@@ -753,7 +809,7 @@ class QuickOpenPreviewView(
         }
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
-        headerSubtitle.text = "移至目标图标后松手直接打开"
+        headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
         notifyBlurSceneChanged()
     }
 
@@ -765,14 +821,16 @@ class QuickOpenPreviewView(
             val lp = b.layoutParams as? LayoutParams
             val cx = if (lp != null) lp.leftMargin + iconSizePx / 2f + b.translationX else b.targetX
             val cy = if (lp != null) lp.topMargin + iconSizePx / 2f + b.translationY else b.targetY
-            val scale = b.scaleX.coerceAtLeast(0.1f)
-            val effectiveDiameter = (iconSizePx - 4f).coerceAtLeast(1f) * scale
+            val scale = b.currentScale.coerceAtLeast(0.1f)
+            // 内缩 3px (直径减 6px) 使预览毛玻璃圆严格收拢在 2.2px 气泡描边内侧，放大时绝不溢出边框
+            val effectiveDiameter = (iconSizePx - 6f).coerceAtLeast(1f) * scale
             spots.add(
                 BubbleBlurSpot(
                     id = b.item.id,
                     centerX = cx,
                     centerY = cy,
                     diameterPx = effectiveDiameter,
+                    alpha = b.iconAlpha,
                 )
             )
         }
@@ -797,7 +855,7 @@ class QuickOpenPreviewView(
                 headerHeightPx = headerH,
                 backBtnLeftPx = dpToPx(18f),
                 backBtnTopPx = dpToPx(46f),
-                backBtnSizePx = (dpToPx(40f) - 4f).coerceAtLeast(1f),
+                backBtnSizePx = (dpToPx(40f) - 6f).coerceAtLeast(1f),
                 bubbles = spots,
             )
         )
