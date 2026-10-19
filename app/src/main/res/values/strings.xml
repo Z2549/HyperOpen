@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">指纹快捷方式增强</string>
+    <string name="app_name">HyperOpen</string>
     <string name="title_settings">快捷方式个性化设置</string>
     <string name="section_material">材质与系统风格</string>
     <string name="material_system">跟随系统设置 (System Auto)</string>

@@ -25,7 +25,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true"
-        android:theme="@style/Theme.HyperOSQuickOpen">
+        android:theme="@style/Theme.HyperOpen">
 
         <!-- LSPosed / Xposed 模块声明元数据 -->
         <meta-data
@@ -33,7 +33,7 @@
             android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="小米澎湃OS指纹快捷方式增强：Apple Watch蜂窝充满、柔光玻璃与高斯模糊双材质、任意自定义动作" />
+            android:value="小米澎湃OS指纹快捷方式增强：蜂窝样式、柔光玻璃与高斯模糊双材质、任意自定义动作" />
         <meta-data
             android:name="xposedminversion"
             android:value="82" />
@@ -53,7 +53,7 @@
         <!-- 跨进程配置共享 Provider (给 SystemUI 实时提供最新配置) -->
         <provider
             android:name=".provider.SettingsProvider"
-            android:authorities="com.hyperos.quickopen.provider"
+            android:authorities="com.hyperos.hyperopen.provider"
             android:exported="true"
             android:multiprocess="false" />
     </application>

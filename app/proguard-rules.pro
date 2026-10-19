@@ -1,6 +1,6 @@
--keep class com.hyperos.quickopen.MainHook { *; }
--keep class com.hyperos.quickopen.** { *; }
--keepclassmembers class com.hyperos.quickopen.** { *; }
+-keep class com.hyperos.hyperopen.MainHook { *; }
+-keep class com.hyperos.hyperopen.** { *; }
+-keepclassmembers class com.hyperos.hyperopen.** { *; }
 
 # 保留 Miuix 反射调用的图标扩展属性
 -keep class top.yukonga.miuix.kmp.icon.** { *; }

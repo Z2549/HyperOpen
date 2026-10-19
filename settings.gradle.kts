@@ -21,5 +21,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HyperOSQuickOpen"
+rootProject.name = "HyperOpen"
 include(":app")
