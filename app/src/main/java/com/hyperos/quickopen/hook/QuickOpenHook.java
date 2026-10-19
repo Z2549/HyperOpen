@@ -184,30 +184,17 @@ public class QuickOpenHook {
                         Log.w(TAG, "更新 LayoutParams 失败", t);
                     }
 
-                    // 清理可能残余的原生 item 数据并彻底隐藏原生八边形选中指示器
+                    // 清理可能残余的原生 item 数据
                     try {
                         XposedHelpers.callMethod(view, "cleanQuickOpenItemList");
                     } catch (Throwable ignored) {}
 
-                    // 隐藏原生的所有其它子 View (标题、副标题、教学提示、原生八边形选中指示器等)
+                    // 隐藏原生的所有其它子 View (标题、副标题、教学提示等)
                     for (int i = 0; i < view.getChildCount(); i++) {
                         View child = view.getChildAt(i);
                         if (!CONTAINER_TAG.equals(child.getTag())) {
                             child.setVisibility(View.GONE);
-                            child.setAlpha(0f);
                         }
-                    }
-
-                    // 深度搜寻并隐藏所有可能残留的原生高亮与选中背景字段
-                    String[] selectViewFieldNames = {"mSelectView", "mQuickOpenSelectView", "mSelectedItemView", "mHoverView", "mTargetView"};
-                    for (String fieldName : selectViewFieldNames) {
-                        try {
-                            Object sv = XposedHelpers.getObjectField(view, fieldName);
-                            if (sv instanceof View) {
-                                ((View) sv).setVisibility(View.GONE);
-                                ((View) sv).setAlpha(0f);
-                            }
-                        } catch (Throwable ignored) {}
                     }
 
                     // 获取或创建 CustomQuickOpenContainer
@@ -285,22 +272,6 @@ public class QuickOpenHook {
                     } catch (Throwable ignored) {}
                 }
             }));
-
-            // 4. Hook onTouchEvent：拦截原生快捷视图触摸事件，完全杜绝原生八边形指示器
-            try {
-                record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "onTouchEvent", MotionEvent.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        if (!active) return;
-                        FrameLayout view = (FrameLayout) param.thisObject;
-                        CustomQuickOpenContainer container = (CustomQuickOpenContainer)
-                            XposedHelpers.getAdditionalInstanceField(view, "customContainer");
-                        if (container != null && container.getVisibility() == View.VISIBLE) {
-                            param.setResult(true);
-                        }
-                    }
-                }));
-            } catch (Throwable ignored) {}
 
             Log.i(TAG, "已成功安装 MiuiGxzwQuickOpenView 核心生命周期接管 Hook！");
 
@@ -384,9 +355,6 @@ public class QuickOpenHook {
                             } else {
                                 frameLayout.post(cancelTask);
                             }
-                            param.setResult(null);
-                        } else {
-                            // 针对 ACTION_DOWN 等其他触摸事件，同样完全吞掉原生事件流，绝不允许原生代码绘制八边形指示器
                             param.setResult(null);
                         }
                     } catch (Throwable t) {

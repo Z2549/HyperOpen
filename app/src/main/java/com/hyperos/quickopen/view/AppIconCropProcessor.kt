@@ -41,69 +41,126 @@ object AppIconCropProcessor {
      * 标准抗锯齿圆形裁切 (BitmapShader)
      */
     private fun createStandardCircle(drawable: Drawable): Drawable {
-        val size = BITMAP_SIZE
-        val srcBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val srcCanvas = Canvas(srcBmp)
-        drawable.setBounds(0, 0, size, size)
-        drawable.draw(srcCanvas)
-
-        val outBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val outCanvas = Canvas(outBmp)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = BitmapShader(srcBmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        }
-        val radius = size / 2f
-        outCanvas.drawCircle(radius, radius, radius, paint)
-
-        // 添加一层超细微半透明边缘保护线，防止在浅色/白底壁纸下边缘发虚
-        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
-            color = Color.argb(28, 255, 255, 255)
-        }
-        outCanvas.drawCircle(radius, radius, radius - 1f, strokePaint)
-
-        return BitmapDrawable(null, outBmp)
+        return renderCircularIcon(drawable, expandAdaptive = false)
     }
 
     /**
      * 自适应留白外扩并圆形满铺裁切 (专为 AdaptiveIcon 和带白底的应用打造)
      */
     private fun createAdaptiveExpandedCircle(drawable: Drawable): Drawable {
+        return renderCircularIcon(drawable, expandAdaptive = true)
+    }
+
+    private fun renderCircularIcon(drawable: Drawable, expandAdaptive: Boolean): Drawable {
         val size = BITMAP_SIZE
+        val srcBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val srcCanvas = Canvas(srcBmp)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable) {
-            // AdaptiveIconDrawable 规范自带 25% 安全边距 (四周各保留 1/6)
-            // 外扩 1.333 倍绘制后切出中心正方再裁圆，核心图标图案正好铺满正圆
-            val scale = 1.3333f
-            val drawSize = (size * scale).toInt()
-            val offset = (drawSize - size) / 2
-
-            val drawBmp = Bitmap.createBitmap(drawSize, drawSize, Bitmap.Config.ARGB_8888)
-            val drawCanvas = Canvas(drawBmp)
-            drawable.setBounds(0, 0, drawSize, drawSize)
-            drawable.draw(drawCanvas)
-
-            val croppedBmp = Bitmap.createBitmap(drawBmp, offset, offset, size, size)
-            val outBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val outCanvas = Canvas(outBmp)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = BitmapShader(croppedBmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+            // 直接绘制 background 与 foreground 图层，绕过系统 AdaptiveIconDrawable.draw() 内部的超椭圆/方圆 (Squircle) mMask 裁切，
+            // 避免系统先裁成超椭圆再被圆形二次裁切时四角与四边交界形成八边形。
+            val bg = drawable.background
+            val fg = drawable.foreground
+            if (bg != null || fg != null) {
+                val layerScale = if (expandAdaptive) 1.36f else 1.22f
+                val drawSize = (size * layerScale).toInt()
+                val offset = (size - drawSize) / 2
+                bg?.let {
+                    it.setBounds(offset, offset, offset + drawSize, offset + drawSize)
+                    it.draw(srcCanvas)
+                }
+                fg?.let {
+                    it.setBounds(offset, offset, offset + drawSize, offset + drawSize)
+                    it.draw(srcCanvas)
+                }
+            } else {
+                val scale = if (expandAdaptive) 1.3333f else 1.0f
+                val drawSize = (size * scale).toInt()
+                val offset = (size - drawSize) / 2
+                drawable.setBounds(offset, offset, offset + drawSize, offset + drawSize)
+                drawable.draw(srcCanvas)
             }
-            val radius = size / 2f
-            outCanvas.drawCircle(radius, radius, radius, paint)
+        } else {
+            val rawBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val rawCanvas = Canvas(rawBmp)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(rawCanvas)
 
-            val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 2f
-                color = Color.argb(32, 255, 255, 255)
+            // 检测图标在正交四边与四对角方向上的实际不透明半径；
+            // 若系统返回的是带透明边距的 MIUI 超椭圆位图（四直边落在圆内、四角落在圆外），
+            // 直接裁圆会导致“四条直边 + 四段圆弧”拼成八边形，因此自动外扩使有效内容完全填满正圆。
+            val fitScale = computeCircleFillScale(rawBmp, expandAdaptive)
+            if (fitScale > 1.005f) {
+                srcCanvas.save()
+                val center = size / 2f
+                srcCanvas.scale(fitScale, fitScale, center, center)
+                srcCanvas.drawBitmap(rawBmp, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+                srcCanvas.restore()
+            } else {
+                srcCanvas.drawBitmap(rawBmp, 0f, 0f, null)
             }
-            outCanvas.drawCircle(radius, radius, radius - 1f, strokePaint)
-
-            return BitmapDrawable(null, outBmp)
         }
 
-        // 非自适应图标回退到标准圆切
-        return createStandardCircle(drawable)
+        val outBmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val outCanvas = Canvas(outBmp)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            shader = BitmapShader(srcBmp, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+        val center = size / 2f
+        // 内缩 1px 确保抗锯齿圆边缘完整落在 Bitmap 内部，放大时绝不被四边截平
+        val circleRadius = center - 1f
+        outCanvas.drawCircle(center, center, circleRadius, paint)
+
+        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+            color = Color.argb(if (expandAdaptive) 32 else 28, 255, 255, 255)
+        }
+        outCanvas.drawCircle(center, center, circleRadius - 1f, strokePaint)
+
+        return BitmapDrawable(null, outBmp)
+    }
+
+    /**
+     * 沿 8 个方向（上下左右 + 四个 45° 对角线）从中心向外扫描不透明像素边界，
+     * 计算将超椭圆/带留白图标外扩至完全覆盖正圆所需的缩放比例。
+     */
+    private fun computeCircleFillScale(bmp: Bitmap, expandAdaptive: Boolean): Float {
+        val size = bmp.width
+        val center = size / 2f
+        val targetRadius = center - 1f
+        val dirs = arrayOf(
+            floatArrayOf(1f, 0f),
+            floatArrayOf(-1f, 0f),
+            floatArrayOf(0f, 1f),
+            floatArrayOf(0f, -1f),
+            floatArrayOf(0.7071f, 0.7071f),
+            floatArrayOf(-0.7071f, 0.7071f),
+            floatArrayOf(0.7071f, -0.7071f),
+            floatArrayOf(-0.7071f, -0.7071f),
+        )
+
+        var minReach = targetRadius
+        val maxStep = center.toInt()
+        for (dir in dirs) {
+            var lastOpaqueDist = 0f
+            for (step in 1..maxStep) {
+                val x = (center + dir[0] * step).toInt().coerceIn(0, size - 1)
+                val y = (center + dir[1] * step).toInt().coerceIn(0, size - 1)
+                val alpha = Color.alpha(bmp.getPixel(x, y))
+                if (alpha > 180) {
+                    lastOpaqueDist = step.toFloat()
+                }
+            }
+            if (lastOpaqueDist > center * 0.45f && lastOpaqueDist < minReach) {
+                minReach = lastOpaqueDist
+            }
+        }
+
+        if (minReach <= 0f || minReach >= targetRadius) {
+            return 1.0f
+        }
+        val neededScale = (targetRadius / minReach) * if (expandAdaptive) 1.04f else 1.01f
+        return neededScale.coerceIn(1.0f, 1.38f)
     }
 }

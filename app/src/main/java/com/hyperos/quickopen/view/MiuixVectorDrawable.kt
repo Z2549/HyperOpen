@@ -117,7 +117,7 @@ class MiuixVectorDrawable(
 
         // 1) 绘制圆形底垫（如启用）
         if (padEnabled) {
-            val radius = Math.min(b.width(), b.height()) / 2f
+            val radius = Math.max(1f, Math.min(b.width(), b.height()) / 2f - 1f)
             canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius, padPaint)
             canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius - 1.25f, padBorderPaint)
         }

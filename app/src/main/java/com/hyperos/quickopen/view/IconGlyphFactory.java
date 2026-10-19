@@ -288,7 +288,7 @@ public final class IconGlyphFactory {
             if (b.width() <= 0 || b.height() <= 0) return;
 
             if (padEnabled) {
-                float radius = Math.min(b.width(), b.height()) / 2f;
+                float radius = Math.max(1f, Math.min(b.width(), b.height()) / 2f - 1f);
                 canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius, padPaint);
                 canvas.drawCircle(b.exactCenterX(), b.exactCenterY(), radius - 1.25f, padBorderPaint);
             }

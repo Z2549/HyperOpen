@@ -122,7 +122,6 @@ class QuickOpenPreviewView(
         val btnSize = dpToPx(40f).toInt()
         val backBtn = FrameLayout(context).apply {
             background = HyperOSMaterialFactory.createCircularBubbleDrawable(resolvedStyle, 0xFFFFFFFF.toInt(), false)
-            elevation = dpToPx(8f)
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -371,16 +370,8 @@ class QuickOpenPreviewView(
         bubblesContainer.invalidate()
         for (b in bubbleViews) {
             b.loadItemIcon()
-            b.invalidateOutline()
             b.invalidate()
-            b.post {
-                b.invalidateOutline()
-                b.invalidate()
-            }
         }
-
-        // 播放弹射散开动效
-        // playExpandAnimation(fodX, fodY)
     }
 
     private fun playExpandAnimation(fodX: Float, fodY: Float) {
@@ -563,7 +554,6 @@ class QuickOpenPreviewView(
         isDraggingActive = true
         draggingBubble = bubble
         bubble.bringToFront()
-        bubble.translationZ = 40f
         bubble.animate()
             .scaleX(1.22f)
             .scaleY(1.22f)
@@ -648,7 +638,6 @@ class QuickOpenPreviewView(
             lp.leftMargin = targetLeft
             lp.topMargin = targetTop
             b.layoutParams = lp
-            b.translationZ = 0f
         }
         draggingBubble = null
         triggerHaptic(18)
@@ -686,11 +675,9 @@ class QuickOpenPreviewView(
         if (closest != null && minDistance < hitDistanceThreshold) {
             if (currentSelectedBubble != closest) {
                 currentSelectedBubble?.setSelectedState(false)
-                currentSelectedBubble?.translationZ = 0f
 
                 closest.setSelectedState(true)
                 closest.bringToFront()
-                closest.translationZ = 20f
                 currentSelectedBubble = closest
 
                 headerTitle.text = closest.item.title
@@ -701,7 +688,6 @@ class QuickOpenPreviewView(
         } else {
             if (currentSelectedBubble != null) {
                 currentSelectedBubble?.setSelectedState(false)
-                currentSelectedBubble?.translationZ = 0f
                 currentSelectedBubble = null
                 headerTitle.text = "滑动选择快捷方式"
                 headerTitle.setTextColor(Color.WHITE)
@@ -712,7 +698,6 @@ class QuickOpenPreviewView(
 
     private fun resetHoverSelection() {
         currentSelectedBubble?.setSelectedState(false)
-        currentSelectedBubble?.translationZ = 0f
         currentSelectedBubble = null
         for (b in bubbleViews) {
             b.applyScale(1.0f)

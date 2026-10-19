@@ -4,29 +4,19 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.ColorMatrix;
-import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
-import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
-import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.provider.Settings;
-import android.util.Log;
 import android.view.View;
-import android.view.ViewOutlineProvider;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 
 /**
  * HyperOS 材质工程：柔光玻璃（Soft Light Glass）与高斯模糊（Gaussian Blur）次世代实现。
@@ -51,60 +41,12 @@ public class HyperOSMaterialFactory {
         return STYLE_SOFT_GLASS;
     }
 
-    /**
-     * 【方案一】：优先尝试通过反射在 SystemUI 中复用官方 miuix.blur.widget.BlurView
-     */
-    @Nullable
-    public static View tryCreateSystemBlurView(Context context, ClassLoader classLoader) {
-        try {
-            Class<?> blurViewClass = classLoader.loadClass("miuix.blur.widget.BlurView");
-            Constructor<?> ctor = blurViewClass.getConstructor(Context.class);
-            View blurView = (View) ctor.newInstance(context);
-
-            Method setBlurEnabled = blurViewClass.getMethod("setBlurEnabled", boolean.class);
-            setBlurEnabled.invoke(blurView, true);
-
-            // 设为纯圆形轮廓裁切
-            blurView.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setOval(0, 0, view.getWidth(), view.getHeight());
-                }
-            });
-            blurView.setClipToOutline(true);
-
-            Log.i(TAG, "成功复用 SystemUI 内部官方 miuix.blur.widget.BlurView！");
-            return blurView;
-        } catch (Throwable t) {
-            Log.d(TAG, "SystemUI 未找到 miuix.blur.widget.BlurView，平滑切换至方案二原生渲染: " + t.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 【方案二】：Android 12+ 原生 RenderEffect 硬件背景模糊 + 饱和度增益
-     */
-    public static void applyNativeBackdropBlur(View view, float blurRadius) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                // 1. 基础大半径高斯模糊
-                RenderEffect blur = RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP);
-
-                // 2. 色彩饱和度提升 180% (去除灰色泛白雾气，保留澎湃OS鲜明色调)
-                ColorMatrix cm = new ColorMatrix();
-                cm.setSaturation(1.80f);
-                RenderEffect colorBoost = RenderEffect.createColorFilterEffect(new ColorMatrixColorFilter(cm));
-
-                RenderEffect combined = RenderEffect.createChainEffect(colorBoost, blur);
-                view.setRenderEffect(combined);
-            } catch (Throwable t) {
-                Log.e(TAG, "应用 RenderEffect 失败", t);
-            }
-        }
-    }
-
     public static Drawable createCircularBubbleDrawable(int style, int tintColor, boolean isSelected) {
-        return new CircularBubbleDrawable(style, tintColor, isSelected);
+        return new CircularBubbleDrawable(style, tintColor, isSelected, true);
+    }
+
+    public static Drawable createCircularBubbleDrawable(int style, int tintColor, boolean isSelected, boolean glowEnabled) {
+        return new CircularBubbleDrawable(style, tintColor, isSelected, glowEnabled);
     }
 
     public static Drawable createHeaderPillDrawable(int style) {
@@ -250,6 +192,7 @@ public class HyperOSMaterialFactory {
         private final int style;
         private final int tintColor;
         private final boolean isSelected;
+        private final boolean glowEnabled;
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -258,11 +201,16 @@ public class HyperOSMaterialFactory {
         private final Paint outerAuraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         public CircularBubbleDrawable(int style, int tintColor, boolean isSelected) {
+            this(style, tintColor, isSelected, true);
+        }
+
+        public CircularBubbleDrawable(int style, int tintColor, boolean isSelected, boolean glowEnabled) {
             this.style = style;
             this.tintColor = tintColor;
             this.isSelected = isSelected;
+            this.glowEnabled = glowEnabled;
             borderPaint.setStyle(Paint.Style.STROKE);
-            borderPaint.setStrokeWidth(isSelected ? 2.8f : 2.0f);
+            borderPaint.setStrokeWidth(isSelected ? 2.4f : 1.8f);
         }
 
         @Override
@@ -273,7 +221,10 @@ public class HyperOSMaterialFactory {
 
             float cx = width / 2f;
             float cy = height / 2f;
-            float radius = Math.min(cx, cy) - 2f;
+            float maxRadius = Math.min(cx, cy);
+            // 严格收敛在正方形视图边界内部，杜绝任何超出 [0, width] x [0, height] 被四边截断成八边形的现象
+            float radius = maxRadius - 2.0f;
+            if (radius <= 0f) return;
 
             if (style == STYLE_SOFT_GLASS) {
                 // ================= 柔光玻璃（Soft Light Glass） =================
@@ -292,7 +243,7 @@ public class HyperOSMaterialFactory {
                 bgPaint.setShader(bgShader);
                 canvas.drawCircle(cx, cy, radius, bgPaint);
 
-                // 2. 穹顶弧形切面天光反射（月牙状通透高光）
+                // 2. 穹顶弧形切面天光反射（使用 Shader 自然衰减至透明，无需 clipRect）
                 int hlTop = isSelected ? 0xC0FFFFFF : 0x85FFFFFF;
                 LinearGradient hlShader = new LinearGradient(
                     0, 0, 0, cy * 0.95f,
@@ -301,10 +252,7 @@ public class HyperOSMaterialFactory {
                     Shader.TileMode.CLAMP
                 );
                 highlightPaint.setShader(hlShader);
-                canvas.save();
-                canvas.clipRect(0, 0, width, cy);
                 canvas.drawCircle(cx, cy, radius, highlightPaint);
-                canvas.restore();
 
                 // 3. 菲涅尔渐变光感描边（顶部反射亮、底部深邃回光）
                 int bTop = isSelected ? 0xFFFFFFFF : 0x85FFFFFF;
@@ -340,7 +288,7 @@ public class HyperOSMaterialFactory {
             }
 
             // 4. App 主题色核心散射光斑
-            int glowAlpha = isSelected ? 0xA6 : 0x4D;
+            int glowAlpha = (isSelected && glowEnabled) ? 0xA6 : 0x4D;
             int coreColor = (tintColor & 0x00FFFFFF) | (glowAlpha << 24);
             RadialGradient glowShader = new RadialGradient(
                 cx, cy, radius * 0.88f,
@@ -351,17 +299,17 @@ public class HyperOSMaterialFactory {
             glowPaint.setShader(glowShader);
             canvas.drawCircle(cx, cy, radius, glowPaint);
 
-            // 5. 选中状态下的外圈呼吸柔光微晕 (Outer Aura Glow)
-            if (isSelected) {
+            // 5. 选中状态下的内聚呼吸柔光微晕 (严格限制在 radius 之内，绝不越界被方形 View 边界截成八边形)
+            if (isSelected && glowEnabled) {
                 int auraColor = (tintColor & 0x00FFFFFF) | 0x38000000;
                 RadialGradient auraShader = new RadialGradient(
-                    cx, cy, radius + 4f,
+                    cx, cy, radius,
                     new int[]{0x00000000, auraColor, 0x00000000},
-                    new float[]{0.70f, 0.90f, 1f},
+                    new float[]{0.68f, 0.88f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 outerAuraPaint.setShader(auraShader);
-                canvas.drawCircle(cx, cy, radius + 3f, outerAuraPaint);
+                canvas.drawCircle(cx, cy, radius, outerAuraPaint);
             }
         }
 

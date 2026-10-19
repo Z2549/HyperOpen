@@ -34,19 +34,9 @@ public class CircularBubbleView extends FrameLayout {
 
         setLayoutParams(new LayoutParams(sizePx, sizePx));
         setClipChildren(false);
+        setClipToPadding(false);
 
-        // 设置纯正圆形 OutlineProvider，并在放大时以真正圆形向外扩张，使用 sizePx 兜底初次未测量状态，绝不裁空图标
-        setOutlineProvider(new android.view.ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, android.graphics.Outline outline) {
-                int w = view.getWidth() > 0 ? view.getWidth() : sizePx;
-                int h = view.getHeight() > 0 ? view.getHeight() : sizePx;
-                outline.setOval(0, 0, w, h);
-            }
-        });
-        setClipToOutline(true);
-
-        // 应用纯正圆形光学材质 Drawable (100% 纯 Canvas 正圆形着色渲染，彻底杜绝系统多边形干扰)
+        // 应用纯正圆形光学材质 Drawable
         refreshBackground();
 
         // 中心图标
@@ -74,7 +64,8 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     private void refreshBackground() {
-        setBackground(HyperOSMaterialFactory.createCircularBubbleDrawable(activeStyle, item.tintColor, isSelected));
+        boolean glowEnabled = config == null || config.iconGlowEffect;
+        setBackground(HyperOSMaterialFactory.createCircularBubbleDrawable(activeStyle, item.tintColor, isSelected, glowEnabled));
     }
 
     public void setMaterialStyle(int style) {
@@ -114,14 +105,6 @@ public class CircularBubbleView extends FrameLayout {
         this.currentScale = scale;
         setScaleX(scale);
         setScaleY(scale);
-    }
-
-    @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-        if (w > 0 && h > 0) {
-            invalidateOutline();
-        }
     }
 
     public void loadItemIcon() {
