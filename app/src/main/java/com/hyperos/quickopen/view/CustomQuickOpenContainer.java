@@ -66,7 +66,6 @@ public class CustomQuickOpenContainer extends FrameLayout {
         regionBackdrop = new CircularRegionBackdropView(getContext(), systemuiClassLoader);
         regionBackdrop.setStyle(resolvedStyle);
         if (config != null) {
-            regionBackdrop.setRegionAlpha(config.regionAlpha);
             regionBackdrop.setBlurRadius(config.regionBlurRadius);
         }
         addView(regionBackdrop);
@@ -86,7 +85,6 @@ public class CustomQuickOpenContainer extends FrameLayout {
             this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(getContext(), config.materialStyle);
             if (regionBackdrop != null) {
                 regionBackdrop.setStyle(resolvedStyle);
-                regionBackdrop.setRegionAlpha(config.regionAlpha);
                 regionBackdrop.setBlurRadius(config.regionBlurRadius);
             }
             // 胶囊背景开关与模糊热生效
@@ -238,7 +236,6 @@ public class CustomQuickOpenContainer extends FrameLayout {
         // 更新底衬大小与位置
         regionBackdrop.setVisibility(config.showRegionBg ? View.VISIBLE : View.GONE);
         regionBackdrop.setStyle(resolvedStyle);
-        regionBackdrop.setRegionAlpha(config.regionAlpha);
         regionBackdrop.setBlurRadius(config.regionBlurRadius);
         regionBackdrop.updateGeometry(regionRadiusPx);
         LayoutParams rLp = new LayoutParams((int) regionDiameterPx, (int) regionDiameterPx);

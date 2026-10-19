@@ -78,8 +78,6 @@ public class QuickOpenConfig {
     public float fisheyeZoomAlpha = 1.0f;
     /** 唤醒指纹快捷方式时全屏模糊遮罩背景透明度 (0.0f ~ 1.0f，默认 1.0f) */
     public float fullscreenBlurMaskAlpha = 1.0f;
-    /** 图标的圆形视界区域底衬透明度 (0.0f ~ 1.0f，默认 1.0f) */
-    public float regionAlpha = 1.0f;
     /** 图标的圆形视界区域背景高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭) */
     public int regionBlurRadius = 25;
 
@@ -92,7 +90,7 @@ public class QuickOpenConfig {
     /** 手指选中图标时气泡内图标的缩放倍率 (1.00x ~ 1.50x，默认 1.15x) */
     public float selectedIconScale = 1.15f;
 
-    /** 应用图标裁切方案 (CROP_DEFAULT_PADDING / CROP_BITMAP_CIRCLE / CROP_ADAPTIVE_EXPAND / CROP_FULL_BLEED) */
+    /** 应用图标裁切方案 (CROP_BITMAP_CIRCLE / CROP_ADAPTIVE_EXPAND) */
     public int appIconCropMode = CROP_ADAPTIVE_EXPAND;
     /** Miuix 矢量图标是否启用圆形底垫 */
     public boolean glyphPadEnabled = true;
@@ -130,7 +128,6 @@ public class QuickOpenConfig {
                     config.iconAlpha = bundle.getFloat("icon_alpha", 1.0f);
                     config.fisheyeZoomAlpha = bundle.getFloat("fisheye_zoom_alpha", 1.0f);
                     config.fullscreenBlurMaskAlpha = bundle.getFloat("fullscreen_blur_mask_alpha", 1.0f);
-                    config.regionAlpha = bundle.getFloat("region_alpha", 1.0f);
                     config.regionBlurRadius = bundle.getInt("region_blur_radius", 25);
                     config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 0);
                     config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
@@ -177,7 +174,6 @@ public class QuickOpenConfig {
         config.iconAlpha = xPrefs.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = xPrefs.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = xPrefs.getFloat("fullscreen_blur_mask_alpha", 1.0f);
-        config.regionAlpha = xPrefs.getFloat("region_alpha", 1.0f);
         config.regionBlurRadius = xPrefs.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
@@ -219,7 +215,6 @@ public class QuickOpenConfig {
         config.iconAlpha = sp.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = sp.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = sp.getFloat("fullscreen_blur_mask_alpha", 1.0f);
-        config.regionAlpha = sp.getFloat("region_alpha", 1.0f);
         config.regionBlurRadius = sp.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
@@ -261,7 +256,6 @@ public class QuickOpenConfig {
             .putFloat("icon_alpha", iconAlpha)
             .putFloat("fisheye_zoom_alpha", fisheyeZoomAlpha)
             .putFloat("fullscreen_blur_mask_alpha", fullscreenBlurMaskAlpha)
-            .putFloat("region_alpha", regionAlpha)
             .putInt("region_blur_radius", regionBlurRadius)
             .putInt("icon_spacing_offset", iconSpacingOffset)
             .putInt("bubble_padding_percent", bubblePaddingPercent)

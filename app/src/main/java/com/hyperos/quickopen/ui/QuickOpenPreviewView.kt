@@ -366,7 +366,6 @@ class QuickOpenPreviewView(
         refreshBackdropMask()
         if (::regionBackdrop.isInitialized) {
             regionBackdrop.setStyle(resolvedStyle)
-            regionBackdrop.setRegionAlpha(config.regionAlpha)
             regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
         }
         applyHeaderPillBackground()
@@ -411,7 +410,6 @@ class QuickOpenPreviewView(
         regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
         regionBackdrop.setSystemBlurEnabled(false)
         regionBackdrop.setStyle(resolvedStyle)
-        regionBackdrop.setRegionAlpha(config.regionAlpha)
         regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
         regionBackdrop.updateGeometry(regionRadiusPx)
         val rLp = LayoutParams(regionDiameterPx.toInt(), regionDiameterPx.toInt()).apply {

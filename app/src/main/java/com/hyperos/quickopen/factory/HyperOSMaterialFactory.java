@@ -33,10 +33,10 @@ public class HyperOSMaterialFactory {
 
     /**
      * 全局统一的实时背景毛玻璃底色混合（与圆形视界区域底衬完全对齐）：
-     * - 液态玻璃使用通透白微光混合 (0x1CFFFFFF)
+     * - 液态玻璃使用晶莹通透微光混合 (0x16FFFFFF)，最大化保留底层实时动态色彩与折射对比度
      * - 高斯模糊使用沉稳哑光微透混合 (0x12FFFFFF)，绝不死黑
      */
-    public static final int BLUR_TINT_SOFT_GLASS = 0x1CFFFFFF;
+    public static final int BLUR_TINT_SOFT_GLASS = 0x16FFFFFF;
     public static final int BLUR_TINT_GAUSSIAN_BLUR = 0x12FFFFFF;
 
     public static int getUnifiedBlurTint(int style) {
@@ -118,7 +118,7 @@ public class HyperOSMaterialFactory {
 
     /**
      * 统一绘制正圆形物理光学层（供 CircularRegionBackdropView 与 CircularBubbleDrawable 共同复用，确保全组件视觉 100% 统一）：
-     * - 液态玻璃 (STYLE_SOFT_GLASS)：次表面水润微光 + 穹顶切面天光反射 + 菲涅尔梯度镜面圆环描边
+     * - 液态玻璃 (STYLE_SOFT_GLASS)：中空清透凸透镜核心 + 边缘全反射内壁微光焦散 + 顶部弯月镜面天光切面 + 底部折射漫反射 + 双极菲涅尔晶亮圆环描边
      * - 高斯模糊 (STYLE_GAUSSIAN_BLUR)：沉稳微晶哑光磨砂漫反射底衬 + 细腻全包围微光描边（无切面反光）
      */
     public static void drawUnifiedCircularOptics(
@@ -138,39 +138,57 @@ public class HyperOSMaterialFactory {
         if (radius <= 0f) return;
 
         if (style == STYLE_SOFT_GLASS) {
-            // ================= 液态玻璃（Soft Light Glass / 水润高动态流体） =================
-            // 1. 次表面水润微光（透光率 90%+，保留底层实时毛玻璃色彩）
-            int c0 = isSelected ? 0x38FFFFFF : 0x1EFFFFFF;
-            int c1 = isSelected ? 0x16FFFFFF : 0x0AFFFFFF;
-            RadialGradient radialLight = new RadialGradient(
-                cx, cy, radius,
-                new int[]{c0, c1, 0x00FFFFFF},
-                new float[]{0f, 0.65f, 1f},
+            // ================= 液态玻璃（Liquid Glass / 立体水滴折射与边缘焦散） =================
+            // 1. 凸透镜边缘菲涅尔内壁折射焦散（中心清透不发白，四周边缘因玻璃厚度凝聚晶莹内发光）
+            int centerClear = isSelected ? 0x10FFFFFF : 0x04FFFFFF;
+            int midRefract = isSelected ? 0x18FFFFFF : 0x0AFFFFFF;
+            int innerRimCaustic = isSelected ? 0x52FFFFFF : 0x34FFFFFF;
+            int outerEdge = isSelected ? 0x22FFFFFF : 0x12FFFFFF;
+            RadialGradient lensRefraction = new RadialGradient(
+                cx, cy - radius * 0.08f, radius,
+                new int[]{centerClear, midRefract, innerRimCaustic, outerEdge},
+                new float[]{0f, 0.62f, 0.90f, 1f},
                 Shader.TileMode.CLAMP
             );
-            bgPaint.setShader(radialLight);
+            bgPaint.setShader(lensRefraction);
             canvas.drawCircle(cx, cy, radius, bgPaint);
 
-            // 2. 穹顶弧形切面天光反射（水滴晶莹切面高光，Shader 在 cy * 0.95f 处自然衰减至全透明）
-            int hlTop = isSelected ? 0x98FFFFFF : 0x70FFFFFF;
-            int hlMid = isSelected ? 0x28FFFFFF : 0x1AFFFFFF;
-            LinearGradient hlShader = new LinearGradient(
-                0, 0, 0, cy * 0.95f,
-                new int[]{hlTop, hlMid, 0x00FFFFFF},
-                new float[]{0f, 0.55f, 1f},
+            // 2. 顶部天光镜面弯月高光 + 底部二次折射回光（模拟真实水滴顶亮、中透、底润的立体厚度感）
+            int topSpecular = isSelected ? 0xB0FFFFFF : 0x82FFFFFF;
+            int topFade = isSelected ? 0x32FFFFFF : 0x1EFFFFFF;
+            int bottomCaustic = isSelected ? 0x3CFFFFFF : 0x24FFFFFF;
+            LinearGradient specularAndCaustic = new LinearGradient(
+                0, cy - radius, 0, cy + radius,
+                new int[]{topSpecular, topFade, 0x00FFFFFF, 0x00FFFFFF, bottomCaustic},
+                new float[]{0f, 0.24f, 0.48f, 0.78f, 1f},
                 Shader.TileMode.CLAMP
             );
-            highlightPaint.setShader(hlShader);
+            highlightPaint.setShader(specularAndCaustic);
             canvas.drawCircle(cx, cy, radius, highlightPaint);
 
-            // 3. 菲涅尔动态梯度镜面圆环描边（顶亮底润）
-            int bTop = isSelected ? 0xFFFFFFFF : 0xD5FFFFFF;
-            int bMid = isSelected ? 0x80FFFFFF : 0x48FFFFFF;
-            int bBottom = isSelected ? 0x48FFFFFF : 0x22FFFFFF;
+            // 3. 顶部内嵌新月高光亮弧（收拢在圆内上沿，赋予液态张力表面光泽）
+            float crescentRadius = radius * 0.91f;
+            if (crescentRadius > 2f) {
+                int crestTop = isSelected ? 0x68FFFFFF : 0x46FFFFFF;
+                RadialGradient crestShader = new RadialGradient(
+                    cx, cy - radius * 0.56f, radius * 0.72f,
+                    new int[]{crestTop, 0x12FFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.55f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                highlightPaint.setShader(crestShader);
+                canvas.drawCircle(cx, cy, crescentRadius, highlightPaint);
+            }
+
+            // 4. 双极菲涅尔镜面圆环描边（顶部高光掠射、两侧清透过渡、底部折射亮边）
+            int bTop = isSelected ? 0xFFFFFFFF : 0xEEFFFFFF;
+            int bUpperMid = isSelected ? 0x90FFFFFF : 0x58FFFFFF;
+            int bWaist = isSelected ? 0x42FFFFFF : 0x22FFFFFF;
+            int bBottom = isSelected ? 0x98FFFFFF : 0x64FFFFFF;
             LinearGradient borderGrad = new LinearGradient(
-                0, 0, 0, height,
-                new int[]{bTop, bMid, bBottom},
-                new float[]{0f, 0.50f, 1f},
+                cx - radius * 0.25f, cy - radius, cx + radius * 0.25f, cy + radius,
+                new int[]{bTop, bUpperMid, bWaist, bBottom},
+                new float[]{0f, 0.35f, 0.72f, 1f},
                 Shader.TileMode.CLAMP
             );
             borderPaint.setShader(borderGrad);
@@ -235,31 +253,31 @@ public class HyperOSMaterialFactory {
 
             if (style == STYLE_SOFT_GLASS) {
                 // ================= 液态玻璃（与圆形视界区域底衬完全统一） =================
-                // 1. 次表面水润微光漫反射底衬
+                // 1. 胶囊表面张力折射底衬（顶底微润、中心清透）
                 LinearGradient bgShader = new LinearGradient(
                     0, 0, 0, height,
-                    new int[]{0x1EFFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.65f, 1f},
+                    new int[]{0x28FFFFFF, 0x06FFFFFF, 0x04FFFFFF, 0x1EFFFFFF},
+                    new float[]{0f, 0.38f, 0.72f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 bgPaint.setShader(bgShader);
                 canvas.drawRoundRect(pill, radius, radius, bgPaint);
 
-                // 2. 穹顶水滴高光切面
+                // 2. 顶部天光镜面切面与底部回光
                 LinearGradient hlShader = new LinearGradient(
-                    0, 0, 0, height * 0.52f,
-                    new int[]{0x70FFFFFF, 0x1AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.55f, 1f},
+                    0, 0, 0, height,
+                    new int[]{0x80FFFFFF, 0x1EFFFFFF, 0x00FFFFFF, 0x00FFFFFF, 0x22FFFFFF},
+                    new float[]{0f, 0.25f, 0.48f, 0.78f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 highlightPaint.setShader(hlShader);
                 canvas.drawRoundRect(pill, radius, radius, highlightPaint);
 
-                // 3. 菲涅尔双向镜面高亮描边（顶亮底润）
+                // 3. 双极菲涅尔镜面高亮描边（顶亮、腰透、底润）
                 LinearGradient borderShader = new LinearGradient(
-                    0, 0, 0, height,
-                    new int[]{0xD5FFFFFF, 0x48FFFFFF, 0x22FFFFFF},
-                    new float[]{0f, 0.50f, 1f},
+                    0, 0, width * 0.15f, height,
+                    new int[]{0xEEFFFFFF, 0x58FFFFFF, 0x22FFFFFF, 0x64FFFFFF},
+                    new float[]{0f, 0.35f, 0.72f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 borderPaint.setShader(borderShader);

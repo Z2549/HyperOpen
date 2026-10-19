@@ -44,19 +44,27 @@ public class ShortcutItem {
     public boolean glyphPadEnabled = false;
     public int glyphPadColor = 0xFF2A82E4;
     public int glyphPadMode = 1; // 0=SOLID, 1=TRANSLUCENT, 2=INVERTED
+    /** 该快捷方式独享的应用图标形状裁切方案：1=标准抗锯齿圆形裁切, 2=自适应外扩满铺 */
+    public int appIconCropMode = 2;
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
-        this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled, false, 0xFF2A82E4, 1);
+        this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled, false, 0xFF2A82E4, 1, 2);
     }
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
                         String iconPackage, String iconGlyph, int tintColor, boolean enabled) {
-        this(id, title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, tintColor, enabled, false, 0xFF2A82E4, 1);
+        this(id, title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, tintColor, enabled, false, 0xFF2A82E4, 1, 2);
     }
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
                         String iconPackage, String iconGlyph, int tintColor, boolean enabled,
                         boolean glyphPadEnabled, int glyphPadColor, int glyphPadMode) {
+        this(id, title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, tintColor, enabled, glyphPadEnabled, glyphPadColor, glyphPadMode, 2);
+    }
+
+    public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload,
+                        String iconPackage, String iconGlyph, int tintColor, boolean enabled,
+                        boolean glyphPadEnabled, int glyphPadColor, int glyphPadMode, int appIconCropMode) {
         this.id = id;
         this.title = title;
         this.subtitle = subtitle;
@@ -69,6 +77,7 @@ public class ShortcutItem {
         this.glyphPadEnabled = glyphPadEnabled;
         this.glyphPadColor = glyphPadColor;
         this.glyphPadMode = glyphPadMode;
+        this.appIconCropMode = appIconCropMode > 0 ? appIconCropMode : 2;
     }
 
     public JSONObject toJson() {
@@ -86,6 +95,7 @@ public class ShortcutItem {
             json.put("glyphPadEnabled", glyphPadEnabled);
             json.put("glyphPadColor", glyphPadColor);
             json.put("glyphPadMode", glyphPadMode);
+            json.put("appIconCropMode", appIconCropMode);
         } catch (JSONException e) {
             Log.e(TAG, "Error serializing ShortcutItem to JSON", e);
         }
@@ -105,7 +115,8 @@ public class ShortcutItem {
             json.optBoolean("enabled", true),
             json.optBoolean("glyphPadEnabled", false),
             json.optInt("glyphPadColor", 0xFF2A82E4),
-            json.optInt("glyphPadMode", 1)
+            json.optInt("glyphPadMode", 1),
+            json.optInt("appIconCropMode", 2)
         );
     }
 
@@ -113,7 +124,7 @@ public class ShortcutItem {
         return new ShortcutItem(
             id, title, subtitle, actionType, actionPayload,
             iconPackage, iconGlyph, tintColor, enabled,
-            glyphPadEnabled, glyphPadColor, glyphPadMode
+            glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode
         );
     }
 

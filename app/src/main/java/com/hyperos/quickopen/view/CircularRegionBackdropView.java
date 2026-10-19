@@ -37,7 +37,6 @@ public class CircularRegionBackdropView extends FrameLayout {
     private static final String TAG = "QuickOpen_RegionBlur";
 
     private int style = HyperOSMaterialFactory.STYLE_SOFT_GLASS;
-    private float regionAlpha = 1.0f;
     private float blurRadiusDp = 25f;
     private float currentRadiusPx = 0f;
 
@@ -133,11 +132,6 @@ public class CircularRegionBackdropView extends FrameLayout {
         }
     }
 
-    public void setRegionAlpha(float alpha) {
-        this.regionAlpha = Math.max(0.0f, Math.min(1.0f, alpha));
-        refreshVisuals();
-    }
-
     public void setBlurRadius(float radiusDp) {
         this.blurRadiusDp = Math.max(0f, radiusDp);
         refreshVisuals();
@@ -193,7 +187,7 @@ public class CircularRegionBackdropView extends FrameLayout {
     }
 
     private void refreshVisuals() {
-        setAlpha(Math.max(0.0f, Math.min(1.0f, regionAlpha)));
+        setAlpha(1.0f);
 
         int blurPx = !systemBlurEnabled ? 0 : Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()

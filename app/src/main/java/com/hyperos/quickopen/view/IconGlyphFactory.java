@@ -69,7 +69,9 @@ public final class IconGlyphFactory {
             if (d != null) return d;
         }
 
-        int cropMode = config != null ? config.appIconCropMode : QuickOpenConfig.CROP_ADAPTIVE_EXPAND;
+        int cropMode = item.appIconCropMode > 0
+            ? item.appIconCropMode
+            : (config != null ? config.appIconCropMode : QuickOpenConfig.CROP_ADAPTIVE_EXPAND);
 
         // 2) 优先级次之：手动指定应用包名图标
         if (notBlank(item.iconPackage)) {
@@ -99,6 +101,36 @@ public final class IconGlyphFactory {
     @NonNull
     public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item) {
         return resolve(ctx, item, null);
+    }
+
+    /**
+     * 解析当前快捷方式所对应的原始应用图标（若该快捷方式当前使用的是应用图标则返回非空 Drawable，否则返回 null）
+     */
+    @Nullable
+    public static Drawable resolveRawAppIcon(
+        @Nullable Context ctx,
+        @Nullable String iconPackage,
+        @Nullable String iconGlyph,
+        @Nullable String actionType,
+        @Nullable String actionPayload
+    ) {
+        if (ctx == null) return null;
+        if (notBlank(iconGlyph)) {
+            return null;
+        }
+        if (notBlank(iconPackage)) {
+            Drawable d = appIcon(ctx, iconPackage.trim());
+            if (d != null) return d;
+        }
+        if (ShortcutItem.ACTION_APP.equals(actionType) && notBlank(actionPayload)) {
+            Drawable d = appIcon(ctx, actionPayload.trim());
+            if (d != null) return d;
+        }
+        if (ShortcutItem.ACTION_INTENT_URI.equals(actionType) && notBlank(actionPayload)) {
+            Drawable d = iconFromIntent(ctx, actionPayload.trim());
+            if (d != null) return d;
+        }
+        return null;
     }
 
     /**
