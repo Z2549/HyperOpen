@@ -42,6 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -1675,19 +1676,26 @@ fun ShortcutEditPage(
                 ) {
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Column {
-                            TextField(
-                                value = actionPayload,
-                                onValueChange = { actionPayload = it },
-                                label = when (actionType) {
-                                    ShortcutItem.ACTION_APP -> "应用包名（例如 com.tencent.mm）"
-                                    ShortcutItem.ACTION_INTENT_URI -> "Intent URI 字符串"
-                                    ShortcutItem.ACTION_SHELL -> "Shell 脚本命令"
-                                    ShortcutItem.ACTION_BROADCAST -> "广播 Action"
-                                    else -> "参数详情"
-                                },
-                                singleLine = actionType == ShortcutItem.ACTION_APP || actionType == ShortcutItem.ACTION_BROADCAST,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            val payloadSingleLine = actionType == ShortcutItem.ACTION_APP || actionType == ShortcutItem.ACTION_BROADCAST
+                            // TextField 内部用 rememberSaveable 保存滚动位置（含横/纵方向），
+                            // 当 payload 卡片被移出再移入 LazyColumn 且 singleLine 发生变化时，
+                            // 恢复出的滚动方向与新模式不一致会抛出 IllegalArgumentException 闪退。
+                            // 以 singleLine 作为 key，让单行/多行模式各自持有独立的保存状态。
+                            key(payloadSingleLine) {
+                                TextField(
+                                    value = actionPayload,
+                                    onValueChange = { actionPayload = it },
+                                    label = when (actionType) {
+                                        ShortcutItem.ACTION_APP -> "应用包名（例如 com.tencent.mm）"
+                                        ShortcutItem.ACTION_INTENT_URI -> "Intent URI 字符串"
+                                        ShortcutItem.ACTION_SHELL -> "Shell 脚本命令"
+                                        ShortcutItem.ACTION_BROADCAST -> "广播 Action"
+                                        else -> "参数详情"
+                                    },
+                                    singleLine = payloadSingleLine,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             if (actionType == ShortcutItem.ACTION_APP) {
                                 Spacer(Modifier.height(8.dp))
                                 TextButton(
