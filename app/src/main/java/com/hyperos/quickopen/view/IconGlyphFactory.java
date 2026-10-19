@@ -39,12 +39,6 @@ import java.util.Map;
 public final class IconGlyphFactory {
     private static final String TAG = "QuickOpen_IconGlyph";
 
-    /** 内置符号 key 列表（供设置页提示） */
-    public static final String[] GLYPH_KEYS = {
-        "scan", "flashlight", "camera", "calc", "note",
-        "mic", "music", "settings", "bus", "wallet", "sparkle"
-    };
-
     private static final Map<String, Drawable> ICON_CACHE = new HashMap<>();
 
     private IconGlyphFactory() {}
@@ -362,10 +356,6 @@ public final class IconGlyphFactory {
         @Override
         public int getIntrinsicHeight() {
             return (int) (GRID * 4);
-        }
-
-        public String getKey() {
-            return key;
         }
     }
 

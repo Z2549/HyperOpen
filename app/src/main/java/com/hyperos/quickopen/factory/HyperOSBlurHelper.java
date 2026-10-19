@@ -1,6 +1,5 @@
 package com.hyperos.quickopen.factory;
 
-import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.util.Log;

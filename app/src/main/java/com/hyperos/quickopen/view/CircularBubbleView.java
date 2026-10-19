@@ -288,10 +288,6 @@ public class CircularBubbleView extends FrameLayout {
         }
     }
 
-    public boolean isSelectedState() {
-        return isSelected;
-    }
-
     public void applyScale(float scale) {
         if (Math.abs(this.fisheyeScale - scale) > 0.0005f) {
             this.fisheyeScale = scale;

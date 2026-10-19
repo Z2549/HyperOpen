@@ -18,7 +18,6 @@ import com.hyperos.quickopen.safety.SafetyStore;
 public class SettingsProvider extends ContentProvider {
     private static final String TAG = "QuickOpen_Provider";
     public static final String AUTHORITY = "com.hyperos.quickopen.provider";
-    public static final Uri CONTENT_URI = Uri.parse("content://" + AUTHORITY);
 
     public static final String METHOD_GET_CONFIG = "get_config";
 

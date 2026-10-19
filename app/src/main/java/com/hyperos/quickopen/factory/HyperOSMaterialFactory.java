@@ -2,11 +2,9 @@ package com.hyperos.quickopen.factory;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RadialGradient;
 import android.graphics.RectF;
@@ -26,8 +24,6 @@ import androidx.annotation.Nullable;
  * 3. 硬件着色器 GPU 级实时光栅化，0 额外 CPU 渲染损耗。
  */
 public class HyperOSMaterialFactory {
-    private static final String TAG = "QuickOpen_Material";
-
     public static final int STYLE_SOFT_GLASS = 1;
     public static final int STYLE_GAUSSIAN_BLUR = 2;
 
@@ -59,36 +55,6 @@ public class HyperOSMaterialFactory {
 
     public static Drawable createCircularBubbleDrawable(int style, int tintColor, boolean isSelected, boolean glowEnabled) {
         return new CircularBubbleDrawable(style, tintColor, isSelected, glowEnabled);
-    }
-
-    /**
-     * 创建结合系统原生 BackgroundBlur 与 CircularBubbleDrawable 物理光学样式的复合圆形气泡背景。
-     * 模糊样式、底色混合与光学参数与圆形视界区域底衬 (CircularRegionBackdropView) 完全一致。
-     */
-    public static Drawable createCompositeCircularBubbleDrawable(
-        @Nullable View view,
-        int style,
-        int tintColor,
-        boolean isSelected,
-        boolean glowEnabled,
-        int blurRadiusPx
-    ) {
-        CircularBubbleDrawable opticDrawable = new CircularBubbleDrawable(style, tintColor, isSelected, glowEnabled);
-        if (view == null || blurRadiusPx <= 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return opticDrawable;
-        }
-        int w = view.getWidth() > 0 ? view.getWidth() : (view.getLayoutParams() != null && view.getLayoutParams().width > 0 ? view.getLayoutParams().width : 160);
-        int h = view.getHeight() > 0 ? view.getHeight() : (view.getLayoutParams() != null && view.getLayoutParams().height > 0 ? view.getLayoutParams().height : 160);
-        float radiusPx = Math.max(1f, Math.min(w, h) / 2f - 3f);
-        int tint = getUnifiedBlurTint(style);
-        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, radiusPx * 4.0f, blurRadiusPx, tint);
-        if (blurDrawable != null) {
-            android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{blurDrawable, opticDrawable});
-            // 内缩 3px 使硬件高斯模糊圆完全收拢于 2.2px 光学描边 (maxRadius - 2f) 内侧，绝不溢出边框
-            layer.setLayerInset(0, 3, 3, 3, 3);
-            return layer;
-        }
-        return opticDrawable;
     }
 
     public static Drawable createHeaderPillDrawable(int style) {
@@ -236,10 +202,6 @@ public class HyperOSMaterialFactory {
                 this.style = newStyle;
                 invalidateSelf();
             }
-        }
-
-        public int getStyle() {
-            return style;
         }
 
         @Override

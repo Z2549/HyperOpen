@@ -403,11 +403,6 @@ public class QuickOpenHook {
         }
     }
 
-    /** 当前 Hook 是否生效。 */
-    public static boolean isActive() {
-        return active;
-    }
-
     /**
      * 立刻停用全部 Hook —— 安全模式的执行端。
      *

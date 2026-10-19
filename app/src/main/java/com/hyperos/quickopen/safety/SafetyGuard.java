@@ -156,11 +156,6 @@ public final class SafetyGuard {
         return allowed;
     }
 
-    /** 当前是否允许执行 Hook 逻辑（供 Hook 回调内部二次校验）。 */
-    public static boolean isHookAllowed() {
-        return hookAllowed;
-    }
-
     /** 主动重新拉取一次安全模式状态（可在关键 Hook 入口调用）。 */
     public static boolean refresh() {
         if (appContext == null) {

@@ -2,7 +2,6 @@ package com.hyperos.quickopen.config;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.util.Log;
 
 import com.hyperos.quickopen.model.ShortcutItem;

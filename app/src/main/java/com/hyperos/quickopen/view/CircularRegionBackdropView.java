@@ -2,16 +2,10 @@ package com.hyperos.quickopen.view;
 
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.LinearGradient;
 import android.graphics.Outline;
 import android.graphics.Paint;
-import android.graphics.RadialGradient;
-import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewOutlineProvider;
@@ -34,7 +28,6 @@ import com.hyperos.quickopen.factory.HyperOSMaterialFactory;
  * 6. 与全屏模糊彻底解耦，独立受控于自身的模糊半径与透明度。
  */
 public class CircularRegionBackdropView extends FrameLayout {
-    private static final String TAG = "QuickOpen_RegionBlur";
 
     private int style = HyperOSMaterialFactory.STYLE_SOFT_GLASS;
     private float blurRadiusDp = 25f;

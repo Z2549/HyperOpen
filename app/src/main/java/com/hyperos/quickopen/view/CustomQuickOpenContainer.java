@@ -1,28 +1,21 @@
 package com.hyperos.quickopen.view;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PointF;
-import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.os.CombinedVibration;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.hyperos.quickopen.config.QuickOpenConfig;
-import com.hyperos.quickopen.factory.HyperOSBlurHelper;
 import com.hyperos.quickopen.factory.HyperOSMaterialFactory;
 import com.hyperos.quickopen.layout.CircularHoneycombPacking;
 import com.hyperos.quickopen.model.ShortcutItem;
