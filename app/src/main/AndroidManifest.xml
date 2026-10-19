@@ -53,7 +53,7 @@
         <!-- 跨进程配置共享 Provider (给 SystemUI 实时提供最新配置) -->
         <provider
             android:name=".provider.SettingsProvider"
-            android:authorities="com.hyperos.hyperopen.provider"
+            android:authorities="io.github.qmryqmm.hyperopen.provider"
             android:exported="true"
             android:multiprocess="false" />
     </application>

@@ -1,6 +1,6 @@
--keep class com.hyperos.hyperopen.MainHook { *; }
--keep class com.hyperos.hyperopen.** { *; }
--keepclassmembers class com.hyperos.hyperopen.** { *; }
+-keep class io.github.qmryqmm.hyperopen.MainHook { *; }
+-keep class io.github.qmryqmm.hyperopen.** { *; }
+-keepclassmembers class io.github.qmryqmm.hyperopen.** { *; }
 
 # 保留 Miuix 反射调用的图标扩展属性
 -keep class top.yukonga.miuix.kmp.icon.** { *; }

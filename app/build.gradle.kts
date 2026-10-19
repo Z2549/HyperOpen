@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.hyperos.hyperopen"
+    namespace = "io.github.qmryqmm.hyperopen"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.hyperos.hyperopen"
+        applicationId = "io.github.qmryqmm.hyperopen"
         minSdk = 29
         targetSdk = 35
         versionCode = 20
