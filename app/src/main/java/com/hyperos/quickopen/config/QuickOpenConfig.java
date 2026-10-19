@@ -22,7 +22,6 @@ public class QuickOpenConfig {
     public static final String PREF_NAME = "quick_open_settings";
     public static final String ACTION_CONFIG_CHANGED = "com.hyperos.quickopen.ACTION_CONFIG_CHANGED";
 
-    public static final int MATERIAL_FOLLOW_SYSTEM = 0;
     public static final int MATERIAL_SOFT_GLASS = 1;
     public static final int MATERIAL_GAUSSIAN_BLUR = 2;
 
@@ -73,6 +72,17 @@ public class QuickOpenConfig {
     public float maxScale = 1.40f;
     public int influenceRadius = 120;  // dp
 
+    /** 图标透明度 (0.0f ~ 1.0f，默认 1.0f) */
+    public float iconAlpha = 1.0f;
+    /** 鱼眼效果放大时的图标透明度 (0.0f ~ 1.0f，默认 1.0f) */
+    public float fisheyeZoomAlpha = 1.0f;
+    /** 唤醒指纹快捷方式时全屏模糊遮罩背景透明度 (0.0f ~ 1.0f，默认 1.0f) */
+    public float fullscreenBlurMaskAlpha = 1.0f;
+    /** 图标的圆形视界区域底衬透明度 (0.0f ~ 1.0f，默认 1.0f) */
+    public float regionAlpha = 1.0f;
+    /** 图标的圆形视界区域背景高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭) */
+    public int regionBlurRadius = 25;
+
     /** 图标分布紧凑度间距微调 (-10dp ~ 20dp，默认 0dp，负值更紧凑，正值更松散) */
     public int iconSpacingOffset = 0;
     /** 气泡内部图标留白比例 (0% ~ 40%，默认 18%，0% 即全屏满铺) */
@@ -115,6 +125,11 @@ public class QuickOpenConfig {
                     config.iconSize = bundle.getInt("icon_size", 58);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 120);
+                    config.iconAlpha = bundle.getFloat("icon_alpha", 1.0f);
+                    config.fisheyeZoomAlpha = bundle.getFloat("fisheye_zoom_alpha", 1.0f);
+                    config.fullscreenBlurMaskAlpha = bundle.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+                    config.regionAlpha = bundle.getFloat("region_alpha", 1.0f);
+                    config.regionBlurRadius = bundle.getInt("region_blur_radius", 25);
                     config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 0);
                     config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
                     config.selectedIconScale = bundle.getFloat("selected_icon_scale", 1.15f);
@@ -156,6 +171,11 @@ public class QuickOpenConfig {
         config.iconSize = xPrefs.getInt("icon_size", 58);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 120);
+        config.iconAlpha = xPrefs.getFloat("icon_alpha", 1.0f);
+        config.fisheyeZoomAlpha = xPrefs.getFloat("fisheye_zoom_alpha", 1.0f);
+        config.fullscreenBlurMaskAlpha = xPrefs.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+        config.regionAlpha = xPrefs.getFloat("region_alpha", 1.0f);
+        config.regionBlurRadius = xPrefs.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
         config.selectedIconScale = xPrefs.getFloat("selected_icon_scale", 1.15f);
@@ -192,6 +212,11 @@ public class QuickOpenConfig {
         config.iconSize = sp.getInt("icon_size", 58);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 120);
+        config.iconAlpha = sp.getFloat("icon_alpha", 1.0f);
+        config.fisheyeZoomAlpha = sp.getFloat("fisheye_zoom_alpha", 1.0f);
+        config.fullscreenBlurMaskAlpha = sp.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+        config.regionAlpha = sp.getFloat("region_alpha", 1.0f);
+        config.regionBlurRadius = sp.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
         config.selectedIconScale = sp.getFloat("selected_icon_scale", 1.15f);
@@ -228,6 +253,11 @@ public class QuickOpenConfig {
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
+            .putFloat("icon_alpha", iconAlpha)
+            .putFloat("fisheye_zoom_alpha", fisheyeZoomAlpha)
+            .putFloat("fullscreen_blur_mask_alpha", fullscreenBlurMaskAlpha)
+            .putFloat("region_alpha", regionAlpha)
+            .putInt("region_blur_radius", regionBlurRadius)
             .putInt("icon_spacing_offset", iconSpacingOffset)
             .putInt("bubble_padding_percent", bubblePaddingPercent)
             .putFloat("selected_icon_scale", selectedIconScale)

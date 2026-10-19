@@ -95,6 +95,7 @@ class QuickOpenPreviewView(
     private fun initViews() {
         clipChildren = false
         clipToPadding = false
+        refreshBackdropMask()
 
         // 1. 顶部提示胶囊与编辑提示
         buildHeader()
@@ -217,7 +218,20 @@ class QuickOpenPreviewView(
         if (!::headerPill.isInitialized) return
         val show = config.showHeaderPillBg
         if (show) {
-            headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
+            val bg = headerPill.background
+            if (bg is HyperOSMaterialFactory.HeaderPillDrawable) {
+                bg.setStyle(resolvedStyle)
+            } else if (bg is android.graphics.drawable.LayerDrawable) {
+                for (i in 0 until bg.numberOfLayers) {
+                    val d = bg.getDrawable(i)
+                    if (d is HyperOSMaterialFactory.HeaderPillDrawable) {
+                        d.setStyle(resolvedStyle)
+                    }
+                }
+            } else {
+                val blurPx = dpToPx(config.regionBlurRadius.toFloat()).toInt()
+                headerPill.background = HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx)
+            }
             headerPill.clipToOutline = true
         } else {
             headerPill.background = null
@@ -251,14 +265,26 @@ class QuickOpenPreviewView(
         return PointF(targetW / 2.0f, targetH * 0.795f)
     }
 
+    private fun refreshBackdropMask() {
+        if (config.fullscreenBlurMaskAlpha <= 0.001f) {
+            setBackgroundColor(Color.TRANSPARENT)
+        } else {
+            val maskAlpha = (config.fullscreenBlurMaskAlpha.coerceIn(0f, 1f) * 0xCC).toInt()
+            setBackgroundColor((maskAlpha shl 24) or 0x000000)
+        }
+    }
+
     /**
      * 参数热更新：材质、胶囊背景开关、尺寸与偏移行即生效
      */
     fun updateConfig(newConfig: QuickOpenConfig) {
         this.config = newConfig
         this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
+        refreshBackdropMask()
         if (::regionBackdrop.isInitialized) {
             regionBackdrop.setStyle(resolvedStyle)
+            regionBackdrop.setRegionAlpha(config.regionAlpha)
+            regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
         }
         applyHeaderPillBackground()
         setupLayout()
@@ -288,6 +314,10 @@ class QuickOpenPreviewView(
 
         // 定位底衬
         regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
+        regionBackdrop.setStyle(resolvedStyle)
+        regionBackdrop.setRegionAlpha(config.regionAlpha)
+        regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
+        regionBackdrop.updateGeometry(regionRadiusPx)
         val rLp = LayoutParams(regionDiameterPx.toInt(), regionDiameterPx.toInt()).apply {
             leftMargin = (fodX - regionRadiusPx).toInt()
             topMargin = (regionCenterY - regionRadiusPx).toInt()
@@ -322,6 +352,7 @@ class QuickOpenPreviewView(
             val bubble = CircularBubbleView(
                 context, item, resolvedStyle, iconSizePx.toInt(), context.classLoader, config
             )
+            bubble.setIconAlpha(config.iconAlpha)
             bubble.targetX = pt.x
             bubble.targetY = pt.y
 
@@ -340,6 +371,12 @@ class QuickOpenPreviewView(
         bubblesContainer.invalidate()
         for (b in bubbleViews) {
             b.loadItemIcon()
+            b.invalidateOutline()
+            b.invalidate()
+            b.post {
+                b.invalidateOutline()
+                b.invalidate()
+            }
         }
 
         // 播放弹射散开动效
@@ -636,11 +673,14 @@ class QuickOpenPreviewView(
             }
 
             var scale = 1.0f
+            var currentAlpha = config.iconAlpha
             if (dist < influenceRadiusPx) {
                 val factor = Math.cos((dist / influenceRadiusPx) * (Math.PI / 2.0)).toFloat()
                 scale = 1.0f + (config.maxScale - 1.0f) * factor
+                currentAlpha = config.iconAlpha + (config.fisheyeZoomAlpha - config.iconAlpha) * factor
             }
             b.applyScale(scale)
+            b.setIconAlpha(currentAlpha)
         }
 
         if (closest != null && minDistance < hitDistanceThreshold) {
@@ -676,6 +716,7 @@ class QuickOpenPreviewView(
         currentSelectedBubble = null
         for (b in bubbleViews) {
             b.applyScale(1.0f)
+            b.setIconAlpha(config.iconAlpha)
         }
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)

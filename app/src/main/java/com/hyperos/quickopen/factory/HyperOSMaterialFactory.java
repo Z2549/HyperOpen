@@ -42,23 +42,13 @@ public class HyperOSMaterialFactory {
     public static final int STYLE_GAUSSIAN_BLUR = 2;
 
     /**
-     * 判断当前应使用的材质：根据配置与系统环境自动决定
+     * 判断当前应使用的材质：柔光玻璃与高斯模糊二选一，默认柔光玻璃
      */
     public static int resolveActiveStyle(Context context, int configStyle) {
-        if (configStyle == STYLE_SOFT_GLASS) return STYLE_SOFT_GLASS;
-        if (configStyle == STYLE_GAUSSIAN_BLUR) return STYLE_GAUSSIAN_BLUR;
-
-        // 跟随系统判断 (STYLE_FOLLOW_SYSTEM)
-        try {
-            int blurLevel = Settings.System.getInt(context.getContentResolver(), "blur_level", 1);
-            boolean highEnd = Settings.System.getInt(context.getContentResolver(), "high_end_graphics_enabled", 1) == 1;
-            if (!highEnd) {
-                return STYLE_GAUSSIAN_BLUR; // 低配降级为标准哑光磨砂
-            }
-            return blurLevel >= 2 ? STYLE_SOFT_GLASS : STYLE_GAUSSIAN_BLUR;
-        } catch (Throwable t) {
-            return STYLE_SOFT_GLASS;
+        if (configStyle == STYLE_GAUSSIAN_BLUR) {
+            return STYLE_GAUSSIAN_BLUR;
         }
+        return STYLE_SOFT_GLASS;
     }
 
     /**
@@ -122,10 +112,28 @@ public class HyperOSMaterialFactory {
     }
 
     /**
-     * 顶部提示胶囊专用材质：微透圆角胶囊玻璃
+     * 创建结合系统原生 BackgroundBlur 与 HeaderPill 物理光学样式的复合胶囊背景
+     */
+    public static Drawable createCompositeHeaderPillDrawable(@Nullable View view, int style, int blurRadiusPx) {
+        HeaderPillDrawable opticDrawable = new HeaderPillDrawable(style);
+        if (view == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return opticDrawable;
+        }
+        int h = view.getHeight() > 0 ? view.getHeight() : 96;
+        float cornerRadius = h / 2f;
+        int tint = (style == STYLE_SOFT_GLASS) ? 0x18FFFFFF : 0x48000000;
+        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, cornerRadius, blurRadiusPx, tint);
+        if (blurDrawable != null) {
+            return new android.graphics.drawable.LayerDrawable(new Drawable[]{blurDrawable, opticDrawable});
+        }
+        return opticDrawable;
+    }
+
+    /**
+     * 顶部提示胶囊专用材质：微透圆角胶囊玻璃（支持液态玻璃与高斯模糊动态切换）
      */
     public static class HeaderPillDrawable extends Drawable {
-        private final int style;
+        private int style;
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -140,6 +148,17 @@ public class HyperOSMaterialFactory {
             innerShadowPaint.setStrokeWidth(1.2f);
         }
 
+        public void setStyle(int newStyle) {
+            if (this.style != newStyle) {
+                this.style = newStyle;
+                invalidateSelf();
+            }
+        }
+
+        public int getStyle() {
+            return style;
+        }
+
         @Override
         public void draw(@NonNull Canvas canvas) {
             int width = getBounds().width();
@@ -150,21 +169,22 @@ public class HyperOSMaterialFactory {
             RectF pill = new RectF(1.5f, 1.5f, width - 1.5f, height - 1.5f);
 
             if (style == STYLE_SOFT_GLASS) {
-                // 1. 柔光玻璃渐变底（四段次表面高透漫反射）
+                // ================= 液态玻璃（Liquid Glass / 流体水润高光） =================
+                // 1. 液态玻璃渐变底（高透次表面漫反射）
                 LinearGradient bgShader = new LinearGradient(
                     0, 0, 0, height,
-                    new int[]{0x52FFFFFF, 0x24FFFFFF, 0x14FFFFFF, 0x28FFFFFF},
-                    new float[]{0f, 0.40f, 0.75f, 1f},
+                    new int[]{0x58FFFFFF, 0x2AFFFFFF, 0x18FFFFFF, 0x26FFFFFF},
+                    new float[]{0f, 0.35f, 0.70f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 bgPaint.setShader(bgShader);
                 canvas.drawRoundRect(pill, radius, radius, bgPaint);
 
-                // 2. 穹顶聚光切面高光（模拟环境天光在玻璃顶部的折射）
+                // 2. 穹顶水滴高光切面（高亮强折射）
                 LinearGradient hlShader = new LinearGradient(
-                    0, 0, 0, height * 0.55f,
-                    new int[]{0x80FFFFFF, 0x22FFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.60f, 1f},
+                    0, 0, 0, height * 0.52f,
+                    new int[]{0xAAFFFFFF, 0x33FFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.55f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 highlightPaint.setShader(hlShader);
@@ -173,11 +193,11 @@ public class HyperOSMaterialFactory {
                 canvas.drawRoundRect(pill, radius, radius, highlightPaint);
                 canvas.restore();
 
-                // 3. 菲涅尔动态梯度描边（顶亮底润）
+                // 3. 菲涅尔双向镜面高亮描边（顶白底润）
                 LinearGradient borderShader = new LinearGradient(
                     0, 0, 0, height,
-                    new int[]{0x7AFFFFFF, 0x2EFFFFFF, 0x1AFFFFFF},
-                    new float[]{0f, 0.55f, 1f},
+                    new int[]{0xE0FFFFFF, 0x4DFFFFFF, 0x24FFFFFF},
+                    new float[]{0f, 0.50f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 borderPaint.setShader(borderShader);
@@ -185,18 +205,19 @@ public class HyperOSMaterialFactory {
 
             } else {
                 // ================= 高斯模糊 (沉稳细腻哑光磨砂) =================
+                // 1. 哑光微晶磨砂底
                 LinearGradient blurBgShader = new LinearGradient(
                     0, 0, 0, height,
-                    new int[]{0x3BFFFFFF, 0x22FFFFFF, 0x2EFFFFFF},
+                    new int[]{0x2AFFFFFF, 0x16FFFFFF, 0x1EFFFFFF},
                     new float[]{0f, 0.50f, 1f},
                     Shader.TileMode.CLAMP
                 );
                 bgPaint.setShader(blurBgShader);
                 canvas.drawRoundRect(pill, radius, radius, bgPaint);
 
-                // 细腻全包围微光边框
+                // 2. 纯净全包围哑光边框（无切面反光）
                 borderPaint.setShader(null);
-                borderPaint.setColor(0x40FFFFFF);
+                borderPaint.setColor(0x4DFFFFFF);
                 canvas.drawRoundRect(pill, radius, radius, borderPaint);
             }
         }

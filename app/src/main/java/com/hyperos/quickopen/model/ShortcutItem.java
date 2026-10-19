@@ -23,6 +23,10 @@ public class ShortcutItem {
     public static final String ACTION_BROADCAST = "BROADCAST";
     public static final String ACTION_FLASHLIGHT = "FLASHLIGHT";
     public static final String ACTION_SHELL = "SHELL";
+    public static final String ACTION_XIAOAI = "XIAOAI";
+    public static final String ACTION_MUTE = "MUTE";
+    public static final String ACTION_DND = "DND";
+    public static final String ACTION_CAMERA = "CAMERA";
 
     public String id;
     public String title;
@@ -168,6 +172,22 @@ public class ShortcutItem {
                     toggleFlashlight(context);
                     break;
                 }
+                case ACTION_XIAOAI: {
+                    wakeUpXiaoAi(context);
+                    break;
+                }
+                case ACTION_MUTE: {
+                    toggleSilentMode(context);
+                    break;
+                }
+                case ACTION_DND: {
+                    toggleDndMode(context);
+                    break;
+                }
+                case ACTION_CAMERA: {
+                    openCamera(context);
+                    break;
+                }
                 case ACTION_SHELL: {
                     runShellCommand(actionPayload);
                     break;
@@ -179,6 +199,88 @@ public class ShortcutItem {
         } catch (Throwable t) {
             Log.e(TAG, "执行快捷动作失败: " + title, t);
             showToast(context, "启动失败: " + t.getMessage());
+        }
+    }
+
+    private static void wakeUpXiaoAi(Context context) {
+        try {
+            Intent wakeBroadcast = new Intent("com.miui.voiceassist.WAKEUP");
+            wakeBroadcast.setPackage("com.miui.voiceassist");
+            context.sendBroadcast(wakeBroadcast);
+        } catch (Throwable ignored) {}
+
+        try {
+            Intent intent = new Intent("android.intent.action.VOICE_COMMAND");
+            intent.setPackage("com.miui.voiceassist");
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (intent.resolveActivity(context.getPackageManager()) != null) {
+                context.startActivity(intent);
+                return;
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            Intent assistIntent = new Intent(Intent.ACTION_ASSIST);
+            assistIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(assistIntent);
+        } catch (Throwable t) {
+            Log.e(TAG, "唤醒小爱失败", t);
+            showToast(context, "唤醒小爱失败: " + t.getMessage());
+        }
+    }
+
+    private static void toggleSilentMode(Context context) {
+        try {
+            android.media.AudioManager am = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int currentMode = am.getRingerMode();
+                if (currentMode == android.media.AudioManager.RINGER_MODE_SILENT || currentMode == android.media.AudioManager.RINGER_MODE_VIBRATE) {
+                    am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL);
+                    showToast(context, "已开启响铃模式");
+                } else {
+                    am.setRingerMode(android.media.AudioManager.RINGER_MODE_SILENT);
+                    showToast(context, "已开启静音模式");
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "切换静音失败", t);
+            showToast(context, "切换静音失败: " + t.getMessage());
+        }
+    }
+
+    private static void toggleDndMode(Context context) {
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                int currentFilter = nm.getCurrentInterruptionFilter();
+                if (currentFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL) {
+                    nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY);
+                    showToast(context, "已开启勿扰模式");
+                } else {
+                    nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+                    showToast(context, "已关闭勿扰模式");
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "切换勿扰模式失败", t);
+            showToast(context, "切换勿扰失败: " + t.getMessage());
+        }
+    }
+
+    private static void openCamera(Context context) {
+        try {
+            Intent intent = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(intent);
+        } catch (Throwable t) {
+            try {
+                Intent fallback = new Intent("android.media.action.STILL_IMAGE_CAMERA");
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(fallback);
+            } catch (Throwable t2) {
+                Log.e(TAG, "打开相机失败", t2);
+                showToast(context, "打开相机失败: " + t2.getMessage());
+            }
         }
     }
 

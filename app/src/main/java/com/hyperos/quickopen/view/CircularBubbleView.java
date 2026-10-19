@@ -25,7 +25,6 @@ public class CircularBubbleView extends FrameLayout {
     private int activeStyle;
     private final QuickOpenConfig config;
     private final ImageView iconView;
-    private View systemBlurView;
 
     public CircularBubbleView(@NonNull Context context, ShortcutItem item, int style, int sizePx, ClassLoader classLoader, QuickOpenConfig config) {
         super(context);
@@ -36,22 +35,18 @@ public class CircularBubbleView extends FrameLayout {
         setLayoutParams(new LayoutParams(sizePx, sizePx));
         setClipChildren(false);
 
-        // 设置纯正圆形 OutlineProvider，并在放大时以真正圆形向外扩张，绝不出现矩形边界裁切
+        // 设置纯正圆形 OutlineProvider，并在放大时以真正圆形向外扩张，使用 sizePx 兜底初次未测量状态，绝不裁空图标
         setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override
             public void getOutline(View view, android.graphics.Outline outline) {
-                outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                int w = view.getWidth() > 0 ? view.getWidth() : sizePx;
+                int h = view.getHeight() > 0 ? view.getHeight() : sizePx;
+                outline.setOval(0, 0, w, h);
             }
         });
         setClipToOutline(true);
 
-        // 【方案一】：优先尝试添加官方 miuix.blur.widget.BlurView 控件
-        systemBlurView = HyperOSMaterialFactory.tryCreateSystemBlurView(context, classLoader);
-        if (systemBlurView != null) {
-            addView(systemBlurView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        }
-
-        // 应用材质 Drawable (配合方案一增益高光，或作为方案二纯自绘底衬)
+        // 应用纯正圆形光学材质 Drawable (100% 纯 Canvas 正圆形着色渲染，彻底杜绝系统多边形干扰)
         refreshBackground();
 
         // 中心图标
@@ -66,6 +61,9 @@ public class CircularBubbleView extends FrameLayout {
         LayoutParams iconLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
         iconLp.gravity = Gravity.CENTER;
         addView(iconView, iconLp);
+
+        // 应用图标透明度
+        iconView.setAlpha(config != null ? config.iconAlpha : 1.0f);
 
         // 绑定图标 (优先从包名解析应用图标，或使用默认彩色矢量图形)
         loadItemIcon();
@@ -82,6 +80,12 @@ public class CircularBubbleView extends FrameLayout {
     public void setMaterialStyle(int style) {
         this.activeStyle = style;
         refreshBackground();
+    }
+
+    public void setIconAlpha(float alpha) {
+        if (iconView != null) {
+            iconView.setAlpha(alpha);
+        }
     }
 
     public void setSelectedState(boolean selected) {
@@ -110,6 +114,14 @@ public class CircularBubbleView extends FrameLayout {
         this.currentScale = scale;
         setScaleX(scale);
         setScaleY(scale);
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (w > 0 && h > 0) {
+            invalidateOutline();
+        }
     }
 
     public void loadItemIcon() {

@@ -126,38 +126,53 @@ public class QuickOpenHook {
                     // 完全阻止系统原生 startShowQuickOpenItemAnimation 执行 (避免创建原生5项View、动画和扇形黑底)
                     param.setResult(null);
 
-                    // 恢复触发系统原生的全屏高斯模糊
+                    // 每次展开前，实时从 ContentProvider 同步最新配置
+                    QuickOpenConfig latestConfig = QuickOpenConfig.load(view.getContext());
+
+                    // 全屏高斯模糊与全屏遮罩独立渲染：只受 fullscreenBlurMaskAlpha 调控
                     try {
                         Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
                         if (blurUtilsDelegate != null) {
                             Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
                             if (blurUtils != null) {
-                                float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", 1.0f);
                                 Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
-                                if (vri != null) {
-                                    XposedHelpers.callMethod(blurUtils, "applyBlur", vri, (int) blurRadius);
-                                    Log.i(TAG, "已成功调用系统 BlurUtils.applyBlur，高斯模糊生效: 半径=" + blurRadius);
+                                if (latestConfig.fullscreenBlurMaskAlpha <= 0.001f) {
+                                    // 用户关闭全屏模糊遮罩：彻底移除全屏模糊，确保背景完全清晰透亮
+                                    if (vri != null) {
+                                        XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
+                                    }
+                                    view.setBackground(null);
+                                    Log.i(TAG, "已独立关闭全屏模糊遮罩，全屏壁纸保持原始清晰，圆形视界由局部引擎独立模糊！");
                                 } else {
-                                    view.post(() -> {
-                                        try {
-                                            Object postVri = XposedHelpers.callMethod(view, "getViewRootImpl");
-                                            if (postVri != null) {
-                                                XposedHelpers.callMethod(blurUtils, "applyBlur", postVri, (int) blurRadius);
-                                            }
-                                        } catch (Throwable ignored) {}
-                                    });
+                                    // 用户开启全屏模糊遮罩：根据比例动态设置全屏模糊与系统暗色底盘
+                                    float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
+                                    float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", blurRatio);
+                                    if (vri != null) {
+                                        XposedHelpers.callMethod(blurUtils, "applyBlur", vri, (int) blurRadius);
+                                    }
+                                    try {
+                                        view.setBackgroundResource(0x7f080b49);
+                                        if (view.getBackground() != null) {
+                                            int maskAlpha = (int) (latestConfig.fullscreenBlurMaskAlpha * 255f);
+                                            view.getBackground().setAlpha(maskAlpha);
+                                        }
+                                    } catch (Throwable t) {
+                                        int maskAlpha = (int) (latestConfig.fullscreenBlurMaskAlpha * 0x33);
+                                        view.setBackgroundColor((maskAlpha << 24) | 0x000000);
+                                    }
+                                    Log.i(TAG, "已独立开启全屏模糊遮罩: 半径=" + blurRadius + ", 比例=" + blurRatio);
                                 }
                             }
                         }
                     } catch (Throwable t) {
-                        Log.w(TAG, "触发系统背景模糊失败", t);
+                        Log.w(TAG, "设置全屏背景模糊失败", t);
                     }
 
-                    // 允许触摸穿透并更新 WindowManager 布局标记 (相当于系统原生的 flags |= 4)
+                    // 允许触摸穿透并更新 WindowManager 布局标记 (开启 FLAG_BLUR_BEHIND 赋能局部模糊)
                     try {
                         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) XposedHelpers.getObjectField(view, "mLayoutParams");
                         if (lp != null) {
-                            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+                            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
                             if (view.isAttachedToWindow()) {
                                 WindowManager wm = (WindowManager) XposedHelpers.getObjectField(view, "mWindowManager");
                                 if (wm != null) {
@@ -169,24 +184,30 @@ public class QuickOpenHook {
                         Log.w(TAG, "更新 LayoutParams 失败", t);
                     }
 
-                    // 设置系统专属暗色背景 (0x7f080b49: finger_quick_open_bg)
-                    try {
-                        view.setBackgroundResource(0x7f080b49);
-                    } catch (Throwable t) {
-                        view.setBackgroundColor(0x22000000);
-                    }
-
-                    // 清理可能残余的原生 item 数据
+                    // 清理可能残余的原生 item 数据并彻底隐藏原生八边形选中指示器
                     try {
                         XposedHelpers.callMethod(view, "cleanQuickOpenItemList");
                     } catch (Throwable ignored) {}
 
-                    // 隐藏原生的所有其它子 View (标题、副标题、教学提示等)
+                    // 隐藏原生的所有其它子 View (标题、副标题、教学提示、原生八边形选中指示器等)
                     for (int i = 0; i < view.getChildCount(); i++) {
                         View child = view.getChildAt(i);
                         if (!CONTAINER_TAG.equals(child.getTag())) {
                             child.setVisibility(View.GONE);
+                            child.setAlpha(0f);
                         }
+                    }
+
+                    // 深度搜寻并隐藏所有可能残留的原生高亮与选中背景字段
+                    String[] selectViewFieldNames = {"mSelectView", "mQuickOpenSelectView", "mSelectedItemView", "mHoverView", "mTargetView"};
+                    for (String fieldName : selectViewFieldNames) {
+                        try {
+                            Object sv = XposedHelpers.getObjectField(view, fieldName);
+                            if (sv instanceof View) {
+                                ((View) sv).setVisibility(View.GONE);
+                                ((View) sv).setAlpha(0f);
+                            }
+                        } catch (Throwable ignored) {}
                     }
 
                     // 获取或创建 CustomQuickOpenContainer
@@ -194,8 +215,7 @@ public class QuickOpenHook {
                         XposedHelpers.getAdditionalInstanceField(view, "customContainer");
 
                     if (container == null) {
-                        QuickOpenConfig config = QuickOpenConfig.load(view.getContext());
-                        container = new CustomQuickOpenContainer(view.getContext(), config, cl);
+                        container = new CustomQuickOpenContainer(view.getContext(), latestConfig, cl);
                         container.setTag(CONTAINER_TAG);
                         view.addView(container, new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -203,8 +223,7 @@ public class QuickOpenHook {
                         XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
                     }
 
-                    // 每次展开前，实时从 ContentProvider 同步最新配置并热更新！
-                    QuickOpenConfig latestConfig = QuickOpenConfig.load(view.getContext());
+                    // 每次展开前，热更新容器配置！
                     container.updateConfig(latestConfig);
 
                     // 若容器已处于展示状态，则无需重复初始化
@@ -266,6 +285,22 @@ public class QuickOpenHook {
                     } catch (Throwable ignored) {}
                 }
             }));
+
+            // 4. Hook onTouchEvent：拦截原生快捷视图触摸事件，完全杜绝原生八边形指示器
+            try {
+                record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "onTouchEvent", MotionEvent.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
+                        FrameLayout view = (FrameLayout) param.thisObject;
+                        CustomQuickOpenContainer container = (CustomQuickOpenContainer)
+                            XposedHelpers.getAdditionalInstanceField(view, "customContainer");
+                        if (container != null && container.getVisibility() == View.VISIBLE) {
+                            param.setResult(true);
+                        }
+                    }
+                }));
+            } catch (Throwable ignored) {}
 
             Log.i(TAG, "已成功安装 MiuiGxzwQuickOpenView 核心生命周期接管 Hook！");
 
@@ -349,6 +384,9 @@ public class QuickOpenHook {
                             } else {
                                 frameLayout.post(cancelTask);
                             }
+                            param.setResult(null);
+                        } else {
+                            // 针对 ACTION_DOWN 等其他触摸事件，同样完全吞掉原生事件流，绝不允许原生代码绘制八边形指示器
                             param.setResult(null);
                         }
                     } catch (Throwable t) {

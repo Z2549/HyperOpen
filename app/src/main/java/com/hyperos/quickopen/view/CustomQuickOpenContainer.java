@@ -6,6 +6,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PointF;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.CombinedVibration;
 import android.os.VibrationEffect;
@@ -21,6 +22,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.hyperos.quickopen.config.QuickOpenConfig;
+import com.hyperos.quickopen.factory.HyperOSBlurHelper;
 import com.hyperos.quickopen.factory.HyperOSMaterialFactory;
 import com.hyperos.quickopen.layout.CircularHoneycombPacking;
 import com.hyperos.quickopen.model.ShortcutItem;
@@ -61,8 +63,12 @@ public class CustomQuickOpenContainer extends FrameLayout {
         buildHeader();
 
         // 圆形区域底衬
-        regionBackdrop = new CircularRegionBackdropView(getContext());
+        regionBackdrop = new CircularRegionBackdropView(getContext(), systemuiClassLoader);
         regionBackdrop.setStyle(resolvedStyle);
+        if (config != null) {
+            regionBackdrop.setRegionAlpha(config.regionAlpha);
+            regionBackdrop.setBlurRadius(config.regionBlurRadius);
+        }
         addView(regionBackdrop);
 
         // 图标容器 (允许子 View 放大溢出，不被矩形容器拦截)
@@ -80,9 +86,15 @@ public class CustomQuickOpenContainer extends FrameLayout {
             this.resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(getContext(), config.materialStyle);
             if (regionBackdrop != null) {
                 regionBackdrop.setStyle(resolvedStyle);
+                regionBackdrop.setRegionAlpha(config.regionAlpha);
+                regionBackdrop.setBlurRadius(config.regionBlurRadius);
             }
             // 胶囊背景开关热生效
             applyHeaderPillBackground();
+            // 图标透明度热生效
+            for (CircularBubbleView b : bubbles) {
+                b.setIconAlpha(config.iconAlpha);
+            }
         }
     }
 
@@ -174,9 +186,8 @@ public class CustomQuickOpenContainer extends FrameLayout {
         if (headerPill == null) return;
         boolean show = config == null || config.showHeaderPillBg;
         if (show) {
-            if (!(headerPill.getBackground() instanceof HyperOSMaterialFactory.HeaderPillDrawable)) {
-                headerPill.setBackground(HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle));
-            }
+            int blurPx = dpToPx(config != null ? config.regionBlurRadius : 25);
+            headerPill.setBackground(HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx));
             headerPill.setClipToOutline(true);
         } else {
             if (headerPill.getBackground() != null) {
@@ -228,6 +239,10 @@ public class CustomQuickOpenContainer extends FrameLayout {
 
         // 更新底衬大小与位置
         regionBackdrop.setVisibility(config.showRegionBg ? View.VISIBLE : View.GONE);
+        regionBackdrop.setStyle(resolvedStyle);
+        regionBackdrop.setRegionAlpha(config.regionAlpha);
+        regionBackdrop.setBlurRadius(config.regionBlurRadius);
+        regionBackdrop.updateGeometry(regionRadiusPx);
         LayoutParams rLp = new LayoutParams((int) regionDiameterPx, (int) regionDiameterPx);
         rLp.leftMargin = (int) (fodCenterX - regionRadiusPx);
         rLp.topMargin = (int) (regionCenterY - regionRadiusPx);
@@ -317,13 +332,16 @@ public class CustomQuickOpenContainer extends FrameLayout {
                 closest = b;
             }
 
-            // 连续余弦鱼眼缩放曲线
+            // 连续余弦鱼眼缩放与动态放大透明度曲线
             float scale = 1.0f;
+            float currentAlpha = config.iconAlpha;
             if (dist < influenceRadiusPx) {
                 float factor = (float) Math.cos((dist / influenceRadiusPx) * (Math.PI / 2.0));
                 scale = 1.0f + (config.maxScale - 1.0f) * factor;
+                currentAlpha = config.iconAlpha + (config.fisheyeZoomAlpha - config.iconAlpha) * factor;
             }
             b.applyScale(scale);
+            b.setIconAlpha(currentAlpha);
         }
 
         // 判定选中项
@@ -374,9 +392,13 @@ public class CustomQuickOpenContainer extends FrameLayout {
         for (CircularBubbleView b : bubbles) {
             b.setSelectedState(false);
             b.applyScale(1.0f);
+            b.setIconAlpha(config != null ? config.iconAlpha : 1.0f);
             b.setTranslationZ(0f);
         }
         currentSelectedBubble = null;
+        if (regionBackdrop != null) {
+            regionBackdrop.reset();
+        }
     }
 
     private int dpToPx(int dp) {

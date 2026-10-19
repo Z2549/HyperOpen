@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -109,6 +110,21 @@ import top.yukonga.miuix.kmp.icon.extended.Scan
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Theme
 import top.yukonga.miuix.kmp.icon.extended.Tune
+import top.yukonga.miuix.kmp.blur.BlurColors
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
+import top.yukonga.miuix.kmp.blur.highlight.Highlight
+import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -159,7 +175,15 @@ fun QuickOpenApp(
     val ctx = LocalContext.current
 
     // 配置镜像状态
-    var materialStyle by remember { mutableStateOf(initialConfig.materialStyle) }
+    var materialStyle by remember {
+        mutableStateOf(
+            if (initialConfig.materialStyle == QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) {
+                QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR
+            } else {
+                QuickOpenConfig.MATERIAL_SOFT_GLASS
+            }
+        )
+    }
     var offsetY by remember { mutableFloatStateOf(initialConfig.offsetY.toFloat()) }
     var regionDiameter by remember { mutableFloatStateOf(initialConfig.regionDiameter.toFloat()) }
     var showRegionBg by remember { mutableStateOf(initialConfig.showRegionBg) }
@@ -167,6 +191,11 @@ fun QuickOpenApp(
     var iconSize by remember { mutableFloatStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableFloatStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableFloatStateOf(initialConfig.influenceRadius.toFloat()) }
+    var iconAlpha by remember { mutableFloatStateOf(initialConfig.iconAlpha) }
+    var fisheyeZoomAlpha by remember { mutableFloatStateOf(initialConfig.fisheyeZoomAlpha) }
+    var fullscreenBlurMaskAlpha by remember { mutableFloatStateOf(initialConfig.fullscreenBlurMaskAlpha) }
+    var regionAlpha by remember { mutableFloatStateOf(initialConfig.regionAlpha) }
+    var regionBlurRadius by remember { mutableFloatStateOf(initialConfig.regionBlurRadius.toFloat()) }
     var iconSpacingOffset by remember { mutableFloatStateOf(initialConfig.iconSpacingOffset.toFloat()) }
     var bubblePaddingPercent by remember { mutableFloatStateOf(initialConfig.bubblePaddingPercent.toFloat()) }
     var selectedIconScale by remember { mutableFloatStateOf(initialConfig.selectedIconScale) }
@@ -189,6 +218,7 @@ fun QuickOpenApp(
     var editingItem by remember { mutableStateOf<ShortcutItem?>(null) }
     var isNewShortcut by remember { mutableStateOf(false) }
     var requestEditBackTrigger by remember { mutableIntStateOf(0) }
+    var showNewShortcutPresetDialog by remember { mutableStateOf(false) }
 
     fun persist() {
         val c = QuickOpenConfig.loadFromApp(ctx)
@@ -200,6 +230,11 @@ fun QuickOpenApp(
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
+        c.iconAlpha = iconAlpha
+        c.fisheyeZoomAlpha = fisheyeZoomAlpha
+        c.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
+        c.regionAlpha = regionAlpha
+        c.regionBlurRadius = regionBlurRadius.toInt()
         c.iconSpacingOffset = iconSpacingOffset.toInt()
         c.bubblePaddingPercent = bubblePaddingPercent.toInt()
         c.selectedIconScale = selectedIconScale
@@ -367,6 +402,11 @@ fun QuickOpenApp(
                             this.iconSize = iconSize.toInt()
                             this.maxScale = maxScale
                             this.influenceRadius = influenceRadius.toInt()
+                            this.iconAlpha = iconAlpha
+                            this.fisheyeZoomAlpha = fisheyeZoomAlpha
+                            this.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
+                            this.regionAlpha = regionAlpha
+                            this.regionBlurRadius = regionBlurRadius.toInt()
                             this.iconSpacingOffset = iconSpacingOffset.toInt()
                             this.bubblePaddingPercent = bubblePaddingPercent.toInt()
                             this.selectedIconScale = selectedIconScale
@@ -375,11 +415,120 @@ fun QuickOpenApp(
                             this.shortcuts = ArrayList(shortcuts)
                         }
 
+                        val previewBackdrop = rememberLayerBackdrop {
+                            drawRect(Color(0xFF0C0E14))
+                            drawContent()
+                        }
+
+                        // 彻底实现系统桌面壁纸完全自动、实时动态拉取与变更监听
+                        val liveWallpaperBitmap by com.hyperos.quickopen.util.LiveWallpaperLoader.rememberLiveWallpaper(ctx)
+
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color(0xFF0C0E14)),
+                            modifier = Modifier.fillMaxSize(),
                         ) {
+                            // 1. 底层真实桌面壁纸层 (使用 layerBackdrop 捕获供 miuix-blur 进行次世代毛玻璃实时运算)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .layerBackdrop(previewBackdrop)
+                            ) {
+                                val currentWallpaper = liveWallpaperBitmap
+                                if (currentWallpaper != null) {
+                                    Image(
+                                        bitmap = currentWallpaper,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                                        drawRect(Color(0xFF0D1117))
+                                        drawCircle(
+                                            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                                colors = listOf(Color(0xFF2A82E4).copy(alpha = 0.45f), Color.Transparent),
+                                                center = androidx.compose.ui.geometry.Offset(size.width * 0.22f, size.height * 0.38f),
+                                                radius = size.width * 0.65f
+                                            )
+                                        )
+                                        drawCircle(
+                                            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                                colors = listOf(Color(0xFF7928CA).copy(alpha = 0.40f), Color.Transparent),
+                                                center = androidx.compose.ui.geometry.Offset(size.width * 0.78f, size.height * 0.68f),
+                                                radius = size.width * 0.70f
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 2. 全屏毛玻璃遮罩层 (与全屏遮罩滑块实时独立联动，关闭时全屏壁纸 100% 原始清晰)
+                            if (currentConfig.fullscreenBlurMaskAlpha > 0.001f) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .textureBlur(
+                                            backdrop = previewBackdrop,
+                                            shape = RectangleShape,
+                                            blurRadius = (currentConfig.fullscreenBlurMaskAlpha * 40f).coerceAtLeast(1f),
+                                            colors = BlurColors(
+                                                blendColors = listOf(
+                                                    BlendColorEntry(
+                                                        color = Color.Black.copy(alpha = 0.55f * currentConfig.fullscreenBlurMaskAlpha),
+                                                        mode = BlurBlendMode.SrcOver
+                                                    )
+                                                )
+                                            )
+                                        )
+                                )
+                            }
+
+                            // 3. 圆形视界区域的独立毛玻璃 (实时由 miuix-blur 硬件渲染，绝不死黑，与真实锁屏效果完全一致)
+                            if (currentConfig.showRegionBg) {
+                                val density = androidx.compose.ui.platform.LocalDensity.current
+                                val screenH = ctx.resources.displayMetrics.heightPixels
+                                val screenW = ctx.resources.displayMetrics.widthPixels
+                                val fodYPx = screenH * 0.795f
+                                val fodXPx = screenW / 2.0f
+                                val regionCenterYPx = fodYPx - with(density) { currentConfig.offsetY.dp.toPx() }
+                                val regionDiameterDp = currentConfig.regionDiameter.dp
+                                val regionRadiusPx = with(density) { (regionDiameterDp / 2).toPx() }
+
+                                Box(
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(
+                                                x = with(density) { (fodXPx - regionRadiusPx).toDp() },
+                                                y = with(density) { (regionCenterYPx - regionRadiusPx).toDp() }
+                                            )
+                                            .size(regionDiameterDp)
+                                            .textureBlur(
+                                                backdrop = previewBackdrop,
+                                                shape = CircleShape,
+                                                blurRadius = currentConfig.regionBlurRadius.toFloat().coerceAtLeast(1f),
+                                                colors = BlurColors(
+                                                    blendColors = listOf(
+                                                        BlendColorEntry(
+                                                            color = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS)
+                                                                Color.White.copy(alpha = 0.12f * currentConfig.regionAlpha)
+                                                            else
+                                                                Color.White.copy(alpha = 0.06f * currentConfig.regionAlpha),
+                                                            mode = BlurBlendMode.SrcOver
+                                                        )
+                                                    ),
+                                                    saturation = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) 1.65f else 1.20f
+                                                ),
+                                                highlight = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS)
+                                                    Highlight.GlassStrokeBigLight
+                                                else
+                                                    Highlight.GlassStrokeBigDark
+                                            )
+                                    )
+                                }
+                            }
+
+                            // 4. 交互式预览与拖拽排版控件
                             AndroidView(
                                 modifier = Modifier.fillMaxSize(),
                                 factory = { viewCtx ->
@@ -432,6 +581,16 @@ fun QuickOpenApp(
                                     onMaxScale = { maxScale = it; persist() },
                                     influenceRadius = influenceRadius,
                                     onInfluenceRadius = { influenceRadius = it; persist() },
+                                    iconAlpha = iconAlpha,
+                                    onIconAlpha = { iconAlpha = it; persist() },
+                                    fisheyeZoomAlpha = fisheyeZoomAlpha,
+                                    onFisheyeZoomAlpha = { fisheyeZoomAlpha = it; persist() },
+                                    fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha,
+                                    onFullscreenBlurMaskAlpha = { fullscreenBlurMaskAlpha = it; persist() },
+                                    regionAlpha = regionAlpha,
+                                    onRegionAlpha = { regionAlpha = it; persist() },
+                                    regionBlurRadius = regionBlurRadius,
+                                    onRegionBlurRadius = { regionBlurRadius = it; persist() },
                                     iconSpacingOffset = iconSpacingOffset,
                                     onIconSpacingOffset = { iconSpacingOffset = it; persist() },
                                     bubblePaddingPercent = bubblePaddingPercent,
@@ -466,20 +625,7 @@ fun QuickOpenApp(
                                         subPage = 2
                                     },
                                     onAddShortcut = {
-                                        requestEditBackTrigger = 0
-                                        editingItem = ShortcutItem(
-                                            UUID.randomUUID().toString(),
-                                            "新快捷方式",
-                                            "轻触打开",
-                                            ShortcutItem.ACTION_APP,
-                                            "",
-                                            "",
-                                            "sparkle",
-                                            0xFF3482FF.toInt(),
-                                            true,
-                                        )
-                                        isNewShortcut = true
-                                        subPage = 2
+                                        showNewShortcutPresetDialog = true
                                     },
                                     onResetShortcuts = {
                                         shortcuts.clear()
@@ -501,6 +647,32 @@ fun QuickOpenApp(
                     }
                 }
             }
+        }
+
+        if (showNewShortcutPresetDialog) {
+            PresetActionPickerDialog(
+                onDismiss = { showNewShortcutPresetDialog = false },
+                onSelect = { preset ->
+                    showNewShortcutPresetDialog = false
+                    requestEditBackTrigger = 0
+                    editingItem = ShortcutItem(
+                        UUID.randomUUID().toString(),
+                        preset.title,
+                        preset.subtitle,
+                        preset.actionType,
+                        preset.actionPayload,
+                        preset.iconPackage,
+                        preset.iconGlyph,
+                        preset.tintColor,
+                        true,
+                        preset.glyphPadEnabled,
+                        preset.glyphPadColor,
+                        preset.glyphPadMode,
+                    )
+                    isNewShortcut = true
+                    subPage = 2
+                },
+            )
         }
     }
 }
@@ -585,6 +757,11 @@ fun ParamsPage(
     iconSize: Float, onIconSize: (Float) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
+    iconAlpha: Float, onIconAlpha: (Float) -> Unit,
+    fisheyeZoomAlpha: Float, onFisheyeZoomAlpha: (Float) -> Unit,
+    fullscreenBlurMaskAlpha: Float, onFullscreenBlurMaskAlpha: (Float) -> Unit,
+    regionAlpha: Float, onRegionAlpha: (Float) -> Unit,
+    regionBlurRadius: Float, onRegionBlurRadius: (Float) -> Unit,
     iconSpacingOffset: Float, onIconSpacingOffset: (Float) -> Unit,
     bubblePaddingPercent: Float, onBubblePaddingPercent: (Float) -> Unit,
     selectedIconScale: Float, onSelectedIconScale: (Float) -> Unit,
@@ -611,18 +788,8 @@ fun ParamsPage(
                     .fillMaxWidth(),
             ) {
                 ArrowPreference(
-                    title = "跟随系统",
-                    summary = "System Auto",
-                    endActions = {
-                        if (materialStyle == QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM) {
-                            Text("✓", color = MiuixTheme.colorScheme.primary, fontSize = 16.sp)
-                        }
-                    },
-                    onClick = { onMaterialStyle(QuickOpenConfig.MATERIAL_FOLLOW_SYSTEM) },
-                )
-                ArrowPreference(
-                    title = "柔光玻璃",
-                    summary = "Soft Light Glass",
+                    title = "液态玻璃",
+                    summary = "Liquid Glass（高动态次表面散射与水润折射）",
                     endActions = {
                         if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) {
                             Text("✓", color = MiuixTheme.colorScheme.primary, fontSize = 16.sp)
@@ -632,13 +799,20 @@ fun ParamsPage(
                 )
                 ArrowPreference(
                     title = "高斯模糊",
-                    summary = "Gaussian Blur",
+                    summary = "Gaussian Blur（沉稳细腻深色哑光微晶磨砂）",
                     endActions = {
                         if (materialStyle == QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) {
                             Text("✓", color = MiuixTheme.colorScheme.primary, fontSize = 16.sp)
                         }
                     },
                     onClick = { onMaterialStyle(QuickOpenConfig.MATERIAL_GAUSSIAN_BLUR) },
+                )
+                SliderPreference(
+                    title = "全屏模糊遮罩背景透明度",
+                    valueText = "${(fullscreenBlurMaskAlpha * 100).toInt()} %",
+                    value = fullscreenBlurMaskAlpha * 100f,
+                    valueRange = 0f..100f,
+                    onValueChange = { onFullscreenBlurMaskAlpha(it / 100f) },
                 )
             }
         }
@@ -670,6 +844,23 @@ fun ParamsPage(
                     checked = showRegionBg,
                     onCheckedChange = onShowRegionBg,
                 )
+                if (showRegionBg) {
+                    SliderPreference(
+                        title = "圆形视界底衬透明度",
+                        valueText = "${(regionAlpha * 100).toInt()} %",
+                        value = regionAlpha * 100f,
+                        valueRange = 0f..100f,
+                        onValueChange = { onRegionAlpha(it / 100f) },
+                    )
+                    SliderPreference(
+                        title = "圆形视界背景模糊半径",
+                        summary = "结合高斯模糊与次表面散射渲染毛玻璃底盘",
+                        valueText = if (regionBlurRadius.toInt() == 0) "已关闭模糊" else "${regionBlurRadius.toInt()} dp",
+                        value = regionBlurRadius,
+                        valueRange = 0f..50f,
+                        onValueChange = onRegionBlurRadius,
+                    )
+                }
                 SwitchPreference(
                     title = "显示顶部提示胶囊背景",
                     checked = showHeaderPillBg,
@@ -692,6 +883,21 @@ fun ParamsPage(
                     value = iconSize,
                     valueRange = 40f..80f,
                     onValueChange = onIconSize,
+                )
+                SliderPreference(
+                    title = "图标常态透明度",
+                    valueText = "${(iconAlpha * 100).toInt()} %",
+                    value = iconAlpha * 100f,
+                    valueRange = 0f..100f,
+                    onValueChange = { onIconAlpha(it / 100f) },
+                )
+                SliderPreference(
+                    title = "鱼眼放大时透明度",
+                    summary = "手指划过受鱼眼动力学放大时的动态透明度",
+                    valueText = "${(fisheyeZoomAlpha * 100).toInt()} %",
+                    value = fisheyeZoomAlpha * 100f,
+                    valueRange = 0f..100f,
+                    onValueChange = { onFisheyeZoomAlpha(it / 100f) },
                 )
                 SliderPreference(
                     title = "蜂窝图标紧凑程度",
@@ -971,6 +1177,7 @@ fun ShortcutEditPage(
 
     var showAppPicker by remember { mutableStateOf(false) }
     var showMiuixIconPicker by remember { mutableStateOf(false) }
+    var showPresetPicker by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
 
     // 检查是否有未保存的修改
@@ -1305,6 +1512,49 @@ fun ShortcutEditPage(
                     .padding(horizontal = 12.dp)
                     .fillMaxWidth(),
             ) {
+                ArrowPreference(
+                    title = "从预选动作库快速填充",
+                    summary = "一键填充小爱、静音、勿扰、手电筒、相机等推荐模板",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Tune,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = { showPresetPicker = true },
+                )
+                RadioButtonPreference(
+                    title = "唤醒小爱 (XIAOAI)",
+                    summary = "直接唤醒 HyperOS 小爱语音助手",
+                    selected = actionType == ShortcutItem.ACTION_XIAOAI,
+                    onClick = { actionType = ShortcutItem.ACTION_XIAOAI },
+                )
+                RadioButtonPreference(
+                    title = "静音模式 (MUTE)",
+                    summary = "快速切换系统全局静音与响铃模式",
+                    selected = actionType == ShortcutItem.ACTION_MUTE,
+                    onClick = { actionType = ShortcutItem.ACTION_MUTE },
+                )
+                RadioButtonPreference(
+                    title = "勿扰模式 (DND)",
+                    summary = "快速开启或退出静音防打扰模式",
+                    selected = actionType == ShortcutItem.ACTION_DND,
+                    onClick = { actionType = ShortcutItem.ACTION_DND },
+                )
+                RadioButtonPreference(
+                    title = "开关手电筒 (FLASHLIGHT)",
+                    summary = "直接切换手机后置 LED 手电筒",
+                    selected = actionType == ShortcutItem.ACTION_FLASHLIGHT,
+                    onClick = { actionType = ShortcutItem.ACTION_FLASHLIGHT },
+                )
+                RadioButtonPreference(
+                    title = "街拍相机 (CAMERA)",
+                    summary = "极速启动原生系统相机抓拍",
+                    selected = actionType == ShortcutItem.ACTION_CAMERA,
+                    onClick = { actionType = ShortcutItem.ACTION_CAMERA },
+                )
                 RadioButtonPreference(
                     title = "打开应用 (APP)",
                     summary = "启动手机安装的目标应用程序",
@@ -1316,12 +1566,6 @@ fun ShortcutEditPage(
                     summary = "调起扫一扫、付款码等特定 Intent URI",
                     selected = actionType == ShortcutItem.ACTION_INTENT_URI,
                     onClick = { actionType = ShortcutItem.ACTION_INTENT_URI },
-                )
-                RadioButtonPreference(
-                    title = "开关手电筒 (FLASHLIGHT)",
-                    summary = "直接切换手机手电筒开关",
-                    selected = actionType == ShortcutItem.ACTION_FLASHLIGHT,
-                    onClick = { actionType = ShortcutItem.ACTION_FLASHLIGHT },
                 )
                 RadioButtonPreference(
                     title = "Shell 指令 (SHELL)",
@@ -1339,7 +1583,13 @@ fun ShortcutEditPage(
         }
 
         // ── 动作参数详情填写 ──
-        if (actionType != ShortcutItem.ACTION_FLASHLIGHT) {
+        val isNoPayloadAction = actionType == ShortcutItem.ACTION_FLASHLIGHT ||
+            actionType == ShortcutItem.ACTION_XIAOAI ||
+            actionType == ShortcutItem.ACTION_MUTE ||
+            actionType == ShortcutItem.ACTION_DND ||
+            actionType == ShortcutItem.ACTION_CAMERA
+
+        if (!isNoPayloadAction) {
             item(key = "payload_title") { SmallTitle("动作参数详情 (Payload)") }
             item(key = "payload_card") {
                 Card(
@@ -1447,6 +1697,25 @@ fun ShortcutEditPage(
         )
     }
 
+    // ── 预选动作列表弹窗 ──
+    if (showPresetPicker) {
+        PresetActionPickerDialog(
+            onDismiss = { showPresetPicker = false },
+            onSelect = { preset ->
+                title = preset.title
+                subtitle = preset.subtitle
+                actionType = preset.actionType
+                actionPayload = preset.actionPayload
+                iconPackage = preset.iconPackage
+                iconGlyph = preset.iconGlyph
+                glyphPadEnabled = preset.glyphPadEnabled
+                glyphPadColor = preset.glyphPadColor
+                glyphPadMode = preset.glyphPadMode
+                showPresetPicker = false
+            },
+        )
+    }
+
     // ── 退出时未保存确认弹窗（MIUIX 质感弹窗） ──
     if (showUnsavedDialog) {
         Dialog(
@@ -1509,6 +1778,267 @@ fun ShortcutEditPage(
                             },
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 预选动作列表项数据与弹窗
+// ─────────────────────────────────────────────────────────────────────
+
+data class PresetAction(
+    val title: String,
+    val subtitle: String,
+    val actionType: String,
+    val actionPayload: String = "",
+    val iconGlyph: String = "",
+    val iconPackage: String = "",
+    val tintColor: Int = 0xFF2A82E4.toInt(),
+    val glyphPadEnabled: Boolean = true,
+    val glyphPadColor: Int = 0xFF2A82E4.toInt(),
+    val glyphPadMode: Int = 1,
+    val tag: String = "",
+)
+
+val PRESET_ACTIONS = listOf(
+    PresetAction(
+        title = "唤醒小爱",
+        subtitle = "一键唤醒语音助手与小爱同学",
+        actionType = ShortcutItem.ACTION_XIAOAI,
+        iconGlyph = "Mic:Regular",
+        tintColor = 0xFF1485EE.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF1485EE.toInt(),
+        glyphPadMode = 1,
+        tag = "系统助手",
+    ),
+    PresetAction(
+        title = "静音模式",
+        subtitle = "快速切换响铃与静音震动",
+        actionType = ShortcutItem.ACTION_MUTE,
+        iconGlyph = "VolumeOff:Regular",
+        tintColor = 0xFFFA8C16.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFFFA8C16.toInt(),
+        glyphPadMode = 1,
+        tag = "系统开关",
+    ),
+    PresetAction(
+        title = "勿扰模式",
+        subtitle = "快速开启或退出静音勿扰模式",
+        actionType = ShortcutItem.ACTION_DND,
+        iconGlyph = "Blocklist:Regular",
+        tintColor = 0xFF722ED1.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF722ED1.toInt(),
+        glyphPadMode = 1,
+        tag = "系统开关",
+    ),
+    PresetAction(
+        title = "强光手电筒",
+        subtitle = "开关手机后置 LED 强光照明",
+        actionType = ShortcutItem.ACTION_FLASHLIGHT,
+        iconGlyph = "Flashlight:Regular",
+        tintColor = 0xFFFAAD14.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFFFAAD14.toInt(),
+        glyphPadMode = 1,
+        tag = "常用工具",
+    ),
+    PresetAction(
+        title = "街拍相机",
+        subtitle = "秒级直达系统原生相机抓拍界面",
+        actionType = ShortcutItem.ACTION_CAMERA,
+        iconGlyph = "Camera:Regular",
+        tintColor = 0xFFFF4D4F.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFFFF4D4F.toInt(),
+        glyphPadMode = 1,
+        tag = "系统相机",
+    ),
+    PresetAction(
+        title = "微信扫一扫",
+        subtitle = "直接唤起微信官方扫码镜头",
+        actionType = ShortcutItem.ACTION_INTENT_URI,
+        actionPayload = "intent://dl/scan#Intent;scheme=weixin;package=com.tencent.mm;end",
+        iconGlyph = "Scan:Regular",
+        tintColor = 0xFF07C160.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF07C160.toInt(),
+        glyphPadMode = 1,
+        tag = "快捷扫码",
+    ),
+    PresetAction(
+        title = "支付宝付款码",
+        subtitle = "快速出示收银台向商家付款",
+        actionType = ShortcutItem.ACTION_INTENT_URI,
+        actionPayload = "intent://platformapi/startapp?appId=20000056#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+        iconGlyph = "BankCards:Regular",
+        tintColor = 0xFF1677FF.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF1677FF.toInt(),
+        glyphPadMode = 1,
+        tag = "移动支付",
+    ),
+    PresetAction(
+        title = "支付宝扫一扫",
+        subtitle = "快速识别二维码或扫码骑行",
+        actionType = ShortcutItem.ACTION_INTENT_URI,
+        actionPayload = "intent://platformapi/startapp?appId=10000007#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+        iconGlyph = "Scan:Regular",
+        tintColor = 0xFF1677FF.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF1677FF.toInt(),
+        glyphPadMode = 1,
+        tag = "移动支付",
+    ),
+    PresetAction(
+        title = "乘车码",
+        subtitle = "地铁与公交交通一卡通直接刷码",
+        actionType = ShortcutItem.ACTION_INTENT_URI,
+        actionPayload = "intent://platformapi/startapp?appId=200011235#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
+        iconGlyph = "QrCode:Regular",
+        tintColor = 0xFF52C41A.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF52C41A.toInt(),
+        glyphPadMode = 1,
+        tag = "绿色出行",
+    ),
+    PresetAction(
+        title = "自定义快捷方式",
+        subtitle = "自由配置目标应用、自定义 Intent 或 Shell",
+        actionType = ShortcutItem.ACTION_APP,
+        iconGlyph = "sparkle",
+        tintColor = 0xFF3482FF.toInt(),
+        glyphPadEnabled = true,
+        glyphPadColor = 0xFF3482FF.toInt(),
+        glyphPadMode = 1,
+        tag = "自定义",
+    ),
+)
+
+@Composable
+fun PresetActionPickerDialog(
+    onDismiss: () -> Unit,
+    onSelect: (PresetAction) -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    text = "新建快捷方式",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "提供丰富预选常用动作，轻触即可自动填充配置",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(PRESET_ACTIONS) { action ->
+                        val vector = remember(action.iconGlyph) {
+                            MiuixIconRegistry.find(action.iconGlyph)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MiuixTheme.colorScheme.surfaceVariant)
+                                .clickable { onSelect(action) }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(action.glyphPadColor).copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (vector != null) {
+                                    Icon(
+                                        imageVector = vector,
+                                        contentDescription = null,
+                                        tint = Color(action.tintColor),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                } else {
+                                    Text("⚡", fontSize = 16.sp)
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = action.title,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MiuixTheme.colorScheme.onSurface,
+                                    )
+                                    if (action.tag.isNotBlank()) {
+                                        Spacer(Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                                        ) {
+                                            Text(
+                                                text = action.tag,
+                                                fontSize = 10.sp,
+                                                color = MiuixTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = action.subtitle,
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                "选用",
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(
+                        text = "取消",
+                        onClick = onDismiss,
+                    )
                 }
             }
         }
@@ -1919,6 +2449,7 @@ fun SettingsPage(
                     .fillMaxWidth(),
             ) {
                 AboutLine("模块名称", "HyperOS QuickOpen")
+                AboutLine("当前版本", "v${com.hyperos.quickopen.BuildConfig.VERSION_NAME}")
                 AboutLine("功能", "指纹快捷面板自定义 · 图标与动效增强")
                 AboutLine("UI 框架", "Miuix Compose 0.9.4 (官方模板标准)")
                 AboutLine("使用方式", "指纹解锁时按压指纹传感器唤出快捷面板")
