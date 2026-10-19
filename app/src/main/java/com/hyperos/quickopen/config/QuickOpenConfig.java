@@ -47,7 +47,7 @@ public class QuickOpenConfig {
     public static final int PAGE_GESTURE_OFF = 0;
     public static final int PAGE_GESTURE_HORIZONTAL = 1;
 
-    public int materialStyle = MATERIAL_SOFT_GLASS;
+    public int materialStyle = MATERIAL_GAUSSIAN_BLUR;
     /** 设置界面风格（仅 App 内生效）：UI_STYLE_MATERIAL / UI_STYLE_MIUIX */
     public int uiStyle = UI_STYLE_MATERIAL;
     /** 主题模式（仅 App 内生效）：THEME_FOLLOW_SYSTEM / THEME_LIGHT / THEME_DARK */
@@ -64,13 +64,13 @@ public class QuickOpenConfig {
     public boolean edgeBack = true;
     /** 页面切换手势：PAGE_GESTURE_OFF / PAGE_GESTURE_HORIZONTAL */
     public int pageSwitchGesture = PAGE_GESTURE_HORIZONTAL;
-    public int offsetY = 280;          // dp
-    public int regionDiameter = 330;   // dp
-    public boolean showRegionBg = true;
-    public boolean showHeaderPillBg = true;
-    public int iconSize = 58;          // dp
+    public int offsetY = 100;          // dp
+    public int regionDiameter = 220;   // dp
+    public boolean showRegionBg = false;
+    public boolean showHeaderPillBg = false;
+    public int iconSize = 60;          // dp
     public float maxScale = 1.40f;
-    public int influenceRadius = 120;  // dp
+    public int influenceRadius = 70;  // dp
 
     /** 图标透明度 (0.0f ~ 1.0f，默认 1.0f) */
     public float iconAlpha = 1.0f;
@@ -81,10 +81,10 @@ public class QuickOpenConfig {
     /** 图标的圆形视界区域背景高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭) */
     public int regionBlurRadius = 25;
 
-    /** 图标分布紧凑度间距微调 (-10dp ~ 20dp，默认 0dp，负值更紧凑，正值更松散) */
-    public int iconSpacingOffset = 0;
-    /** 气泡内部图标留白比例 (0% ~ 40%，默认 18%，0% 即全屏满铺) */
-    public int bubblePaddingPercent = 18;
+    /** 图标分布紧凑度间距微调 (-10dp ~ 20dp，默认 5dp，负值更紧凑，正值更松散) */
+    public int iconSpacingOffset = 5;
+    /** 气泡内部图标留白比例 (0% ~ 40%，默认 0%，0% 即全屏满铺) */
+    public int bubblePaddingPercent = 0;
     /** 图标气泡留白区域高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭模糊，样式与圆形视界底衬一致) */
     public int bubbleBlurRadius = 25;
     /** 手指选中图标时气泡内图标的缩放倍率 (1.00x ~ 1.50x，默认 1.15x) */
@@ -117,20 +117,20 @@ public class QuickOpenConfig {
                 );
                 if (bundle != null) {
                     QuickOpenConfig config = new QuickOpenConfig();
-                    config.materialStyle = bundle.getInt("material_style", MATERIAL_SOFT_GLASS);
-                    config.offsetY = bundle.getInt("offset_y", 280);
-                    config.regionDiameter = bundle.getInt("region_diameter", 330);
-                    config.showRegionBg = bundle.getBoolean("show_region_bg", true);
-                    config.showHeaderPillBg = bundle.getBoolean("show_header_pill_bg", true);
-                    config.iconSize = bundle.getInt("icon_size", 58);
+                    config.materialStyle = bundle.getInt("material_style", MATERIAL_GAUSSIAN_BLUR);
+                    config.offsetY = bundle.getInt("offset_y", 100);
+                    config.regionDiameter = bundle.getInt("region_diameter", 220);
+                    config.showRegionBg = bundle.getBoolean("show_region_bg", false);
+                    config.showHeaderPillBg = bundle.getBoolean("show_header_pill_bg", false);
+                    config.iconSize = bundle.getInt("icon_size", 60);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
-                    config.influenceRadius = bundle.getInt("influence_radius", 120);
+                    config.influenceRadius = bundle.getInt("influence_radius", 70);
                     config.iconAlpha = bundle.getFloat("icon_alpha", 1.0f);
                     config.fisheyeZoomAlpha = bundle.getFloat("fisheye_zoom_alpha", 1.0f);
                     config.fullscreenBlurMaskAlpha = bundle.getFloat("fullscreen_blur_mask_alpha", 1.0f);
                     config.regionBlurRadius = bundle.getInt("region_blur_radius", 25);
-                    config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 0);
-                    config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
+                    config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 5);
+                    config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 0);
                     config.bubbleBlurRadius = bundle.getInt("bubble_blur_radius", 25);
                     config.selectedIconScale = bundle.getFloat("selected_icon_scale", 1.15f);
                     config.appIconCropMode = bundle.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
@@ -163,20 +163,20 @@ public class QuickOpenConfig {
         }
 
         QuickOpenConfig config = new QuickOpenConfig();
-        config.materialStyle = xPrefs.getInt("material_style", MATERIAL_SOFT_GLASS);
-        config.offsetY = xPrefs.getInt("offset_y", 280);
-        config.regionDiameter = xPrefs.getInt("region_diameter", 330);
-        config.showRegionBg = xPrefs.getBoolean("show_region_bg", true);
-        config.showHeaderPillBg = xPrefs.getBoolean("show_header_pill_bg", true);
-        config.iconSize = xPrefs.getInt("icon_size", 58);
+        config.materialStyle = xPrefs.getInt("material_style", MATERIAL_GAUSSIAN_BLUR);
+        config.offsetY = xPrefs.getInt("offset_y", 100);
+        config.regionDiameter = xPrefs.getInt("region_diameter", 220);
+        config.showRegionBg = xPrefs.getBoolean("show_region_bg", false);
+        config.showHeaderPillBg = xPrefs.getBoolean("show_header_pill_bg", false);
+        config.iconSize = xPrefs.getInt("icon_size", 60);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
-        config.influenceRadius = xPrefs.getInt("influence_radius", 120);
+        config.influenceRadius = xPrefs.getInt("influence_radius", 70);
         config.iconAlpha = xPrefs.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = xPrefs.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = xPrefs.getFloat("fullscreen_blur_mask_alpha", 1.0f);
         config.regionBlurRadius = xPrefs.getInt("region_blur_radius", 25);
-        config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 0);
-        config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
+        config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 5);
+        config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 0);
         config.bubbleBlurRadius = xPrefs.getInt("bubble_blur_radius", 25);
         config.selectedIconScale = xPrefs.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = xPrefs.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
@@ -196,7 +196,7 @@ public class QuickOpenConfig {
     public static QuickOpenConfig loadFromApp(Context context) {
         SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         QuickOpenConfig config = new QuickOpenConfig();
-        config.materialStyle = sp.getInt("material_style", MATERIAL_SOFT_GLASS);
+        config.materialStyle = sp.getInt("material_style", MATERIAL_GAUSSIAN_BLUR);
         config.uiStyle = sp.getInt("ui_style", UI_STYLE_MATERIAL);
         config.themeMode = sp.getInt("theme_mode", THEME_FOLLOW_SYSTEM);
         config.monetColors = sp.getBoolean("monet_colors", false);
@@ -205,19 +205,19 @@ public class QuickOpenConfig {
         config.predictiveBack = sp.getBoolean("predictive_back", true);
         config.edgeBack = sp.getBoolean("edge_back", true);
         config.pageSwitchGesture = sp.getInt("page_switch_gesture", PAGE_GESTURE_HORIZONTAL);
-        config.offsetY = sp.getInt("offset_y", 280);
-        config.regionDiameter = sp.getInt("region_diameter", 330);
-        config.showRegionBg = sp.getBoolean("show_region_bg", true);
-        config.showHeaderPillBg = sp.getBoolean("show_header_pill_bg", true);
-        config.iconSize = sp.getInt("icon_size", 58);
+        config.offsetY = sp.getInt("offset_y", 100);
+        config.regionDiameter = sp.getInt("region_diameter", 220);
+        config.showRegionBg = sp.getBoolean("show_region_bg", false);
+        config.showHeaderPillBg = sp.getBoolean("show_header_pill_bg", false);
+        config.iconSize = sp.getInt("icon_size", 60);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
-        config.influenceRadius = sp.getInt("influence_radius", 120);
+        config.influenceRadius = sp.getInt("influence_radius", 70);
         config.iconAlpha = sp.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = sp.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = sp.getFloat("fullscreen_blur_mask_alpha", 1.0f);
         config.regionBlurRadius = sp.getInt("region_blur_radius", 25);
-        config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 0);
-        config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
+        config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 5);
+        config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 0);
         config.bubbleBlurRadius = sp.getInt("bubble_blur_radius", 25);
         config.selectedIconScale = sp.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = sp.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
