@@ -325,13 +325,31 @@ public class QuickOpenConfig {
         // 1. 微信扫一扫 (精确指向微信公开 LauncherUI 扫码入口，配 Miuix 扫一扫矢量图标 + 微信绿微透底垫)
         items.add(new ShortcutItem(
             "wx_scan", "微信扫一扫", "直接唤起扫码镜头",
-            ShortcutItem.ACTION_INTENT_URI, "intent://dl/scan#Intent;scheme=weixin;package=com.tencent.mm;end",
+            ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=com.tencent.mm.action.BIZSHORTCUT;package=com.tencent.mm;B.LauncherUI.From.Scaner.Shortcut=true;end",
             "", "Scan:Regular",
             0xFF07C160, true,
             true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 2. 支付宝付款码 (官方跨端 Scheme，配 Miuix 银行卡/支付矢量图标 + 支付宝蓝微透底垫)
+        // 2. 微信付款码 (官方收付款入口，配 Miuix 银行卡矢量图标 + 微信绿微透底垫)
+        items.add(new ShortcutItem(
+            "wx_pay", "微信付款码", "出示收银台向商家付款",
+            ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=com.tencent.mm.action.BIZSHORTCUT;package=com.tencent.mm;B.LauncherUI.From.OfflinePay.Shortcut=true;end",
+            "", "BankCards:Regular",
+            0xFF07C160, true,
+            true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
+
+        // 3. 微信收款码 (面对面收款入口，配 Miuix 二维码矢量图标 + 微信绿微透底垫)
+        items.add(new ShortcutItem(
+            "wx_receive", "微信收款码", "面对面二维码收款",
+            ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=com.tencent.mm.action.BIZSHORTCUT;package=com.tencent.mm;S.LauncherUI.Shortcut.LaunchType=launch_type_offline_wallet;end",
+            "", "QrCode:Regular",
+            0xFF07C160, true,
+            true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
+        ));
+
+        // 4. 支付宝付款码 (官方跨端 Scheme，配 Miuix 银行卡/支付矢量图标 + 支付宝蓝微透底垫)
         items.add(new ShortcutItem(
             "alipay_pay", "支付宝付款码", "出示收银台付款",
             ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=20000056#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
