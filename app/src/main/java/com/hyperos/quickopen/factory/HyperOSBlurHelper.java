@@ -26,7 +26,7 @@ public final class HyperOSBlurHelper {
      */
     @Nullable
     public static Drawable createSystemBackdropBlurDrawable(@Nullable View view, float cornerRadiusPx, int blurRadiusPx, int tintColor) {
-        if (view == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        if (view == null || blurRadiusPx <= 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return null;
         }
         try {
@@ -97,12 +97,12 @@ public final class HyperOSBlurHelper {
         try {
             Method m = blurDrawable.getClass().getMethod("setBlurRadius", int.class);
             m.setAccessible(true);
-            m.invoke(blurDrawable, Math.max(1, blurRadiusPx));
+            m.invoke(blurDrawable, Math.max(0, blurRadiusPx));
         } catch (Throwable t) {
             try {
                 Method m = blurDrawable.getClass().getDeclaredMethod("setBlurRadius", int.class);
                 m.setAccessible(true);
-                m.invoke(blurDrawable, Math.max(1, blurRadiusPx));
+                m.invoke(blurDrawable, Math.max(0, blurRadiusPx));
             } catch (Throwable ignored) {}
         }
 

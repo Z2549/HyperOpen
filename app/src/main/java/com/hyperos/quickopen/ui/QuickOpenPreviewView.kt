@@ -29,16 +29,47 @@ import com.hyperos.quickopen.view.CircularRegionBackdropView
  * - 长按图标：震动进入自定义排版模式，可自由拖拽改变图标在蜂窝阵列中的位置顺序；
  * - 松手磁吸：其他图标平滑让位，松手后磁吸回网格并同步保存。
  */
+data class BubbleBlurSpot(
+    val id: String,
+    val centerX: Float,
+    val centerY: Float,
+    val diameterPx: Float,
+)
+
+data class PreviewBlurSceneState(
+    val regionCenterX: Float = 0f,
+    val regionCenterY: Float = 0f,
+    val regionDiameterPx: Float = 0f,
+    val headerLeftPx: Float = 0f,
+    val headerTopPx: Float = 0f,
+    val headerWidthPx: Float = 0f,
+    val headerHeightPx: Float = 0f,
+    val backBtnLeftPx: Float = 0f,
+    val backBtnTopPx: Float = 0f,
+    val backBtnSizePx: Float = 0f,
+    val bubbles: List<BubbleBlurSpot> = emptyList(),
+)
+
+/**
+ * 整体指纹快捷面板高保真预览与长按拖拽交互视图。
+ * 复用与 SystemUI 完全一致的 CircularBubbleView、CircularRegionBackdropView 与 HeaderPill 渲染，
+ * 确保所见即所得。
+ * - 普通滑动：模拟指纹解锁后手指滑过快捷图标的鱼眼动力学吸附与实时聚焦反馈；
+ * - 长按图标：震动进入自定义排版模式，可自由拖拽改变图标在蜂窝阵列中的位置顺序；
+ * - 松手磁吸：其他图标平滑让位，松手后磁吸回网格并同步保存。
+ */
 class QuickOpenPreviewView(
     context: Context,
     private var config: QuickOpenConfig,
     private val onBackClick: () -> Unit,
     private val onOrderChanged: (List<ShortcutItem>) -> Unit,
+    private val onBlurSceneChanged: ((PreviewBlurSceneState) -> Unit)? = null,
 ) : FrameLayout(context) {
 
     private var resolvedStyle = HyperOSMaterialFactory.resolveActiveStyle(context, config.materialStyle)
     private var vibrator: Vibrator? = null
 
+    private lateinit var topHeaderContainer: LinearLayout
     private lateinit var headerPill: LinearLayout
     private lateinit var headerTitle: TextView
     private lateinit var headerSubtitle: TextView
@@ -49,6 +80,10 @@ class QuickOpenPreviewView(
     private val bubbleViews = mutableListOf<CircularBubbleView>()
     private val activeShortcuts = mutableListOf<ShortcutItem>()
     private val gridPoints = mutableListOf<PointF>()
+
+    private var lastRegionCenterX = 0f
+    private var lastRegionCenterY = 0f
+    private var lastRegionDiameterPx = 0f
 
     private var currentSelectedBubble: CircularBubbleView? = null
 
@@ -120,8 +155,11 @@ class QuickOpenPreviewView(
 
     private fun buildFloatingBackButton() {
         val btnSize = dpToPx(40f).toInt()
+        val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
         val backBtn = FrameLayout(context).apply {
-            background = HyperOSMaterialFactory.createCircularBubbleDrawable(resolvedStyle, 0xFFFFFFFF.toInt(), false)
+            background = HyperOSMaterialFactory.createCompositeCircularBubbleDrawable(
+                this, resolvedStyle, 0xFFFFFFFF.toInt(), false, false, blurPx
+            )
             isClickable = true
             isFocusable = true
             setOnClickListener {
@@ -149,8 +187,17 @@ class QuickOpenPreviewView(
         floatingBackButton = backBtn
     }
 
+    private fun refreshFloatingBackButtonBackground() {
+        val btn = floatingBackButton ?: return
+        val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
+        btn.background = HyperOSMaterialFactory.createCompositeCircularBubbleDrawable(
+            btn, resolvedStyle, 0xFFFFFFFF.toInt(), false, false, blurPx
+        )
+        btn.invalidate()
+    }
+
     private fun buildHeader() {
-        val topContainer = LinearLayout(context).apply {
+        topHeaderContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
         }
@@ -161,6 +208,21 @@ class QuickOpenPreviewView(
             val padH = dpToPx(24f).toInt()
             val padV = dpToPx(10f).toInt()
             setPadding(padH, padV, padH, padV)
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    val w = view.width
+                    val h = view.height
+                    if (w <= 0 || h <= 0) return
+                    outline.setRoundRect(0, 0, w, h, Math.min(w, h) / 2f)
+                    outline.alpha = 0f
+                }
+            }
+            addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+                if ((r - l) != (or - ol) || (b - t) != (ob - ot) || l != ol || t != ot) {
+                    applyHeaderPillBackground()
+                    notifyBlurSceneChanged()
+                }
+            }
         }
 
         headerTitle = TextView(context).apply {
@@ -197,17 +259,17 @@ class QuickOpenPreviewView(
             visibility = View.GONE
         }
 
-        topContainer.addView(headerPill, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        topHeaderContainer.addView(headerPill, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         val bannerLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dpToPx(8f).toInt()
         }
-        topContainer.addView(editBanner, bannerLp)
+        topHeaderContainer.addView(editBanner, bannerLp)
 
         val topLp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             topMargin = dpToPx(100f).toInt()
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         }
-        addView(topContainer, topLp)
+        addView(topHeaderContainer, topLp)
     }
 
     /**
@@ -217,25 +279,14 @@ class QuickOpenPreviewView(
         if (!::headerPill.isInitialized) return
         val show = config.showHeaderPillBg
         if (show) {
-            val bg = headerPill.background
-            if (bg is HyperOSMaterialFactory.HeaderPillDrawable) {
-                bg.setStyle(resolvedStyle)
-            } else if (bg is android.graphics.drawable.LayerDrawable) {
-                for (i in 0 until bg.numberOfLayers) {
-                    val d = bg.getDrawable(i)
-                    if (d is HyperOSMaterialFactory.HeaderPillDrawable) {
-                        d.setStyle(resolvedStyle)
-                    }
-                }
-            } else {
-                val blurPx = dpToPx(config.regionBlurRadius.toFloat()).toInt()
-                headerPill.background = HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx)
-            }
+            val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
+            headerPill.background = HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx)
             headerPill.clipToOutline = true
         } else {
             headerPill.background = null
             headerPill.clipToOutline = false
         }
+        headerPill.invalidateOutline()
         headerPill.invalidate()
     }
 
@@ -265,16 +316,12 @@ class QuickOpenPreviewView(
     }
 
     private fun refreshBackdropMask() {
-        if (config.fullscreenBlurMaskAlpha <= 0.001f) {
-            setBackgroundColor(Color.TRANSPARENT)
-        } else {
-            val maskAlpha = (config.fullscreenBlurMaskAlpha.coerceIn(0f, 1f) * 0xCC).toInt()
-            setBackgroundColor((maskAlpha shl 24) or 0x000000)
-        }
+        // 保持预览容器自身透明，避免遮挡下层 Compose 统一渲染的实时毛玻璃图层
+        setBackgroundColor(Color.TRANSPARENT)
     }
 
     /**
-     * 参数热更新：材质、胶囊背景开关、尺寸与偏移行即生效
+     * 参数热更新：材质、胶囊背景开关、尺寸、气泡模糊半径与偏移即刻生效
      */
     fun updateConfig(newConfig: QuickOpenConfig) {
         this.config = newConfig
@@ -286,6 +333,7 @@ class QuickOpenPreviewView(
             regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
         }
         applyHeaderPillBackground()
+        refreshFloatingBackButtonBackground()
         setupLayout()
     }
 
@@ -311,6 +359,10 @@ class QuickOpenPreviewView(
         val regionRadiusPx = regionDiameterPx / 2f
         val iconSizePx = dpToPx(config.iconSize.toFloat())
 
+        lastRegionCenterX = fodX
+        lastRegionCenterY = regionCenterY
+        lastRegionDiameterPx = regionDiameterPx
+
         // 定位底衬
         regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
         regionBackdrop.setStyle(resolvedStyle)
@@ -323,8 +375,9 @@ class QuickOpenPreviewView(
         }
         regionBackdrop.layoutParams = rLp
 
-        // 确保顶部提示胶囊背景与材质即时更新
+        // 确保顶部提示胶囊与悬浮返回按钮背景即时更新
         applyHeaderPillBackground()
+        refreshFloatingBackButtonBackground()
 
         // 筛选有效快捷项
         for (item in config.shortcuts) {
@@ -372,6 +425,8 @@ class QuickOpenPreviewView(
             b.loadItemIcon()
             b.invalidate()
         }
+        notifyBlurSceneChanged()
+        post { notifyBlurSceneChanged() }
     }
 
     private fun playExpandAnimation(fodX: Float, fodY: Float) {
@@ -457,6 +512,7 @@ class QuickOpenPreviewView(
 
                     // 检测碰撞并实时重排其余气泡
                     checkDragReorder(x, y)
+                    notifyBlurSceneChanged()
                 } else if (!isEditMode) {
                     // 普通模拟指纹滑动模式：物理鱼眼动力学
                     handleFingerHover(x, y)
@@ -512,12 +568,9 @@ class QuickOpenPreviewView(
 
         // 所有气泡进入轻微呼吸抖动
         for (b in bubbleViews) {
-            b.animate()
-                .scaleX(1.05f)
-                .scaleY(1.05f)
-                .setDuration(150)
-                .start()
+            b.applyScale(1.05f)
         }
+        notifyBlurSceneChanged()
 
         if (initialTarget != null) {
             startDragging(initialTarget, dragTouchStartX, dragTouchStartY)
@@ -538,12 +591,9 @@ class QuickOpenPreviewView(
         headerSubtitle.text = "移至目标图标后松手直接打开"
 
         for (b in bubbleViews) {
-            b.animate()
-                .scaleX(1.0f)
-                .scaleY(1.0f)
-                .setDuration(150)
-                .start()
+            b.applyScale(1.0f)
         }
+        notifyBlurSceneChanged()
 
         // 同步通知外部回写最新排序列表
         val newOrdered = bubbleViews.map { it.item }
@@ -554,11 +604,8 @@ class QuickOpenPreviewView(
         isDraggingActive = true
         draggingBubble = bubble
         bubble.bringToFront()
-        bubble.animate()
-            .scaleX(1.22f)
-            .scaleY(1.22f)
-            .setDuration(100)
-            .start()
+        bubble.applyScale(1.22f)
+        notifyBlurSceneChanged()
         triggerHaptic(25)
     }
 
@@ -601,16 +648,19 @@ class QuickOpenPreviewView(
                         .y(targetTop.toFloat())
                         .setDuration(220)
                         .setInterpolator(OvershootInterpolator(1.1f))
+                        .setUpdateListener { notifyBlurSceneChanged() }
                         .withEndAction {
                             lp.leftMargin = targetLeft
                             lp.topMargin = targetTop
                             b.layoutParams = lp
                             b.translationX = 0f
                             b.translationY = 0f
+                            notifyBlurSceneChanged()
                         }
                         .start()
                 }
             }
+            notifyBlurSceneChanged()
             triggerHaptic(15)
         }
     }
@@ -628,11 +678,7 @@ class QuickOpenPreviewView(
             val targetLeft = (pt.x - iconSizePx / 2f).toInt()
             val targetTop = (pt.y - iconSizePx / 2f).toInt()
 
-            b.animate()
-                .scaleX(1.05f)
-                .scaleY(1.05f)
-                .setDuration(160)
-                .start()
+            b.applyScale(1.05f)
 
             val lp = b.layoutParams as LayoutParams
             lp.leftMargin = targetLeft
@@ -640,6 +686,7 @@ class QuickOpenPreviewView(
             b.layoutParams = lp
         }
         draggingBubble = null
+        notifyBlurSceneChanged()
         triggerHaptic(18)
     }
 
@@ -694,6 +741,7 @@ class QuickOpenPreviewView(
                 headerSubtitle.text = "移至目标图标后松手直接打开"
             }
         }
+        notifyBlurSceneChanged()
     }
 
     private fun resetHoverSelection() {
@@ -706,6 +754,53 @@ class QuickOpenPreviewView(
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
         headerSubtitle.text = "移至目标图标后松手直接打开"
+        notifyBlurSceneChanged()
+    }
+
+    private fun notifyBlurSceneChanged() {
+        val listener = onBlurSceneChanged ?: return
+        val iconSizePx = dpToPx(config.iconSize.toFloat())
+        val spots = ArrayList<BubbleBlurSpot>(bubbleViews.size)
+        for (b in bubbleViews) {
+            val lp = b.layoutParams as? LayoutParams
+            val cx = if (lp != null) lp.leftMargin + iconSizePx / 2f + b.translationX else b.targetX
+            val cy = if (lp != null) lp.topMargin + iconSizePx / 2f + b.translationY else b.targetY
+            val scale = b.scaleX.coerceAtLeast(0.1f)
+            val effectiveDiameter = (iconSizePx - 4f).coerceAtLeast(1f) * scale
+            spots.add(
+                BubbleBlurSpot(
+                    id = b.item.id,
+                    centerX = cx,
+                    centerY = cy,
+                    diameterPx = effectiveDiameter,
+                )
+            )
+        }
+
+        val headerLeft = if (::topHeaderContainer.isInitialized && ::headerPill.isInitialized) {
+            (topHeaderContainer.left + headerPill.left).toFloat()
+        } else 0f
+        val headerTop = if (::topHeaderContainer.isInitialized && ::headerPill.isInitialized) {
+            (topHeaderContainer.top + headerPill.top).toFloat()
+        } else dpToPx(100f)
+        val headerW = if (::headerPill.isInitialized) headerPill.width.toFloat() else 0f
+        val headerH = if (::headerPill.isInitialized) headerPill.height.toFloat() else 0f
+
+        listener(
+            PreviewBlurSceneState(
+                regionCenterX = lastRegionCenterX,
+                regionCenterY = lastRegionCenterY,
+                regionDiameterPx = lastRegionDiameterPx,
+                headerLeftPx = headerLeft,
+                headerTopPx = headerTop,
+                headerWidthPx = headerW,
+                headerHeightPx = headerH,
+                backBtnLeftPx = dpToPx(18f),
+                backBtnTopPx = dpToPx(46f),
+                backBtnSizePx = (dpToPx(40f) - 4f).coerceAtLeast(1f),
+                bubbles = spots,
+            )
+        )
     }
 
     private fun dpToPx(dp: Float): Float {

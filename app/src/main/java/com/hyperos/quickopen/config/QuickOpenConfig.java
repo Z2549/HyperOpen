@@ -87,6 +87,8 @@ public class QuickOpenConfig {
     public int iconSpacingOffset = 0;
     /** 气泡内部图标留白比例 (0% ~ 40%，默认 18%，0% 即全屏满铺) */
     public int bubblePaddingPercent = 18;
+    /** 图标气泡留白区域高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭模糊，样式与圆形视界底衬一致) */
+    public int bubbleBlurRadius = 25;
     /** 手指选中图标时气泡内图标的缩放倍率 (1.00x ~ 1.50x，默认 1.15x) */
     public float selectedIconScale = 1.15f;
 
@@ -132,6 +134,7 @@ public class QuickOpenConfig {
                     config.regionBlurRadius = bundle.getInt("region_blur_radius", 25);
                     config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 0);
                     config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 18);
+                    config.bubbleBlurRadius = bundle.getInt("bubble_blur_radius", 25);
                     config.selectedIconScale = bundle.getFloat("selected_icon_scale", 1.15f);
                     config.appIconCropMode = bundle.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
                     config.glyphPadEnabled = bundle.getBoolean("glyph_pad_enabled", true);
@@ -178,6 +181,7 @@ public class QuickOpenConfig {
         config.regionBlurRadius = xPrefs.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 18);
+        config.bubbleBlurRadius = xPrefs.getInt("bubble_blur_radius", 25);
         config.selectedIconScale = xPrefs.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = xPrefs.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
         config.glyphPadEnabled = xPrefs.getBoolean("glyph_pad_enabled", true);
@@ -219,6 +223,7 @@ public class QuickOpenConfig {
         config.regionBlurRadius = sp.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 0);
         config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 18);
+        config.bubbleBlurRadius = sp.getInt("bubble_blur_radius", 25);
         config.selectedIconScale = sp.getFloat("selected_icon_scale", 1.15f);
         config.appIconCropMode = sp.getInt("app_icon_crop_mode", CROP_ADAPTIVE_EXPAND);
         config.glyphPadEnabled = sp.getBoolean("glyph_pad_enabled", true);
@@ -260,6 +265,7 @@ public class QuickOpenConfig {
             .putInt("region_blur_radius", regionBlurRadius)
             .putInt("icon_spacing_offset", iconSpacingOffset)
             .putInt("bubble_padding_percent", bubblePaddingPercent)
+            .putInt("bubble_blur_radius", bubbleBlurRadius)
             .putFloat("selected_icon_scale", selectedIconScale)
             .putInt("app_icon_crop_mode", appIconCropMode)
             .putBoolean("glyph_pad_enabled", glyphPadEnabled)

@@ -61,11 +61,12 @@ public class CircularRegionBackdropView extends FrameLayout {
     private void init() {
         setClipChildren(false);
 
-        // 1. 设置严格正正圆形 OutlineProvider 硬件裁切 (圆内高斯模糊，圆外完全清晰)
+        // 1. 设置严格正圆形 OutlineProvider 硬件裁切 (圆内高斯模糊，圆外完全清晰，alpha=0 禁用 3D 阴影多边形本影)
         setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View view, Outline outline) {
                 outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                outline.setAlpha(0.0f);
             }
         });
         setClipToOutline(true);
@@ -140,25 +141,29 @@ public class CircularRegionBackdropView extends FrameLayout {
         if (radiusPx <= 0) return;
         this.currentRadiusPx = radiusPx;
 
-        float blurPx = TypedValue.applyDimension(
+        int blurPx = Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()
-        );
-        // 液态玻璃使用通透白微光混合 (0x1CFFFFFF)，高斯模糊使用沉稳微透 (0x12FFFFFF)，绝不死黑
-        int tint = (style == HyperOSMaterialFactory.STYLE_SOFT_GLASS) ? 0x1CFFFFFF : 0x12FFFFFF;
+        ));
+        int tint = HyperOSMaterialFactory.getUnifiedBlurTint(style);
 
-        // 每次重新展开时强制检查并绑定当前活跃的 ViewRootImpl，彻底消除复用失效引用的 Bug
-        Drawable bd = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, radiusPx, (int) blurPx, tint);
-        if (bd != null) {
-            systemBackdropBlurDrawable = bd;
-            setBackground(systemBackdropBlurDrawable);
-            try {
-                systemBackdropBlurDrawable.setVisible(true, true);
-            } catch (Throwable ignored) {}
-        } else if (systemBackdropBlurDrawable != null) {
-            HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, radiusPx, (int) blurPx, tint);
-            try {
-                systemBackdropBlurDrawable.setVisible(true, false);
-            } catch (Throwable ignored) {}
+        if (blurPx <= 0) {
+            systemBackdropBlurDrawable = null;
+            setBackground(null);
+        } else {
+            // 每次重新展开时强制检查并绑定当前活跃的 ViewRootImpl，彻底消除复用失效引用的 Bug
+            Drawable bd = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, radiusPx, blurPx, tint);
+            if (bd != null) {
+                systemBackdropBlurDrawable = bd;
+                setBackground(systemBackdropBlurDrawable);
+                try {
+                    systemBackdropBlurDrawable.setVisible(true, true);
+                } catch (Throwable ignored) {}
+            } else if (systemBackdropBlurDrawable != null) {
+                HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, radiusPx, blurPx, tint);
+                try {
+                    systemBackdropBlurDrawable.setVisible(true, false);
+                } catch (Throwable ignored) {}
+            }
         }
 
         if (overlayView != null) {
@@ -170,13 +175,18 @@ public class CircularRegionBackdropView extends FrameLayout {
     private void refreshVisuals() {
         setAlpha(Math.max(0.0f, Math.min(1.0f, regionAlpha)));
 
-        float blurPx = TypedValue.applyDimension(
+        int blurPx = Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()
-        );
-        int tint = (style == HyperOSMaterialFactory.STYLE_SOFT_GLASS) ? 0x1CFFFFFF : 0x12FFFFFF;
+        ));
+        int tint = HyperOSMaterialFactory.getUnifiedBlurTint(style);
 
-        if (systemBackdropBlurDrawable != null) {
-            HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, currentRadiusPx, (int) blurPx, tint);
+        if (blurPx <= 0) {
+            if (systemBackdropBlurDrawable != null) {
+                systemBackdropBlurDrawable = null;
+                setBackground(null);
+            }
+        } else if (systemBackdropBlurDrawable != null) {
+            HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, currentRadiusPx, blurPx, tint);
         }
 
         if (overlayView != null) {
@@ -186,7 +196,7 @@ public class CircularRegionBackdropView extends FrameLayout {
     }
 
     /**
-     * 顶层深邃光影与双向菲涅尔镜面圆环 (超高透光率，绝不遮挡实时透过的前台应用画面)
+     * 顶层深邃光影与双向菲涅尔镜面圆环 (复用 HyperOSMaterialFactory.drawUnifiedCircularOptics 与气泡完全统一)
      */
     private class OverlayDrawView extends View {
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -202,67 +212,9 @@ public class CircularRegionBackdropView extends FrameLayout {
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
-            if (w <= 0 || h <= 0) return;
-
-            float cx = w / 2f;
-            float cy = h / 2f;
-            float radius = Math.min(cx, cy) - 2f;
-            if (radius <= 0) return;
-
-            if (style == HyperOSMaterialFactory.STYLE_SOFT_GLASS) {
-                // ================= 液态玻璃（Soft Light Glass / 水润高动态流体） =================
-                // 1. 次表面水润微光（透光率 90%+，保留底层前台应用色彩）
-                RadialGradient radialLight = new RadialGradient(
-                    cx, cy, radius,
-                    new int[]{0x1EFFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.65f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                bgPaint.setShader(radialLight);
-                canvas.drawCircle(cx, cy, radius, bgPaint);
-
-                // 2. 穹顶弧形切面天光反射（水滴晶莹切面高光）
-                LinearGradient hlShader = new LinearGradient(
-                    0, 0, 0, cy * 0.95f,
-                    new int[]{0x70FFFFFF, 0x1AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.55f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                highlightPaint.setShader(hlShader);
-                canvas.save();
-                canvas.clipRect(0, 0, w, cy * 0.95f);
-                canvas.drawCircle(cx, cy, radius, highlightPaint);
-                canvas.restore();
-
-                // 3. 菲涅尔动态梯度镜面圆环描边（顶亮底润）
-                LinearGradient borderGrad = new LinearGradient(
-                    0, 0, 0, h,
-                    new int[]{0xD5FFFFFF, 0x48FFFFFF, 0x22FFFFFF},
-                    new float[]{0f, 0.50f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                borderPaint.setShader(borderGrad);
-                canvas.drawCircle(cx, cy, radius, borderPaint);
-
-            } else {
-                // ================= 高斯模糊（Gaussian Blur / 沉稳哑光微晶磨砂） =================
-                // 1. 沉稳微晶哑光磨砂漫反射底衬 (高透光率，不遮挡前台画面)
-                RadialGradient radialDark = new RadialGradient(
-                    cx, cy, radius,
-                    new int[]{0x14FFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.70f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                bgPaint.setShader(radialDark);
-                canvas.drawCircle(cx, cy, radius, bgPaint);
-
-                // 2. 细腻全包围微光描边（纯净哑光质感，无弧形切面反光）
-                borderPaint.setShader(null);
-                borderPaint.setColor(0x45FFFFFF);
-                canvas.drawCircle(cx, cy, radius, borderPaint);
-            }
+            HyperOSMaterialFactory.drawUnifiedCircularOptics(
+                canvas, getWidth(), getHeight(), style, false, bgPaint, highlightPaint, borderPaint
+            );
         }
     }
 }

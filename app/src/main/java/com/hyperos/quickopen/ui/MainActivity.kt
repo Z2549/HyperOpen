@@ -198,6 +198,7 @@ fun QuickOpenApp(
     var regionBlurRadius by remember { mutableFloatStateOf(initialConfig.regionBlurRadius.toFloat()) }
     var iconSpacingOffset by remember { mutableFloatStateOf(initialConfig.iconSpacingOffset.toFloat()) }
     var bubblePaddingPercent by remember { mutableFloatStateOf(initialConfig.bubblePaddingPercent.toFloat()) }
+    var bubbleBlurRadius by remember { mutableFloatStateOf(initialConfig.bubbleBlurRadius.toFloat()) }
     var selectedIconScale by remember { mutableFloatStateOf(initialConfig.selectedIconScale) }
     var appIconCropMode by remember { mutableIntStateOf(initialConfig.appIconCropMode) }
     var glyphPadEnabled by remember { mutableStateOf(initialConfig.glyphPadEnabled) }
@@ -237,6 +238,7 @@ fun QuickOpenApp(
         c.regionBlurRadius = regionBlurRadius.toInt()
         c.iconSpacingOffset = iconSpacingOffset.toInt()
         c.bubblePaddingPercent = bubblePaddingPercent.toInt()
+        c.bubbleBlurRadius = bubbleBlurRadius.toInt()
         c.selectedIconScale = selectedIconScale
         c.appIconCropMode = appIconCropMode
         c.glyphPadEnabled = glyphPadEnabled
@@ -409,16 +411,32 @@ fun QuickOpenApp(
                             this.regionBlurRadius = regionBlurRadius.toInt()
                             this.iconSpacingOffset = iconSpacingOffset.toInt()
                             this.bubblePaddingPercent = bubblePaddingPercent.toInt()
+                            this.bubbleBlurRadius = bubbleBlurRadius.toInt()
                             this.selectedIconScale = selectedIconScale
                             this.appIconCropMode = appIconCropMode
                             this.iconGlowEffect = iconGlowEffect
                             this.shortcuts = ArrayList(shortcuts)
                         }
 
+                        var blurScene by remember { mutableStateOf(PreviewBlurSceneState()) }
+
                         val previewBackdrop = rememberLayerBackdrop {
                             drawRect(Color(0xFF0C0E14))
                             drawContent()
                         }
+
+                        fun unifiedBlurColors(alphaMultiplier: Float = 1f) = BlurColors(
+                            blendColors = listOf(
+                                BlendColorEntry(
+                                    color = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS)
+                                        Color.White.copy(alpha = (0x1C / 255f) * alphaMultiplier.coerceIn(0f, 1f))
+                                    else
+                                        Color.White.copy(alpha = (0x12 / 255f) * alphaMultiplier.coerceIn(0f, 1f)),
+                                    mode = BlurBlendMode.SrcOver
+                                )
+                            ),
+                            saturation = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) 1.65f else 1.20f
+                        )
 
                         // 彻底实现系统桌面壁纸完全自动、实时动态拉取与变更监听
                         val liveWallpaperBitmap by com.hyperos.quickopen.util.LiveWallpaperLoader.rememberLiveWallpaper(ctx)
@@ -482,53 +500,104 @@ fun QuickOpenApp(
                                 )
                             }
 
-                            // 3. 圆形视界区域的独立毛玻璃 (实时由 miuix-blur 硬件渲染，绝不死黑，与真实锁屏效果完全一致)
-                            if (currentConfig.showRegionBg) {
-                                val density = androidx.compose.ui.platform.LocalDensity.current
+                            val density = androidx.compose.ui.platform.LocalDensity.current
+
+                            // 3. 圆形视界区域的统一毛玻璃底衬 (与真实锁屏 CircularRegionBackdropView 及气泡底衬完全一致)
+                            if (currentConfig.showRegionBg && currentConfig.regionBlurRadius > 0 && currentConfig.regionAlpha > 0.001f) {
                                 val screenH = ctx.resources.displayMetrics.heightPixels
                                 val screenW = ctx.resources.displayMetrics.widthPixels
-                                val fodYPx = screenH * 0.795f
-                                val fodXPx = screenW / 2.0f
-                                val regionCenterYPx = fodYPx - with(density) { currentConfig.offsetY.dp.toPx() }
-                                val regionDiameterDp = currentConfig.regionDiameter.dp
-                                val regionRadiusPx = with(density) { (regionDiameterDp / 2).toPx() }
+                                val fallbackCenterX = screenW / 2.0f
+                                val fallbackCenterY = screenH * 0.795f - with(density) { currentConfig.offsetY.dp.toPx() }
+                                val fallbackDiameterPx = with(density) { currentConfig.regionDiameter.dp.toPx() }
+
+                                val centerX = if (blurScene.regionDiameterPx > 0f) blurScene.regionCenterX else fallbackCenterX
+                                val centerY = if (blurScene.regionDiameterPx > 0f) blurScene.regionCenterY else fallbackCenterY
+                                val diameterPx = if (blurScene.regionDiameterPx > 0f) blurScene.regionDiameterPx else fallbackDiameterPx
+                                val radiusPx = diameterPx / 2f
+                                val diameterDp = with(density) { diameterPx.toDp() }
 
                                 Box(
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
+                                    modifier = Modifier
+                                        .offset(
+                                            x = with(density) { (centerX - radiusPx).toDp() },
+                                            y = with(density) { (centerY - radiusPx).toDp() }
+                                        )
+                                        .size(diameterDp)
+                                        .textureBlur(
+                                            backdrop = previewBackdrop,
+                                            shape = CircleShape,
+                                            blurRadius = currentConfig.regionBlurRadius.toFloat(),
+                                            colors = unifiedBlurColors(currentConfig.regionAlpha)
+                                        )
+                                )
+                            }
+
+                            // 4. 顶部提示胶囊与左上角返回按钮的统一毛玻璃底衬
+                            if (currentConfig.regionBlurRadius > 0) {
+                                if (currentConfig.showHeaderPillBg && blurScene.headerWidthPx > 0f && blurScene.headerHeightPx > 0f) {
                                     Box(
                                         modifier = Modifier
                                             .offset(
-                                                x = with(density) { (fodXPx - regionRadiusPx).toDp() },
-                                                y = with(density) { (regionCenterYPx - regionRadiusPx).toDp() }
+                                                x = with(density) { blurScene.headerLeftPx.toDp() },
+                                                y = with(density) { blurScene.headerTopPx.toDp() }
                                             )
-                                            .size(regionDiameterDp)
+                                            .size(
+                                                width = with(density) { blurScene.headerWidthPx.toDp() },
+                                                height = with(density) { blurScene.headerHeightPx.toDp() }
+                                            )
+                                            .textureBlur(
+                                                backdrop = previewBackdrop,
+                                                shape = RoundedCornerShape(percent = 50),
+                                                blurRadius = currentConfig.regionBlurRadius.toFloat(),
+                                                colors = unifiedBlurColors(1f)
+                                            )
+                                    )
+                                }
+
+                                if (blurScene.backBtnSizePx > 0f) {
+                                    val backSizeDp = with(density) { blurScene.backBtnSizePx.toDp() }
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(
+                                                x = with(density) { blurScene.backBtnLeftPx.toDp() },
+                                                y = with(density) { blurScene.backBtnTopPx.toDp() }
+                                            )
+                                            .size(backSizeDp)
                                             .textureBlur(
                                                 backdrop = previewBackdrop,
                                                 shape = CircleShape,
-                                                blurRadius = currentConfig.regionBlurRadius.toFloat().coerceAtLeast(1f),
-                                                colors = BlurColors(
-                                                    blendColors = listOf(
-                                                        BlendColorEntry(
-                                                            color = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS)
-                                                                Color.White.copy(alpha = 0.12f * currentConfig.regionAlpha)
-                                                            else
-                                                                Color.White.copy(alpha = 0.06f * currentConfig.regionAlpha),
-                                                            mode = BlurBlendMode.SrcOver
-                                                        )
-                                                    ),
-                                                    saturation = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS) 1.65f else 1.20f
-                                                ),
-                                                highlight = if (materialStyle == QuickOpenConfig.MATERIAL_SOFT_GLASS)
-                                                    Highlight.GlassStrokeBigLight
-                                                else
-                                                    Highlight.GlassStrokeBigDark
+                                                blurRadius = currentConfig.regionBlurRadius.toFloat(),
+                                                colors = unifiedBlurColors(1f)
                                             )
                                     )
                                 }
                             }
 
-                            // 4. 交互式预览与拖拽排版控件
+                            // 5. 图标气泡留白区域的独立毛玻璃底衬 (与圆形视界区域底衬统一风格，随鱼眼缩放与拖拽实时同步)
+                            if (currentConfig.bubbleBlurRadius > 0) {
+                                blurScene.bubbles.forEach { spot ->
+                                    if (spot.diameterPx > 2f) {
+                                        val bubbleRadiusPx = spot.diameterPx / 2f
+                                        val bubbleDiameterDp = with(density) { spot.diameterPx.toDp() }
+                                        Box(
+                                            modifier = Modifier
+                                                .offset(
+                                                    x = with(density) { (spot.centerX - bubbleRadiusPx).toDp() },
+                                                    y = with(density) { (spot.centerY - bubbleRadiusPx).toDp() }
+                                                )
+                                                .size(bubbleDiameterDp)
+                                                .textureBlur(
+                                                    backdrop = previewBackdrop,
+                                                    shape = CircleShape,
+                                                    blurRadius = currentConfig.bubbleBlurRadius.toFloat(),
+                                                    colors = unifiedBlurColors(currentConfig.iconAlpha)
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 6. 交互式预览与拖拽排版控件
                             AndroidView(
                                 modifier = Modifier.fillMaxSize(),
                                 factory = { viewCtx ->
@@ -551,6 +620,9 @@ fun QuickOpenApp(
                                             shortcuts.addAll(reordered)
                                             persist()
                                             Toast.makeText(viewCtx, "已更新并保存快捷方式排版", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onBlurSceneChanged = { scene ->
+                                            blurScene = scene
                                         },
                                     )
                                 },
@@ -595,6 +667,8 @@ fun QuickOpenApp(
                                     onIconSpacingOffset = { iconSpacingOffset = it; persist() },
                                     bubblePaddingPercent = bubblePaddingPercent,
                                     onBubblePaddingPercent = { bubblePaddingPercent = it; persist() },
+                                    bubbleBlurRadius = bubbleBlurRadius,
+                                    onBubbleBlurRadius = { bubbleBlurRadius = it; persist() },
                                     selectedIconScale = selectedIconScale,
                                     onSelectedIconScale = { selectedIconScale = it; persist() },
                                     appIconCropMode = appIconCropMode,
@@ -764,6 +838,7 @@ fun ParamsPage(
     regionBlurRadius: Float, onRegionBlurRadius: (Float) -> Unit,
     iconSpacingOffset: Float, onIconSpacingOffset: (Float) -> Unit,
     bubblePaddingPercent: Float, onBubblePaddingPercent: (Float) -> Unit,
+    bubbleBlurRadius: Float, onBubbleBlurRadius: (Float) -> Unit,
     selectedIconScale: Float, onSelectedIconScale: (Float) -> Unit,
     appIconCropMode: Int, onAppIconCropMode: (Int) -> Unit,
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
@@ -930,6 +1005,14 @@ fun ParamsPage(
                     value = bubblePaddingPercent,
                     valueRange = 0f..40f,
                     onValueChange = onBubblePaddingPercent,
+                )
+                SliderPreference(
+                    title = "气泡留白区域模糊半径",
+                    summary = "与圆形视界区域底衬统一的高斯模糊毛玻璃样式",
+                    valueText = if (bubbleBlurRadius.toInt() == 0) "已关闭模糊" else "${bubbleBlurRadius.toInt()} dp",
+                    value = bubbleBlurRadius,
+                    valueRange = 0f..50f,
+                    onValueChange = onBubbleBlurRadius,
                 )
                 SliderPreference(
                     title = "选中时图标缩放倍率",

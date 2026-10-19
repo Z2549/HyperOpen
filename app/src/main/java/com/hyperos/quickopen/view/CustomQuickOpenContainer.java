@@ -89,10 +89,13 @@ public class CustomQuickOpenContainer extends FrameLayout {
                 regionBackdrop.setRegionAlpha(config.regionAlpha);
                 regionBackdrop.setBlurRadius(config.regionBlurRadius);
             }
-            // 胶囊背景开关热生效
+            // 胶囊背景开关与模糊热生效
             applyHeaderPillBackground();
-            // 图标透明度热生效
+            // 气泡材质、模糊半径、留白比例与透明度热生效
             for (CircularBubbleView b : bubbles) {
+                b.setMaterialStyle(resolvedStyle);
+                b.setBlurRadius(config.bubbleBlurRadius);
+                b.setBubblePaddingPercent(config.bubblePaddingPercent);
                 b.setIconAlpha(config.iconAlpha);
             }
         }
@@ -128,32 +131,26 @@ public class CustomQuickOpenContainer extends FrameLayout {
         int padV = dpToPx(10);
         headerPill.setPadding(padH, padV, padH, padV);
 
-        // 胶囊轮廓裁切：确保模糊/底衬都沿胶囊形渲染，防止被画成圆形
-        // （背景本体按 showHeaderPillBg 开关在 applyHeaderPillBackground() 中决定是否铺设）
+        // 胶囊轮廓裁切：确保模糊/底衬都沿胶囊形渲染，alpha=0 禁用 3D 阴影多边形本影
         headerPill.setOutlineProvider(new android.view.ViewOutlineProvider() {
             @Override
             public void getOutline(android.view.View view, android.graphics.Outline outline) {
                 int w = view.getWidth();
                 int h = view.getHeight();
                 if (w <= 0 || h <= 0) return;
-                if (view.getBackground() == null) {
-                    // 无背景时给一个真实胶囊 outline 而非空 outline：
-                    // clipToOutline 会在空 outline 时把整个 View 内容裁没（文字消失根因），
-                    // 配合 applyHeaderPillBackground() 中的 setClipToOutline(false) 使用
-                    outline.setRoundRect(0, 0, w, h, Math.min(w, h) / 2f);
-                    return;
-                }
                 float r = Math.min(w, h) / 2f;
                 outline.setRoundRect(0, 0, w, h, r);
+                outline.setAlpha(0.0f);
             }
         });
-        // 只有存在背景时才沿 outline 裁切；无背景时必须关闭，否则内容被裁空
         headerPill.setClipToOutline(headerPill.getBackground() != null);
 
-        // 尺寸/样式变化时同步刷新背景，避免背景残留在过期 bounds 上
+        // 尺寸/样式变化时同步刷新背景与硬件模糊圆角
         headerPill.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            if (v.getWidth() > 0 && v.getHeight() > 0 && v.getBackground() instanceof HyperOSMaterialFactory.HeaderPillDrawable) {
-                v.getBackground().invalidateSelf();
+            int w = r - l;
+            int h = b - t;
+            if (w > 0 && h > 0 && (w != (or - ol) || h != (ob - ot))) {
+                applyHeaderPillBackground();
             }
         });
 
@@ -186,7 +183,8 @@ public class CustomQuickOpenContainer extends FrameLayout {
         if (headerPill == null) return;
         boolean show = config == null || config.showHeaderPillBg;
         if (show) {
-            int blurPx = dpToPx(config != null ? config.regionBlurRadius : 25);
+            int blurDp = config != null ? config.regionBlurRadius : 25;
+            int blurPx = blurDp > 0 ? dpToPx(blurDp) : 0;
             headerPill.setBackground(HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx));
             headerPill.setClipToOutline(true);
         } else {
@@ -390,6 +388,7 @@ public class CustomQuickOpenContainer extends FrameLayout {
             b.setSelectedState(false);
             b.applyScale(1.0f);
             b.setIconAlpha(config != null ? config.iconAlpha : 1.0f);
+            b.resetBlur();
         }
         currentSelectedBubble = null;
         if (regionBackdrop != null) {

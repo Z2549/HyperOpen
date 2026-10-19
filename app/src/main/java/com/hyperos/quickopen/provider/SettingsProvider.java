@@ -109,6 +109,7 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putInt("region_blur_radius", sp.getInt("region_blur_radius", 25));
                 bundle.putInt("icon_spacing_offset", sp.getInt("icon_spacing_offset", 0));
                 bundle.putInt("bubble_padding_percent", sp.getInt("bubble_padding_percent", 18));
+                bundle.putInt("bubble_blur_radius", sp.getInt("bubble_blur_radius", 25));
                 bundle.putFloat("selected_icon_scale", sp.getFloat("selected_icon_scale", 1.15f));
                 bundle.putInt("app_icon_crop_mode", sp.getInt("app_icon_crop_mode", QuickOpenConfig.CROP_ADAPTIVE_EXPAND));
                 bundle.putBoolean("glyph_pad_enabled", sp.getBoolean("glyph_pad_enabled", true));
