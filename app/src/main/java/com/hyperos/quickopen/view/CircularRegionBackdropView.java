@@ -43,6 +43,7 @@ public class CircularRegionBackdropView extends FrameLayout {
 
     private OverlayDrawView overlayView;
     private Drawable systemBackdropBlurDrawable;
+    private boolean systemBlurEnabled = true;
 
     public CircularRegionBackdropView(@NonNull Context context) {
         this(context, (ClassLoader) null);
@@ -56,6 +57,23 @@ public class CircularRegionBackdropView extends FrameLayout {
     public CircularRegionBackdropView(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         init();
+    }
+
+    /**
+     * 控制是否启用底层窗口级 SurfaceFlinger BackgroundBlurDrawable。
+     * 在主应用预览界面中由 Compose 的 textureBlur 渲染实时壁纸模糊，禁用此开关以避免双层毛玻璃底色叠加。
+     */
+    public void setSystemBlurEnabled(boolean enabled) {
+        if (this.systemBlurEnabled != enabled) {
+            this.systemBlurEnabled = enabled;
+            if (!enabled) {
+                systemBackdropBlurDrawable = null;
+                setBackground(null);
+            } else if (currentRadiusPx > 0) {
+                updateGeometry(currentRadiusPx);
+            }
+            refreshVisuals();
+        }
     }
 
     private void init() {
@@ -81,16 +99,18 @@ public class CircularRegionBackdropView extends FrameLayout {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        post(() -> {
-            float r = currentRadiusPx > 0 ? currentRadiusPx : (getWidth() > 0 ? getWidth() / 2f : 300f);
-            updateGeometry(r);
-        });
+        if (systemBlurEnabled) {
+            post(() -> {
+                float r = currentRadiusPx > 0 ? currentRadiusPx : (getWidth() > 0 ? getWidth() / 2f : 300f);
+                updateGeometry(r);
+            });
+        }
     }
 
     @Override
     protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
         super.onVisibilityChanged(changedView, visibility);
-        if (visibility == View.VISIBLE && currentRadiusPx > 0) {
+        if (visibility == View.VISIBLE && currentRadiusPx > 0 && systemBlurEnabled) {
             post(() -> updateGeometry(currentRadiusPx));
         }
     }
@@ -141,7 +161,7 @@ public class CircularRegionBackdropView extends FrameLayout {
         if (radiusPx <= 0) return;
         this.currentRadiusPx = radiusPx;
 
-        int blurPx = Math.round(TypedValue.applyDimension(
+        int blurPx = !systemBlurEnabled ? 0 : Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()
         ));
         int tint = HyperOSMaterialFactory.getUnifiedBlurTint(style);
@@ -175,7 +195,7 @@ public class CircularRegionBackdropView extends FrameLayout {
     private void refreshVisuals() {
         setAlpha(Math.max(0.0f, Math.min(1.0f, regionAlpha)));
 
-        int blurPx = Math.round(TypedValue.applyDimension(
+        int blurPx = !systemBlurEnabled ? 0 : Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()
         ));
         int tint = HyperOSMaterialFactory.getUnifiedBlurTint(style);

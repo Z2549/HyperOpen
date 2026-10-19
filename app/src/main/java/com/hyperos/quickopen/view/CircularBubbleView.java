@@ -34,8 +34,11 @@ public class CircularBubbleView extends FrameLayout {
     private final QuickOpenConfig config;
     private final ImageView iconView;
 
+    @NonNull
+    private final HyperOSMaterialFactory.CircularBubbleDrawable opticDrawable;
     @Nullable
     private Drawable systemBackdropBlurDrawable;
+    private boolean systemBlurEnabled = true;
     @Nullable
     private ValueAnimator selectedScaleAnimator;
     @Nullable
@@ -49,6 +52,11 @@ public class CircularBubbleView extends FrameLayout {
         this.config = config;
         this.blurRadiusDp = config != null ? config.bubbleBlurRadius : 25f;
         this.paddingPercent = config != null ? config.bubblePaddingPercent : 18;
+
+        boolean glowEnabled = config == null || config.iconGlowEffect;
+        this.opticDrawable = new HyperOSMaterialFactory.CircularBubbleDrawable(
+            activeStyle, item.tintColor, isSelected, glowEnabled
+        );
 
         setLayoutParams(new LayoutParams(sizePx, sizePx));
         setClipChildren(false);
@@ -81,16 +89,33 @@ public class CircularBubbleView extends FrameLayout {
         this.onScaleChangedListener = listener;
     }
 
+    /**
+     * 控制是否启用底层窗口级 SurfaceFlinger BackgroundBlurDrawable。
+     * 在主应用预览界面 (QuickOpenPreviewView) 中，已由 Compose 的 textureBlur 渲染实时壁纸模糊，
+     * 禁用窗口级硬件模糊可避免在 Activity 窗口上叠加双层毛玻璃底色导致样式偏亮或闪烁。
+     */
+    public void setSystemBlurEnabled(boolean enabled) {
+        if (this.systemBlurEnabled != enabled) {
+            this.systemBlurEnabled = enabled;
+            if (!enabled) {
+                systemBackdropBlurDrawable = null;
+            }
+            ensureBlurAndRefreshBackground();
+        }
+    }
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        post(this::ensureBlurAndRefreshBackground);
+        if (systemBlurEnabled) {
+            post(this::ensureBlurAndRefreshBackground);
+        }
     }
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        if (w > 0 && h > 0) {
+        if (w > 0 && h > 0 && systemBlurEnabled) {
             ensureBlurAndRefreshBackground();
         }
     }
@@ -110,17 +135,16 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     /**
-     * 计算考虑当前 View 缩放倍率后的屏幕空间圆角半径：
-     * Android 的 BackgroundBlurDrawable.PositionUpdateListener 会按 View 的 scaleX/scaleY 放大模糊矩形 mRect，
-     * 但不会自动将 mCornerRadius 乘以 scale，若不随缩放同步放大圆角，放大时模糊区域就会退化为圆角正方形并从四角溢出圆形边框。
+     * 计算用于 SurfaceFlinger BackgroundBlurDrawable 的正圆圆角半径：
+     * Skia 的 SkRRect::setRectRadii 在 RenderThread 合成时会自动将大于等于 mRect 宽高一半的圆角
+     * 精确钳制为当前缩放后 mRect 宽高的一半（保持 100% 几何正圆），无需在 UI 线程每帧反射修改圆角触发重绘闪烁。
      */
     private float getScaledBlurCornerRadiusPx() {
-        float scale = Math.max(0.1f, Math.max(getScaleX(), currentScale));
-        return getEffectiveCircleRadiusPx() * scale + 2f;
+        return getEffectiveCircleRadiusPx() * 4.0f;
     }
 
     private int getBlurRadiusPx() {
-        if (blurRadiusDp <= 0f) return 0;
+        if (!systemBlurEnabled || blurRadiusDp <= 0f) return 0;
         return Math.round(TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, blurRadiusDp, getResources().getDisplayMetrics()
         ));
@@ -128,7 +152,7 @@ public class CircularBubbleView extends FrameLayout {
 
     /**
      * 确保 SurfaceFlinger 硬件 BackgroundBlurDrawable 已绑定至当前活跃的 ViewRootImpl，
-     * 并与光学层合成为统一的圆形气泡背景（圆角半径严格内缩 3px 并随缩放动态同步，不触发 3D 多边形阴影且绝不溢出边框）。
+     * 并与光学层合成为统一的圆形气泡背景。
      */
     private void ensureBlurAndRefreshBackground() {
         int blurPx = getBlurRadiusPx();
@@ -154,9 +178,9 @@ public class CircularBubbleView extends FrameLayout {
 
     private void refreshBackground() {
         boolean glowEnabled = config == null || config.iconGlowEffect;
-        Drawable opticDrawable = HyperOSMaterialFactory.createCircularBubbleDrawable(
-            activeStyle, item.tintColor, isSelected, glowEnabled
-        );
+        opticDrawable.setStyle(activeStyle);
+        opticDrawable.setSelected(isSelected);
+        opticDrawable.setGlowEnabled(glowEnabled);
 
         int blurPx = getBlurRadiusPx();
         if (blurPx > 0 && systemBackdropBlurDrawable == null && isAttachedToWindow()) {
@@ -167,17 +191,29 @@ public class CircularBubbleView extends FrameLayout {
 
         if (blurPx > 0 && systemBackdropBlurDrawable != null) {
             HyperOSBlurHelper.updateCornerRadius(systemBackdropBlurDrawable, getScaledBlurCornerRadiusPx());
-            LayerDrawable layer = new LayerDrawable(new Drawable[]{systemBackdropBlurDrawable, opticDrawable});
-            layer.setLayerInset(0, 3, 3, 3, 3);
-            setBackground(layer);
+            Drawable currentBg = getBackground();
+            if (currentBg instanceof LayerDrawable && ((LayerDrawable) currentBg).getNumberOfLayers() == 2
+                    && ((LayerDrawable) currentBg).getDrawable(0) == systemBackdropBlurDrawable
+                    && ((LayerDrawable) currentBg).getDrawable(1) == opticDrawable) {
+                currentBg.invalidateSelf();
+            } else {
+                LayerDrawable layer = new LayerDrawable(new Drawable[]{systemBackdropBlurDrawable, opticDrawable});
+                layer.setLayerInset(0, 3, 3, 3, 3);
+                setBackground(layer);
+            }
         } else {
-            setBackground(opticDrawable);
+            if (getBackground() != opticDrawable) {
+                setBackground(opticDrawable);
+            } else {
+                opticDrawable.invalidateSelf();
+            }
         }
     }
 
     public void setMaterialStyle(int style) {
         if (this.activeStyle != style) {
             this.activeStyle = style;
+            opticDrawable.setStyle(style);
             ensureBlurAndRefreshBackground();
         }
     }
@@ -209,12 +245,13 @@ public class CircularBubbleView extends FrameLayout {
         this.currentScale = 1.0f;
         setScaleX(1.0f);
         setScaleY(1.0f);
+        opticDrawable.setSelected(false);
         systemBackdropBlurDrawable = null;
         refreshBackground();
     }
 
     public void setIconAlpha(float alpha) {
-        if (iconView != null) {
+        if (iconView != null && Math.abs(iconView.getAlpha() - alpha) > 0.002f) {
             iconView.setAlpha(alpha);
         }
     }
@@ -226,7 +263,9 @@ public class CircularBubbleView extends FrameLayout {
     public void setSelectedState(boolean selected) {
         if (this.isSelected != selected) {
             this.isSelected = selected;
-            refreshBackground();
+            boolean glowEnabled = config == null || config.iconGlowEffect;
+            opticDrawable.setGlowEnabled(glowEnabled);
+            opticDrawable.setSelected(selected);
 
             float targetSelectedScale = 1.0f;
             if (selected) {
@@ -254,26 +293,27 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     public void applyScale(float scale) {
-        this.fisheyeScale = scale;
-        applyEffectiveScale();
+        if (Math.abs(this.fisheyeScale - scale) > 0.0005f) {
+            this.fisheyeScale = scale;
+            applyEffectiveScale();
+        }
     }
 
     private void applyEffectiveScale() {
-        this.currentScale = fisheyeScale * selectedScale;
-        setScaleX(this.currentScale);
-        setScaleY(this.currentScale);
-        syncBlurCornerRadiusWithViewScale();
+        float newScale = fisheyeScale * selectedScale;
+        if (Math.abs(this.currentScale - newScale) > 0.0005f || Math.abs(getScaleX() - newScale) > 0.0005f) {
+            this.currentScale = newScale;
+            setScaleX(newScale);
+            setScaleY(newScale);
+        }
     }
 
     /**
-     * 在属性动画或缩放变更时实时将 BackgroundBlurDrawable 圆角与当前 View 缩放对齐，
-     * 防止放大时模糊层退化为非圆形或溢出圆形边框。
+     * 保持 BackgroundBlurDrawable 圆角半径始终覆盖缩放后正圆
      */
     public void syncBlurCornerRadiusWithViewScale() {
         if (systemBackdropBlurDrawable != null) {
             HyperOSBlurHelper.updateCornerRadius(systemBackdropBlurDrawable, getScaledBlurCornerRadiusPx());
-            systemBackdropBlurDrawable.invalidateSelf();
-            invalidate();
         }
     }
 

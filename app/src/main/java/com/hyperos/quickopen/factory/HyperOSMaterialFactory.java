@@ -81,7 +81,7 @@ public class HyperOSMaterialFactory {
         int h = view.getHeight() > 0 ? view.getHeight() : (view.getLayoutParams() != null && view.getLayoutParams().height > 0 ? view.getLayoutParams().height : 160);
         float radiusPx = Math.max(1f, Math.min(w, h) / 2f - 3f);
         int tint = getUnifiedBlurTint(style);
-        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, radiusPx + 2f, blurRadiusPx, tint);
+        Drawable blurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(view, radiusPx * 4.0f, blurRadiusPx, tint);
         if (blurDrawable != null) {
             android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(new Drawable[]{blurDrawable, opticDrawable});
             // 内缩 3px 使硬件高斯模糊圆完全收拢于 2.2px 光学描边 (maxRadius - 2f) 内侧，绝不溢出边框
@@ -308,10 +308,10 @@ public class HyperOSMaterialFactory {
      * 同圆形视界区域底衬 (CircularRegionBackdropView) 保持 100% 统一。
      */
     public static class CircularBubbleDrawable extends Drawable {
-        private final int style;
+        private int style;
         private final int tintColor;
-        private final boolean isSelected;
-        private final boolean glowEnabled;
+        private boolean isSelected;
+        private boolean glowEnabled;
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -330,6 +330,28 @@ public class HyperOSMaterialFactory {
             this.glowEnabled = glowEnabled;
             borderPaint.setStyle(Paint.Style.STROKE);
             borderPaint.setStrokeWidth(isSelected ? 2.4f : 2.0f);
+        }
+
+        public void setSelected(boolean selected) {
+            if (this.isSelected != selected) {
+                this.isSelected = selected;
+                borderPaint.setStrokeWidth(selected ? 2.4f : 2.0f);
+                invalidateSelf();
+            }
+        }
+
+        public void setStyle(int newStyle) {
+            if (this.style != newStyle) {
+                this.style = newStyle;
+                invalidateSelf();
+            }
+        }
+
+        public void setGlowEnabled(boolean enabled) {
+            if (this.glowEnabled != enabled) {
+                this.glowEnabled = enabled;
+                invalidateSelf();
+            }
         }
 
         @Override

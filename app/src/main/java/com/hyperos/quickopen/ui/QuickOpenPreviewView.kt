@@ -134,6 +134,9 @@ class QuickOpenPreviewView(
         } catch (_: Throwable) {}
     }
 
+    private var lastLayoutW = 0
+    private var lastLayoutH = 0
+
     private fun initViews() {
         clipChildren = false
         clipToPadding = false
@@ -142,8 +145,9 @@ class QuickOpenPreviewView(
         // 1. 顶部提示胶囊与编辑提示
         buildHeader()
 
-        // 2. 蜂窝圆形区域底衬
+        // 2. 蜂窝圆形区域底衬（预览界面由 Compose 的 textureBlur 统一渲染实时壁纸模糊，禁用窗口级 BackgroundBlur 避免双层底色叠加）
         regionBackdrop = CircularRegionBackdropView(context)
+        regionBackdrop.setSystemBlurEnabled(false)
         regionBackdrop.setStyle(resolvedStyle)
         addView(regionBackdrop)
 
@@ -156,16 +160,18 @@ class QuickOpenPreviewView(
 
         // 4. 左上角小悬浮返回按钮
         buildFloatingBackButton()
+
+        // 5. 在首次测量前提前建立蜂窝气泡视图树，避免在 onSizeChanged (发生在 onMeasure 之后、onLayout 之中) 才首次 addView 导致子 View 未被测量而错位
+        setupLayout()
     }
 
     private var floatingBackButton: FrameLayout? = null
 
     private fun buildFloatingBackButton() {
         val btnSize = dpToPx(40f).toInt()
-        val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
         val backBtn = FrameLayout(context).apply {
-            background = HyperOSMaterialFactory.createCompositeCircularBubbleDrawable(
-                this, resolvedStyle, 0xFFFFFFFF.toInt(), false, false, blurPx
+            background = HyperOSMaterialFactory.createCircularBubbleDrawable(
+                resolvedStyle, 0xFFFFFFFF.toInt(), false, false
             )
             isClickable = true
             isFocusable = true
@@ -196,9 +202,8 @@ class QuickOpenPreviewView(
 
     private fun refreshFloatingBackButtonBackground() {
         val btn = floatingBackButton ?: return
-        val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
-        btn.background = HyperOSMaterialFactory.createCompositeCircularBubbleDrawable(
-            btn, resolvedStyle, 0xFFFFFFFF.toInt(), false, false, blurPx
+        btn.background = HyperOSMaterialFactory.createCircularBubbleDrawable(
+            resolvedStyle, 0xFFFFFFFF.toInt(), false, false
         )
         btn.invalidate()
     }
@@ -286,8 +291,7 @@ class QuickOpenPreviewView(
         if (!::headerPill.isInitialized) return
         val show = config.showHeaderPillBg
         if (show) {
-            val blurPx = if (config.regionBlurRadius > 0) dpToPx(config.regionBlurRadius.toFloat()).toInt() else 0
-            headerPill.background = HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx)
+            headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
             headerPill.clipToOutline = true
         } else {
             headerPill.background = null
@@ -299,7 +303,7 @@ class QuickOpenPreviewView(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0 && h > 0) {
+        if (w > 0 && h > 0 && (w != lastLayoutW || h != lastLayoutH || bubbleViews.isEmpty())) {
             setupLayout(w, h)
         }
     }
@@ -382,6 +386,9 @@ class QuickOpenPreviewView(
         val targetH = if (h > 0) h else resources.displayMetrics.heightPixels
         if (targetW <= 0 || targetH <= 0) return
 
+        lastLayoutW = targetW
+        lastLayoutH = targetH
+
         bubblesContainer.removeAllViews()
         bubbleViews.clear()
         activeShortcuts.clear()
@@ -402,6 +409,7 @@ class QuickOpenPreviewView(
 
         // 定位底衬
         regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
+        regionBackdrop.setSystemBlurEnabled(false)
         regionBackdrop.setStyle(resolvedStyle)
         regionBackdrop.setRegionAlpha(config.regionAlpha)
         regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
@@ -433,7 +441,7 @@ class QuickOpenPreviewView(
         )
         gridPoints.addAll(points)
 
-        // 实例化气泡
+        // 实例化气泡（预览界面禁用底层窗口级 BackgroundBlur，由 Compose 的 textureBlur 渲染实时壁纸模糊，确保样式与真实锁屏 1:1 对齐且无双层叠加闪烁）
         for (i in 0 until points.size) {
             val item = activeShortcuts[i]
             val pt = points[i]
@@ -441,6 +449,7 @@ class QuickOpenPreviewView(
             val bubble = CircularBubbleView(
                 context, item, resolvedStyle, iconSizePx.toInt(), context.classLoader, config
             )
+            bubble.setSystemBlurEnabled(false)
             bubble.setIconAlpha(config.iconAlpha)
             bubble.setOnScaleChangedListener {
                 notifyBlurSceneChanged()
@@ -458,13 +467,24 @@ class QuickOpenPreviewView(
             bubbleViews.add(bubble)
         }
 
-        // 强制气泡及图标进行初次绘制刷新，杜绝黑屏或未更新状态
-        bubblesContainer.requestLayout()
-        bubblesContainer.invalidate()
-        for (b in bubbleViews) {
-            b.loadItemIcon()
-            b.invalidate()
+        // 立即同步执行 bubblesContainer 与内部所有气泡及 iconView 的 measure + layout，
+        // 彻底根除在 onSizeChanged (位于 onMeasure 之后) 期间添加子 View 导致 iconView 宽高为 0、图标向右下角错位的问题
+        val wSpec = MeasureSpec.makeMeasureSpec(targetW, MeasureSpec.EXACTLY)
+        val hSpec = MeasureSpec.makeMeasureSpec(targetH, MeasureSpec.EXACTLY)
+        bubblesContainer.measure(wSpec, hSpec)
+        bubblesContainer.layout(0, 0, targetW, targetH)
+        if (config.showRegionBg) {
+            val rSpec = MeasureSpec.makeMeasureSpec(regionDiameterPx.toInt(), MeasureSpec.EXACTLY)
+            regionBackdrop.measure(rSpec, rSpec)
+            regionBackdrop.layout(
+                rLp.leftMargin,
+                rLp.topMargin,
+                rLp.leftMargin + regionDiameterPx.toInt(),
+                rLp.topMargin + regionDiameterPx.toInt()
+            )
         }
+
+        bubblesContainer.invalidate()
         notifyBlurSceneChanged()
         post { notifyBlurSceneChanged() }
     }
