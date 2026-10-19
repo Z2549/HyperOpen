@@ -135,31 +135,32 @@ public class ShortcutItem {
                     break;
                 }
                 case ACTION_INTENT_URI: {
-                    Intent intent = Intent.parseUri(actionPayload, Intent.URI_INTENT_SCHEME);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    if (intent.resolveActivity(context.getPackageManager()) != null) {
+                    try {
+                        Intent intent = Intent.parseUri(actionPayload, Intent.URI_INTENT_SCHEME);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
-                    } else if ("com.tencent.mm".equals(intent.getPackage()) || actionPayload.contains("com.tencent.mm")) {
-                        // 微信未适配快捷 Intent 时的兜底
-                        Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
-                        if (launch != null) {
-                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            context.startActivity(launch);
+                    } catch (SecurityException se) {
+                        Log.w(TAG, "直接拉起 Intent 被安全权限拦截，尝试通过 Root/Shell 兜底执行: " + actionPayload, se);
+                        // 当从 MainActivity 运行且遇到非导出组件权限问题时，通过 su 执行 am start
+                        runRootAmStart(actionPayload);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "启动 Intent 异常: " + actionPayload, t);
+                        // 尝试应用启动兜底
+                        if (actionPayload.contains("com.tencent.mm")) {
+                            Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
+                            if (launch != null) {
+                                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                context.startActivity(launch);
+                            }
+                        } else if (actionPayload.contains("com.eg.android.AlipayGphone") || actionPayload.contains("alipays://")) {
+                            Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.eg.android.AlipayGphone");
+                            if (launch != null) {
+                                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                context.startActivity(launch);
+                            }
                         } else {
-                            showToast(context, "未找到微信应用");
+                            showToast(context, "启动失败: " + t.getMessage());
                         }
-                    } else if (actionPayload.contains("alipays://") || "com.eg.android.AlipayGphone".equals(intent.getPackage())) {
-                        // 支付宝未注册平台协议时的兜底
-                        Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.eg.android.AlipayGphone");
-                        if (launch != null) {
-                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            context.startActivity(launch);
-                        } else {
-                            showToast(context, "未找到支付宝应用");
-                        }
-                    } else {
-                        // 尝试直接启动
-                        context.startActivity(intent);
                     }
                     break;
                 }
@@ -300,6 +301,32 @@ public class ShortcutItem {
         } catch (Throwable t) {
             Log.e(TAG, "切换手电筒状态失败", t);
         }
+    }
+
+    private static void runRootAmStart(String payload) {
+        new Thread(() -> {
+            DataOutputStream os = null;
+            Process p = null;
+            try {
+                p = Runtime.getRuntime().exec("su");
+                os = new DataOutputStream(p.getOutputStream());
+                // 使用双引号包裹 payload，避免 Intent URI 中的分号被 sh 截断识别为命令分隔符
+                String escaped = payload.replace("\"", "\\\"");
+                os.writeBytes("am start \"" + escaped + "\"\n");
+                os.writeBytes("exit\n");
+                os.flush();
+                p.waitFor();
+            } catch (Throwable t) {
+                Log.e(TAG, "Root am start 失败: " + payload, t);
+            } finally {
+                if (os != null) {
+                    try { os.close(); } catch (Throwable ignored) {}
+                }
+                if (p != null) {
+                    try { p.destroy(); } catch (Throwable ignored) {}
+                }
+            }
+        }).start();
     }
 
     private static void runShellCommand(String cmd) {
