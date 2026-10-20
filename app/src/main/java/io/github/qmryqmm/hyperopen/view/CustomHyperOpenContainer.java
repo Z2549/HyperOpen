@@ -407,8 +407,11 @@ public class CustomHyperOpenContainer extends FrameLayout {
             for (int i = 0; i < points.size(); i++) {
                 CircularBubbleView bubble = bubbles.get(i);
                 PointF pt = points.get(i);
-                bubble.targetX = pt.x;
-                bubble.targetY = pt.y;
+                ShortcutItem item = activeItems.get(i);
+                float finalX = pt.x + dpToPx(item.customOffsetX);
+                float finalY = pt.y + dpToPx(item.customOffsetY);
+                bubble.targetX = finalX;
+                bubble.targetY = finalY;
                 bubble.setMaterialStyle(resolvedStyle);
                 bubble.setBlurRadius(config.bubbleBlurRadius);
             bubble.setDimAlpha(config.bubbleDimAlpha);
@@ -417,8 +420,8 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 bubble.ensureBlurAndRefreshBackground();
 
                 LayoutParams bLp = (LayoutParams) bubble.getLayoutParams();
-                int newLeft = (int) (pt.x - iconSizePx / 2f);
-                int newTop = (int) (pt.y - iconSizePx / 2f);
+                int newLeft = (int) (finalX - iconSizePx / 2f);
+                int newTop = (int) (finalY - iconSizePx / 2f);
                 if (bLp.leftMargin != newLeft || bLp.topMargin != newTop || bLp.width != iconSizeInt || bLp.height != iconSizeInt) {
                     bLp.width = iconSizeInt;
                     bLp.height = iconSizeInt;
@@ -436,16 +439,18 @@ public class CustomHyperOpenContainer extends FrameLayout {
             for (int i = 0; i < points.size(); i++) {
                 ShortcutItem item = activeItems.get(i);
                 PointF pt = points.get(i);
+                float finalX = pt.x + dpToPx(item.customOffsetX);
+                float finalY = pt.y + dpToPx(item.customOffsetY);
 
                 CircularBubbleView bubble = new CircularBubbleView(
                     getContext(), item, resolvedStyle, iconSizeInt, systemuiClassLoader, config
                 );
-                bubble.targetX = pt.x;
-                bubble.targetY = pt.y;
+                bubble.targetX = finalX;
+                bubble.targetY = finalY;
 
                 LayoutParams bLp = new LayoutParams(iconSizeInt, iconSizeInt);
-                bLp.leftMargin = (int) (pt.x - iconSizePx / 2f);
-                bLp.topMargin = (int) (pt.y - iconSizePx / 2f);
+                bLp.leftMargin = (int) (finalX - iconSizePx / 2f);
+                bLp.topMargin = (int) (finalY - iconSizePx / 2f);
                 bubble.setLayoutParams(bLp);
 
                 bubblesContainer.addView(bubble);
@@ -625,6 +630,12 @@ public class CustomHyperOpenContainer extends FrameLayout {
 
     private int dpToPx(int dp) {
         return (int) TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics()
+        );
+    }
+
+    private float dpToPx(float dp) {
+        return TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics()
         );
     }

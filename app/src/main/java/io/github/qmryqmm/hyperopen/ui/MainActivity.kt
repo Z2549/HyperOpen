@@ -23,6 +23,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -986,10 +988,23 @@ fun ParamsPage(
     val ctx = LocalContext.current
     val lazyListState = rememberLazyListState()
 
-    // 各分区折叠状态（key → 是否已收起），默认全部展开
-    val collapsed = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    // 各分区折叠状态（key → 是否已收起），通过 SharedPreferences 记忆持久化
+    val uiPrefs = remember { ctx.getSharedPreferences("hyperopen_ui_state", android.content.Context.MODE_PRIVATE) }
+    val collapsed = remember {
+        androidx.compose.runtime.mutableStateMapOf<String, Boolean>().apply {
+            listOf("material", "geometry", "header_pill", "physics", "haptic").forEach { k ->
+                if (uiPrefs.getBoolean("section_collapsed_$k", false)) {
+                    put(k, true)
+                }
+            }
+        }
+    }
     fun isOpen(key: String) = collapsed[key] != true
-    fun toggle(key: String) { collapsed[key] = isOpen(key) }
+    fun toggle(key: String) {
+        val willCollapse = isOpen(key)
+        collapsed[key] = willCollapse
+        uiPrefs.edit().putBoolean("section_collapsed_$key", willCollapse).apply()
+    }
 
     fun triggerSampleHaptic(        mode: Int = hapticMode,
         strength: Int = hapticStrength.toInt(),
@@ -1057,7 +1072,7 @@ fun ParamsPage(
                 SliderPreference(
                     title = "全屏遮罩压暗程度",
                     summary = "独立调节全屏背景黑色压暗遮罩深浅",
-                    valueText = "${(fullscreenDimAlpha * 100).toInt()} %",
+                    valueText = if (kotlin.math.round(fullscreenDimAlpha * 100f) <= 0.5f) "不压暗" else "${kotlin.math.round(fullscreenDimAlpha * 100f).toInt()} %",
                     value = fullscreenDimAlpha * 100f,
                     valueRange = 0f..100f,
                     onValueChange = { onFullscreenDimAlpha(it / 100f) },
@@ -1104,7 +1119,7 @@ fun ParamsPage(
                     SliderPreference(
                         title = "圆形视界背景压暗程度",
                         summary = "在毛玻璃底盘之上叠加黑色压暗，提升图标对比度",
-                        valueText = if (regionDimAlpha.toInt() <= 0) "不压暗" else "${(regionDimAlpha * 100).toInt()} %",
+                        valueText = if (kotlin.math.round(regionDimAlpha * 100f) <= 0.5f) "不压暗" else "${kotlin.math.round(regionDimAlpha * 100f).toInt()} %",
                         value = regionDimAlpha * 100f,
                         valueRange = 0f..100f,
                         onValueChange = { onRegionDimAlpha(it / 100f) },
@@ -1173,7 +1188,7 @@ fun ParamsPage(
                         SliderPreference(
                             title = "顶部提示背景压暗程度",
                             summary = "在胶囊毛玻璃背景之上叠加黑色压暗",
-                            valueText = if (headerDimAlpha.toInt() <= 0) "不压暗" else "${(headerDimAlpha * 100).toInt()} %",
+                            valueText = if (kotlin.math.round(headerDimAlpha * 100f) <= 0.5f) "不压暗" else "${kotlin.math.round(headerDimAlpha * 100f).toInt()} %",
                             value = headerDimAlpha * 100f,
                             valueRange = 0f..100f,
                             onValueChange = { onHeaderDimAlpha(it / 100f) },
@@ -1264,7 +1279,7 @@ fun ParamsPage(
                 SliderPreference(
                     title = "气泡留白区域压暗程度",
                     summary = "在每个图标气泡的毛玻璃底衬之上叠加黑色压暗",
-                    valueText = if (bubbleDimAlpha.toInt() <= 0) "不压暗" else "${(bubbleDimAlpha * 100).toInt()} %",
+                    valueText = if (kotlin.math.round(bubbleDimAlpha * 100f) <= 0.5f) "不压暗" else "${kotlin.math.round(bubbleDimAlpha * 100f).toInt()} %",
                     value = bubbleDimAlpha * 100f,
                     valueRange = 0f..100f,
                     onValueChange = { onBubbleDimAlpha(it / 100f) },
@@ -3060,13 +3075,35 @@ fun MiuixIconPickerDialog(
                     color = MiuixTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(bottom = 6.dp),
                 )
-                TabRow(
-                    tabs = MiuixIconRegistry.WEIGHTS,
-                    selectedTabIndex = weightIndex,
-                    onTabSelected = { selectedWeight = MiuixIconRegistry.WEIGHTS[it] },
-                    colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
-                    modifier = Modifier.padding(bottom = 10.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MiuixIconRegistry.WEIGHTS.forEach { weight ->
+                        val isSelected = weight == selectedWeight
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) MiuixTheme.colorScheme.primary
+                                    else MiuixTheme.colorScheme.surfaceVariant
+                                )
+                                .clickable { selectedWeight = weight }
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = weight,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else MiuixTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
 
                 TextField(
                     value = searchQuery,
@@ -3202,14 +3239,36 @@ fun RemixIconPickerDialog(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
 
-                // 分类切换标签
-                TabRow(
-                    tabs = categories,
-                    selectedTabIndex = categories.indexOf(selectedCategory).coerceAtLeast(0),
-                    onTabSelected = { selectedCategory = categories[it] },
-                    colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
-                    modifier = Modifier.padding(bottom = 10.dp),
-                )
+                // 分类切换标签（横向滑动支持完整名称展示，杜绝挤压省略）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    categories.forEach { cat ->
+                        val isSelected = cat == selectedCategory
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) MiuixTheme.colorScheme.primary
+                                    else MiuixTheme.colorScheme.surfaceVariant
+                                )
+                                .clickable { selectedCategory = cat }
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = cat,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else MiuixTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
 
                 TextField(
                     value = searchQuery,

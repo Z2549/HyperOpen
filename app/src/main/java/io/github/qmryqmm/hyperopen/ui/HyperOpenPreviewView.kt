@@ -256,6 +256,8 @@ class HyperOpenPreviewView(
         for (i in 0 until bubbleViews.size.coerceAtMost(gridPoints.size)) {
             val b = bubbleViews[i]
             val pt = gridPoints[i]
+            b.item.customOffsetX = 0f
+            b.item.customOffsetY = 0f
             b.targetX = pt.x
             b.targetY = pt.y
             val left = (pt.x - iconSizePx / 2f).toInt()
@@ -619,6 +621,8 @@ class HyperOpenPreviewView(
         for (i in 0 until points.size) {
             val item = activeShortcuts[i]
             val pt = points[i]
+            val finalX = pt.x + dpToPx(item.customOffsetX)
+            val finalY = pt.y + dpToPx(item.customOffsetY)
 
             val bubble = CircularBubbleView(
                 context, item, resolvedStyle, iconSizePx.toInt(), context.classLoader, config
@@ -628,12 +632,16 @@ class HyperOpenPreviewView(
             bubble.setOnScaleChangedListener {
                 notifyBlurSceneChanged()
             }
-            bubble.targetX = pt.x
-            bubble.targetY = pt.y
+            bubble.targetX = finalX
+            bubble.targetY = finalY
+
+            if (item.customOffsetX != 0f || item.customOffsetY != 0f) {
+                freePlacedBubbles.add(bubble)
+            }
 
             val bLp = LayoutParams(iconSizePx.toInt(), iconSizePx.toInt()).apply {
-                leftMargin = (pt.x - iconSizePx / 2f).toInt()
-                topMargin = (pt.y - iconSizePx / 2f).toInt()
+                leftMargin = (finalX - iconSizePx / 2f).toInt()
+                topMargin = (finalY - iconSizePx / 2f).toInt()
             }
             bubble.layoutParams = bLp
 
@@ -828,9 +836,32 @@ class HyperOpenPreviewView(
                 btn.visibility = View.GONE
             }.start()
         }
-        // 退出排版模式：自由摆放的图标统一归位，预览与真实蜂窝布局保持一致
-        if (freePlacedBubbles.isNotEmpty()) {
-            snapAllBubblesToGrid(animated = true)
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        if (snapEnabled) {
+            // 开启吸附时：自由摆放的图标统一归位到蜂窝网格槽位，并清除自定义偏移
+            if (freePlacedBubbles.isNotEmpty()) {
+                snapAllBubblesToGrid(animated = true)
+            }
+            for (b in bubbleViews) {
+                b.item.customOffsetX = 0f
+                b.item.customOffsetY = 0f
+            }
+        } else {
+            // 关闭吸附时：保留所有气泡当前的自由摆放位置，计算相对于理论蜂窝槽位的 dp 偏移量并保存到 ShortcutItem
+            val iconSizePx = dpToPx(config.iconSize.toFloat())
+            for (i in 0 until bubbleViews.size) {
+                val b = bubbleViews[i]
+                val pt = if (i < gridPoints.size) gridPoints[i] else PointF(b.targetX, b.targetY)
+                val lp = b.layoutParams as LayoutParams
+                val curCenterX = lp.leftMargin + iconSizePx / 2f + b.translationX
+                val curCenterY = lp.topMargin + iconSizePx / 2f + b.translationY
+                val offXPx = curCenterX - pt.x
+                val offsetYPx = curCenterY - pt.y
+                b.targetX = curCenterX
+                b.targetY = curCenterY
+                b.item.customOffsetX = offXPx / density
+                b.item.customOffsetY = offsetYPx / density
+            }
         }
 
         headerTitle.text = "滑动选择快捷方式"
