@@ -12,6 +12,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import io.github.qmryqmm.hyperopen.util.IpcExecutor;
+
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
@@ -168,7 +170,14 @@ public final class SafetyGuard {
             if (!allowed) {
                 // 状态被外部（用户在模块界面点「进入安全模式」/关闭总开关）改为停用，
                 // 同样要立刻拆掉本进程内已经装好的 Hook。
-                deactivateNow("外部状态变更: " + (state.getBoolean("safe_mode", false) ? "安全模式" : "Hook 总开关关闭"));
+                final String why = "外部状态变更: " + (state.getBoolean("safe_mode", false) ? "安全模式" : "Hook 总开关关闭");
+                // 卸载 Hook 涉及视图树操作，必须回到主线程执行（refresh 可能在后台 IPC 线程被调用）
+                IpcExecutor.runOnMain(new Runnable() {
+                    @Override
+                    public void run() {
+                        deactivateNow(why);
+                    }
+                });
             }
         }
         return hookAllowed;
@@ -387,8 +396,9 @@ public final class SafetyGuard {
             return;
         }
         watching = true;
-        final Handler handler = new Handler(Looper.getMainLooper());
-        handler.postDelayed(new Runnable() {
+        // 巡检在后台 IPC 线程执行：Provider 所在的模块进程可能被冻结，
+        // 绝不能在 SystemUI 主线程上每 10 秒做一次同步跨进程调用
+        IpcExecutor.runAsyncDelayed(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -401,7 +411,7 @@ public final class SafetyGuard {
                     Log.w(TAG, "安全模式巡检异常", t);
                 }
                 if (!deactivated.get()) {
-                    handler.postDelayed(this, WATCH_INTERVAL_MS);
+                    IpcExecutor.runAsyncDelayed(this, WATCH_INTERVAL_MS);
                 } else {
                     watching = false;
                 }
@@ -412,7 +422,7 @@ public final class SafetyGuard {
 
     private static void scheduleHeartbeat() {
         try {
-            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            IpcExecutor.runAsyncDelayed(new Runnable() {
                 @Override
                 public void run() {
                     call(appContext, M_PROVIDER_HEART, null);

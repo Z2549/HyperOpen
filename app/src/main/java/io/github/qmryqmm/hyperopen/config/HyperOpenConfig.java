@@ -11,6 +11,9 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import io.github.qmryqmm.hyperopen.util.IpcExecutor;
 
 import de.robv.android.xposed.XSharedPreferences;
 
@@ -104,8 +107,112 @@ public class HyperOpenConfig {
 
     private static XSharedPreferences xPrefs;
 
+    // ──────────────────────────────────────────────────────────────
+    // SystemUI 进程内的配置缓存（异步刷新，展开路径零跨进程调用）
+    // ──────────────────────────────────────────────────────────────
+
+    /** 配置异步刷新完成回调（总在主线程回调） */
+    public interface OnConfigUpdatedListener {
+        void onConfigUpdated(HyperOpenConfig config);
+    }
+
+    /** 展开路径触发的被动刷新最小间隔：配置变更有广播实时推送，这里只是兜底 */
+    private static final long PASSIVE_REFRESH_INTERVAL_MS = 60 * 1000L;
+
+    private static volatile HyperOpenConfig sCached;
+    private static volatile long sLastRefreshAt = 0L;
+    private static final AtomicBoolean sRefreshing = new AtomicBoolean(false);
+    private static volatile boolean sRefreshPending = false;
+    private static volatile OnConfigUpdatedListener sListener;
+
+    public static void setOnConfigUpdatedListener(OnConfigUpdatedListener l) {
+        sListener = l;
+    }
+
+    /**
+     * 立即返回当前缓存的配置，绝不发起跨进程调用。
+     * 缓存尚未建立时以 XSharedPreferences（本地文件读取）兜底。
+     * 供 SystemUI 主线程 / 手势线程上的展开路径使用。
+     */
+    public static HyperOpenConfig getCached() {
+        HyperOpenConfig c = sCached;
+        if (c != null) {
+            return c;
+        }
+        try {
+            c = loadFromXposed();
+        } catch (Throwable t) {
+            Log.w(TAG, "XSharedPreferences 兜底读取失败，使用默认配置: " + t);
+            c = new HyperOpenConfig();
+            c.shortcuts = getDefaultShortcuts();
+        }
+        if (sCached == null) {
+            sCached = c;
+        }
+        return sCached;
+    }
+
+    /**
+     * 节流版刷新：距上次刷新不足 {@link #PASSIVE_REFRESH_INTERVAL_MS} 时直接忽略。
+     * 用于展开路径的兜底同步，避免每次呼出面板都去唤醒可能被冻结的模块进程。
+     */
+    public static void refreshAsyncThrottled(Context context) {
+        if (System.currentTimeMillis() - sLastRefreshAt < PASSIVE_REFRESH_INTERVAL_MS) {
+            return;
+        }
+        refreshAsync(context);
+    }
+
+    /**
+     * 在后台 IPC 线程通过 ContentProvider 拉取最新配置，完成后更新缓存并在主线程回调。
+     * 多次并发请求会被合并；刷新进行中收到的新请求会在本轮结束后补跑一次，保证不丢更新。
+     */
+    public static void refreshAsync(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        final Context ctx = app != null ? app : context;
+        sRefreshPending = true;
+        if (!sRefreshing.compareAndSet(false, true)) {
+            return;
+        }
+        IpcExecutor.runAsync(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    while (sRefreshPending) {
+                        sRefreshPending = false;
+                        final HyperOpenConfig loaded = load(ctx);
+                        sCached = loaded;
+                        sLastRefreshAt = System.currentTimeMillis();
+                        final OnConfigUpdatedListener l = sListener;
+                        if (l != null) {
+                            IpcExecutor.runOnMain(new Runnable() {
+                                @Override
+                                public void run() {
+                                    l.onConfigUpdated(loaded);
+                                }
+                            });
+                        }
+                    }
+                } finally {
+                    sRefreshing.set(false);
+                }
+                // 竞态兜底：标志复位前恰好有新请求进来
+                if (sRefreshPending) {
+                    refreshAsync(ctx);
+                }
+            }
+        });
+    }
+
     /**
      * SystemUI 优先通过 ContentProvider 查询跨进程配置，失败时回退 XSharedPreferences
+     *
+     * 注意：这是同步跨进程调用，耗时不可控（模块进程可能被冻结/未启动）。
+     * SystemUI 侧禁止在主线程 / 手势线程直接调用，请使用 {@link #getCached()} +
+     * {@link #refreshAsync(Context)}。
      */
     public static HyperOpenConfig load(Context context) {
         if (context != null) {
@@ -153,7 +260,7 @@ public class HyperOpenConfig {
     /**
      * SystemUI 进程加载配置 (XSharedPreferences 兜底)
      */
-    public static HyperOpenConfig loadFromXposed() {
+    public static synchronized HyperOpenConfig loadFromXposed() {
         if (xPrefs == null) {
             xPrefs = new XSharedPreferences(PACKAGE_NAME, PREF_NAME);
             xPrefs.makeWorldReadable();

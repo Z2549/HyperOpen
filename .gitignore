@@ -28,3 +28,5 @@ Thumbs.db
 *.db
 
 .tmp_miuix/
+
+lsposed_log/

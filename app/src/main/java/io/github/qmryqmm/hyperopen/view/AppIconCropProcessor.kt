@@ -118,6 +118,9 @@ object AppIconCropProcessor {
         }
         outCanvas.drawCircle(center, center, circleRadius - 1f, strokePaint)
 
+        // 中间位图仅用于本次绘制，立即回收，避免每次呼出面板都在 SystemUI 堆上遗留数百 KB 垃圾触发 GC
+        srcBmp.recycle()
+
         return BitmapDrawable(null, outBmp)
     }
 

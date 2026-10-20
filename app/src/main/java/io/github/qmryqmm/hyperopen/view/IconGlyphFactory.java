@@ -41,6 +41,71 @@ public final class IconGlyphFactory {
 
     private static final Map<String, Drawable> ICON_CACHE = new HashMap<>();
 
+    /**
+     * 已裁切成圆形的图标缓存（key = 包名 + 裁切模式）。
+     * 裁切需要分配多张 192x192 位图并逐像素扫描，每次呼出面板对每个图标重做一遍
+     * 会在 SystemUI 主线程上产生明显卡顿与 GC 压力。缓存的是 ConstantState，
+     * 每次返回 newDrawable()：共享同一份像素，但 Drawable 实例互相独立。
+     */
+    private static final Map<String, Drawable.ConstantState> PROCESSED_CACHE = new HashMap<>();
+    /** Intent URI → 目标包名（避免每次重新 parseUri + resolveActivity 这类 PackageManager 跨进程调用） */
+    private static final Map<String, String> INTENT_PKG_CACHE = new HashMap<>();
+    private static final String NO_PKG = "";
+
+    @Nullable
+    private static Drawable processedAppIcon(@Nullable Context ctx, @Nullable String pkg, int cropMode) {
+        if (ctx == null || pkg == null || pkg.isEmpty()) return null;
+        String key = pkg + "|" + cropMode;
+        synchronized (PROCESSED_CACHE) {
+            Drawable.ConstantState cs = PROCESSED_CACHE.get(key);
+            if (cs != null) return cs.newDrawable();
+        }
+        Drawable raw = appIcon(ctx, pkg);
+        if (raw == null) return null;
+        Drawable out = AppIconCropProcessor.process(raw, cropMode);
+        if (out == null) return null;
+        Drawable.ConstantState cs = out.getConstantState();
+        if (cs != null) {
+            synchronized (PROCESSED_CACHE) {
+                if (PROCESSED_CACHE.size() > 48) PROCESSED_CACHE.clear();
+                PROCESSED_CACHE.put(key, cs);
+            }
+            return cs.newDrawable();
+        }
+        return out;
+    }
+
+    @Nullable
+    private static String packageFromIntentCached(@Nullable Context ctx, @NonNull String uri) {
+        synchronized (INTENT_PKG_CACHE) {
+            String hit = INTENT_PKG_CACHE.get(uri);
+            if (hit != null) return hit.isEmpty() ? null : hit;
+        }
+        String pkg = null;
+        try {
+            Intent intent = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME);
+            String p = intent.getPackage();
+            if (notBlank(p)) {
+                pkg = p.trim();
+            } else if (intent.getComponent() != null) {
+                pkg = intent.getComponent().getPackageName();
+            } else if (ctx != null) {
+                ResolveInfo ri = ctx.getPackageManager().resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+                if (ri != null && ri.activityInfo != null) pkg = ri.activityInfo.packageName;
+            }
+        } catch (Throwable t) {
+            Log.d(TAG, "Intent 包名解析失败: " + t.getMessage());
+        }
+        // 解析失败（包名为空）不缓存，允许之后重试（例如目标应用稍后才安装）
+        if (pkg != null) {
+            synchronized (INTENT_PKG_CACHE) {
+                if (INTENT_PKG_CACHE.size() > 64) INTENT_PKG_CACHE.clear();
+                INTENT_PKG_CACHE.put(uri, pkg);
+            }
+        }
+        return pkg;
+    }
+
     private IconGlyphFactory() {}
 
     private static boolean notBlank(String s) {
@@ -69,20 +134,20 @@ public final class IconGlyphFactory {
 
         // 2) 优先级次之：手动指定应用包名图标
         if (notBlank(item.iconPackage)) {
-            Drawable d = appIcon(ctx, item.iconPackage.trim());
-            if (d != null) return AppIconCropProcessor.process(d, cropMode);
+            Drawable d = processedAppIcon(ctx, item.iconPackage.trim(), cropMode);
+            if (d != null) return d;
         }
 
         // 3) 动作默认行为：APP 类型直接取目标应用图标
         if (ShortcutItem.ACTION_APP.equals(item.actionType) && notBlank(item.actionPayload)) {
-            Drawable d = appIcon(ctx, item.actionPayload.trim());
-            if (d != null) return AppIconCropProcessor.process(d, cropMode);
+            Drawable d = processedAppIcon(ctx, item.actionPayload.trim(), cropMode);
+            if (d != null) return d;
         }
 
         // 4) 动作默认行为：INTENT_URI 解析目标应用图标
         if (ShortcutItem.ACTION_INTENT_URI.equals(item.actionType) && notBlank(item.actionPayload)) {
-            Drawable d = iconFromIntent(ctx, item.actionPayload);
-            if (d != null) return AppIconCropProcessor.process(d, cropMode);
+            Drawable d = processedAppIcon(ctx, packageFromIntentCached(ctx, item.actionPayload), cropMode);
+            if (d != null) return d;
         }
 
         // 5) 关键词匹配内置符号兜底

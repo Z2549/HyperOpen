@@ -18,6 +18,19 @@ import java.lang.reflect.Method;
 public final class HyperOSBlurHelper {
     private static final String TAG = "HyperOpen_BlurHelper";
 
+    private static volatile Method sGetViewRootImplMethod;
+    private static volatile boolean sGetViewRootImplSearched = false;
+
+    private static volatile Method sCreateBlurDrawableMethod;
+    private static volatile Class<?> sCreateBlurOwnerClass;
+
+    private static volatile Method sSetBlurRadiusMethod;
+    private static volatile boolean sSetBlurRadiusSearched = false;
+    private static volatile Method sSetCornerRadiusMethod;
+    private static volatile boolean sSetCornerRadiusSearched = false;
+    private static volatile Method sSetColorMethod;
+    private static volatile boolean sSetColorSearched = false;
+
     private HyperOSBlurHelper() {}
 
     /**
@@ -35,23 +48,11 @@ public final class HyperOSBlurHelper {
                 return null;
             }
 
-            Method createMethod = null;
-            Class<?> clazz = vri.getClass();
-            while (clazz != null && clazz != Object.class) {
-                try {
-                    createMethod = clazz.getDeclaredMethod("createBackgroundBlurDrawable");
-                    createMethod.setAccessible(true);
-                    break;
-                } catch (Throwable ignored) {
-                    clazz = clazz.getSuperclass();
-                }
-            }
-
+            Method createMethod = getCreateBlurMethod(vri.getClass());
             if (createMethod != null) {
                 Drawable blurDrawable = (Drawable) createMethod.invoke(vri);
                 if (blurDrawable != null) {
                     updateBlurDrawable(blurDrawable, cornerRadiusPx, blurRadiusPx, tintColor);
-                    Log.i(TAG, "成功由 ViewRootImpl 创建并绑定官方 BackgroundBlurDrawable! 半径=" + blurRadiusPx + ", 圆角=" + cornerRadiusPx);
                     return blurDrawable;
                 }
             }
@@ -61,14 +62,49 @@ public final class HyperOSBlurHelper {
         return null;
     }
 
+    @Nullable
+    private static Method getCreateBlurMethod(@NonNull Class<?> vriClass) {
+        Method cached = sCreateBlurDrawableMethod;
+        if (cached != null && sCreateBlurOwnerClass == vriClass) {
+            return cached;
+        }
+        Class<?> clazz = vriClass;
+        while (clazz != null && clazz != Object.class) {
+            try {
+                Method m = clazz.getDeclaredMethod("createBackgroundBlurDrawable");
+                m.setAccessible(true);
+                sCreateBlurDrawableMethod = m;
+                sCreateBlurOwnerClass = vriClass;
+                return m;
+            } catch (Throwable ignored) {
+                clazz = clazz.getSuperclass();
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Method getViewRootImplMethod() {
+        if (!sGetViewRootImplSearched) {
+            sGetViewRootImplSearched = true;
+            try {
+                Method m = View.class.getDeclaredMethod("getViewRootImpl");
+                m.setAccessible(true);
+                sGetViewRootImplMethod = m;
+            } catch (Throwable ignored) {}
+        }
+        return sGetViewRootImplMethod;
+    }
+
     /**
      * 沿着 View 树向上递归查找有效的 ViewRootImpl
      */
     @Nullable
     public static Object findViewRootImpl(@NonNull View view) {
+        Method m = getViewRootImplMethod();
+        if (m == null) return null;
+
         try {
-            Method m = View.class.getDeclaredMethod("getViewRootImpl");
-            m.setAccessible(true);
             Object vri = m.invoke(view);
             if (vri != null) return vri;
         } catch (Throwable ignored) {}
@@ -77,21 +113,12 @@ public final class HyperOSBlurHelper {
         while (current.getParent() instanceof View) {
             current = (View) current.getParent();
             try {
-                Method m = View.class.getDeclaredMethod("getViewRootImpl");
-                m.setAccessible(true);
                 Object vri = m.invoke(current);
                 if (vri != null) return vri;
             } catch (Throwable ignored) {}
         }
         return null;
     }
-
-    private static Method sSetBlurRadiusMethod;
-    private static boolean sSetBlurRadiusSearched = false;
-    private static Method sSetCornerRadiusMethod;
-    private static boolean sSetCornerRadiusSearched = false;
-    private static Method sSetColorMethod;
-    private static boolean sSetColorSearched = false;
 
     /**
      * 仅高频更新已有 BackgroundBlurDrawable 的圆角半径（供气泡鱼眼/选中缩放动画逐帧同步，避免圆角小于缩放后 बॉर्डर导致变成圆角矩形或溢出边框）

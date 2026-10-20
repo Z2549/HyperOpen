@@ -1,7 +1,11 @@
 package io.github.qmryqmm.hyperopen.hook;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Point;
+import android.graphics.RectF;
 import android.os.Build;
 import android.os.Looper;
 import android.util.Log;
@@ -20,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig;
+import io.github.qmryqmm.hyperopen.model.ShortcutItem;
 import io.github.qmryqmm.hyperopen.view.CustomHyperOpenContainer;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -30,6 +35,15 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class HyperOpenHook {
     private static final String TAG = "HyperOpen_Hook";
     private static final String CONTAINER_TAG = "hyperos_custom_hyperopen_container";
+
+    /** 宿主 View 上的附加字段：本模块额外加到窗口上的 flag（用于复位时精确还原，不误删原生 flag） */
+    private static final String FIELD_ADDED_FLAGS = "hyperOpenAddedWindowFlags";
+    /** 宿主 View 上的附加字段：attach 状态监听器（卸载时摘除） */
+    private static final String FIELD_ATTACH_LISTENER = "hyperOpenAttachListener";
+
+    /** 本模块在展开时为窗口追加的 flag */
+    private static final int OUR_WINDOW_FLAGS =
+        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
 
     /**
      * 全部已安装 Hook 的卸载句柄。
@@ -54,12 +68,42 @@ public class HyperOpenHook {
     private static final List<WeakReference<FrameLayout>> HOSTS =
         Collections.synchronizedList(new ArrayList<WeakReference<FrameLayout>>());
 
+    /**
+     * 进程级广播接收器（配置热重载 / 息屏复位）。
+     * 只注册一次：旧实现每构造一个 QuickOpenView 就注册一个接收器，既泄漏又会重复刷新。
+     */
+    private static Context receiverContext;
+    private static BroadcastReceiver configReceiver;
+    private static BroadcastReceiver screenReceiver;
+
+    /** 缓存 MiuiGxzwUtils Class 引用，避免每次展开反射查找 */
+    private static volatile Class<?> cachedGxzwUtilsClass;
+
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         final ClassLoader cl = lpparam.classLoader;
 
         // 每次部署前清空历史句柄，避免重复部署时句柄表里混入上一轮的失效项
         HANDLES.clear();
         active = true;
+
+        // 配置异步刷新完成后（主线程回调），把新配置推给所有未处于展示态的容器。
+        // 展示中的容器不热替换配置，避免手势进行中几何参数突变；下次展开会自动取最新缓存。
+        HyperOpenConfig.setOnConfigUpdatedListener(new HyperOpenConfig.OnConfigUpdatedListener() {
+            @Override
+            public void onConfigUpdated(HyperOpenConfig config) {
+                if (!active) return;
+                for (FrameLayout host : snapshotHosts()) {
+                    try {
+                        CustomHyperOpenContainer c = getContainer(host);
+                        if (c != null && c.getVisibility() != View.VISIBLE) {
+                            c.updateConfig(config);
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "推送新配置到容器失败", t);
+                    }
+                }
+            }
+        });
 
         try {
             final Class<?> quickOpenViewClass = XposedHelpers.findClass(
@@ -74,7 +118,9 @@ public class HyperOpenHook {
                     FrameLayout view = (FrameLayout) param.thisObject;
                     Context context = view.getContext();
 
-                    HyperOpenConfig config = HyperOpenConfig.load(context);
+                    // 仅读进程内缓存（首轮以 XSharedPreferences 本地文件兜底），不做跨进程调用；
+                    // 最新配置由后台线程异步拉取后再推送进来。
+                    HyperOpenConfig config = HyperOpenConfig.getCached();
                     final CustomHyperOpenContainer container = new CustomHyperOpenContainer(context, config, cl);
                     container.setTag(CONTAINER_TAG);
                     container.setVisibility(View.GONE);
@@ -86,31 +132,15 @@ public class HyperOpenHook {
                     XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
                     rememberHost(view);
 
-                    // 注册配置实时更新广播监听
-                    try {
-                        android.content.IntentFilter filter = new android.content.IntentFilter(HyperOpenConfig.ACTION_CONFIG_CHANGED);
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            context.registerReceiver(new android.content.BroadcastReceiver() {
-                                @Override
-                                public void onReceive(Context ctx, android.content.Intent intent) {
-                                    Log.i(TAG, "收到模块配置变更广播，实时热重载！");
-                                    HyperOpenConfig newConfig = HyperOpenConfig.load(ctx);
-                                    container.updateConfig(newConfig);
-                                }
-                            }, filter, Context.RECEIVER_EXPORTED);
-                        } else {
-                            context.registerReceiver(new android.content.BroadcastReceiver() {
-                                @Override
-                                public void onReceive(Context ctx, android.content.Intent intent) {
-                                    Log.i(TAG, "收到模块配置变更广播，实时热重载！");
-                                    HyperOpenConfig newConfig = HyperOpenConfig.load(ctx);
-                                    container.updateConfig(newConfig);
-                                }
-                            }, filter);
-                        }
-                    } catch (Throwable t) {
-                        Log.w(TAG, "注册配置变更广播失败", t);
-                    }
+                    // 宿主窗口被移除（息屏、锁屏重建、指纹图层销毁等）时立刻复位，
+                    // 绝不让 VISIBLE 容器 / 追加的窗口 flag 残留到下一次 attach。
+                    armDetachReset(view);
+
+                    // 注册配置实时更新与息屏复位广播监听（进程级，只注册一次）
+                    ensureProcessReceivers(context);
+
+                    // 后台异步预取最新配置
+                    HyperOpenConfig.refreshAsync(context);
 
                     Log.i(TAG, "已成功向 MiuiGxzwQuickOpenView 注入 CustomHyperOpenContainer！");
                 }
@@ -126,8 +156,20 @@ public class HyperOpenHook {
                     // 完全阻止系统原生 startShowQuickOpenItemAnimation 执行 (避免创建原生5项View、动画和扇形黑底)
                     param.setResult(null);
 
-                    // 每次展开前，实时从 ContentProvider 同步最新配置
-                    HyperOpenConfig latestConfig = HyperOpenConfig.load(view.getContext());
+                    // 展开路径只读进程内缓存：绝不在手势线程上同步调用 ContentProvider。
+                    // 模块进程常被系统冻结，同步 call() 需先解冻，秒级阻塞会直接导致 SystemUI 输入 ANR。
+                    // 配置变更由广播实时推送，这里仅做节流的后台兜底刷新。
+                    HyperOpenConfig latestConfig = HyperOpenConfig.getCached();
+                    HyperOpenConfig.refreshAsyncThrottled(view.getContext());
+
+                    // 获取或创建 CustomHyperOpenContainer
+                    CustomHyperOpenContainer container = (CustomHyperOpenContainer)
+                        XposedHelpers.getAdditionalInstanceField(view, "customContainer");
+
+                    // 若容器已处于展示状态，则无需重复初始化（也不重复下发模糊 / 窗口事务）
+                    if (container != null && container.getVisibility() == View.VISIBLE) {
+                        return;
+                    }
 
                     // 全屏高斯模糊与全屏遮罩独立渲染：只受 fullscreenBlurMaskAlpha 调控
                     try {
@@ -142,7 +184,6 @@ public class HyperOpenHook {
                                         XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
                                     }
                                     view.setBackground(null);
-                                    Log.i(TAG, "已独立关闭全屏模糊遮罩，全屏壁纸保持原始清晰，圆形视界由局部引擎独立模糊！");
                                 } else {
                                     // 用户开启全屏模糊遮罩：根据比例动态设置全屏模糊与系统暗色底盘
                                     float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
@@ -160,7 +201,6 @@ public class HyperOpenHook {
                                         int maskAlpha = (int) (latestConfig.fullscreenBlurMaskAlpha * 0x33);
                                         view.setBackgroundColor((maskAlpha << 24) | 0x000000);
                                     }
-                                    Log.i(TAG, "已独立开启全屏模糊遮罩: 半径=" + blurRadius + ", 比例=" + blurRatio);
                                 }
                             }
                         }
@@ -169,14 +209,26 @@ public class HyperOpenHook {
                     }
 
                     // 允许触摸穿透并更新 WindowManager 布局标记 (开启 FLAG_BLUR_BEHIND 赋能局部模糊)
+                    // 与原生 MiuiGxzwQuickOpenView.startShowQuickOpenItemAnimation 严格对齐：
+                    // 若当前尚未 attach 到窗口，则置 mPendingUpdateLp = true，交由原生 onAttachedToWindow() 统一提交。
                     try {
                         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) XposedHelpers.getObjectField(view, "mLayoutParams");
                         if (lp != null) {
-                            lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-                            if (view.isAttachedToWindow()) {
-                                WindowManager wm = (WindowManager) XposedHelpers.getObjectField(view, "mWindowManager");
-                                if (wm != null) {
-                                    wm.updateViewLayout(view, lp);
+                            int missing = OUR_WINDOW_FLAGS & ~lp.flags;
+                            if (missing != 0) {
+                                lp.flags |= missing;
+                                Object prev = XposedHelpers.getAdditionalInstanceField(view, FIELD_ADDED_FLAGS);
+                                int added = (prev instanceof Integer ? (Integer) prev : 0) | missing;
+                                XposedHelpers.setAdditionalInstanceField(view, FIELD_ADDED_FLAGS, added);
+                                if (view.isAttachedToWindow()) {
+                                    WindowManager wm = (WindowManager) XposedHelpers.getObjectField(view, "mWindowManager");
+                                    if (wm != null) {
+                                        wm.updateViewLayout(view, lp);
+                                    }
+                                } else {
+                                    try {
+                                        XposedHelpers.setBooleanField(view, "mPendingUpdateLp", true);
+                                    } catch (Throwable ignored) {}
                                 }
                             }
                         }
@@ -192,14 +244,10 @@ public class HyperOpenHook {
                     // 隐藏原生的所有其它子 View (标题、副标题、教学提示等)
                     for (int i = 0; i < view.getChildCount(); i++) {
                         View child = view.getChildAt(i);
-                        if (!CONTAINER_TAG.equals(child.getTag())) {
+                        if (!CONTAINER_TAG.equals(child.getTag()) && child.getVisibility() != View.GONE) {
                             child.setVisibility(View.GONE);
                         }
                     }
-
-                    // 获取或创建 CustomHyperOpenContainer
-                    CustomHyperOpenContainer container = (CustomHyperOpenContainer)
-                        XposedHelpers.getAdditionalInstanceField(view, "customContainer");
 
                     if (container == null) {
                         container = new CustomHyperOpenContainer(view.getContext(), latestConfig, cl);
@@ -208,33 +256,54 @@ public class HyperOpenHook {
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
                         ));
                         XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
+                        rememberHost(view);
+                        armDetachReset(view);
                     }
 
                     // 每次展开前，热更新容器配置！
                     container.updateConfig(latestConfig);
 
-                    // 若容器已处于展示状态，则无需重复初始化
-                    if (container.getVisibility() == View.VISIBLE) {
-                        return;
-                    }
-
-                    // 获取 FOD 精准指纹中心坐标
-                    float fodX, fodY;
+                    // 获取 FOD 精准指纹中心坐标：
+                    // 优先直接读取宿主在 initQuickViewParams 中已算好的 mFingerRect，避免每次展开调用 caculateGxzwIconSize
+                    float fodX = -1f, fodY = -1f;
                     try {
-                        Class<?> utilsClass = XposedHelpers.findClass(
-                            "com.miui.keyguard.biometrics.fod.MiuiGxzwUtils", cl
-                        );
-                        XposedHelpers.callStaticMethod(utilsClass, "caculateGxzwIconSize", view.getContext());
-                        int iconX = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_X");
-                        int iconY = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_Y");
-                        int iconW = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_WIDTH");
-                        int iconH = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_HEIGHT");
-                        fodX = iconX + iconW / 2.0f;
-                        fodY = iconY + iconH / 2.0f;
-                    } catch (Throwable t) {
-                        Point displaySize = getDisplaySize(view.getContext());
-                        fodX = displaySize.x / 2.0f;
-                        fodY = displaySize.y * 0.795f;
+                        Object fingerRectObj = XposedHelpers.getObjectField(view, "mFingerRect");
+                        if (fingerRectObj instanceof RectF) {
+                            RectF rect = (RectF) fingerRectObj;
+                            if (rect.width() > 0 && rect.height() > 0) {
+                                fodX = rect.centerX();
+                                fodY = rect.centerY();
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+
+                    if (fodX <= 0f || fodY <= 0f) {
+                        try {
+                            Class<?> utilsClass = cachedGxzwUtilsClass;
+                            if (utilsClass == null) {
+                                utilsClass = XposedHelpers.findClass(
+                                    "com.miui.keyguard.biometrics.fod.MiuiGxzwUtils", cl
+                                );
+                                cachedGxzwUtilsClass = utilsClass;
+                            }
+                            int iconX = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_X");
+                            int iconY = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_Y");
+                            int iconW = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_WIDTH");
+                            int iconH = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_HEIGHT");
+                            if (iconW <= 0 || iconH <= 0) {
+                                XposedHelpers.callStaticMethod(utilsClass, "caculateGxzwIconSize", view.getContext());
+                                iconX = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_X");
+                                iconY = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_Y");
+                                iconW = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_WIDTH");
+                                iconH = XposedHelpers.getStaticIntField(utilsClass, "GXZW_ICON_HEIGHT");
+                            }
+                            fodX = iconX + iconW / 2.0f;
+                            fodY = iconY + iconH / 2.0f;
+                        } catch (Throwable t) {
+                            Point displaySize = getDisplaySize(view.getContext());
+                            fodX = displaySize.x / 2.0f;
+                            fodY = displaySize.y * 0.795f;
+                        }
                     }
 
                     container.setVisibility(View.VISIBLE);
@@ -249,27 +318,7 @@ public class HyperOpenHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     if (!active) return;
-                    FrameLayout view = (FrameLayout) param.thisObject;
-                    CustomHyperOpenContainer container = (CustomHyperOpenContainer)
-                        XposedHelpers.getAdditionalInstanceField(view, "customContainer");
-                    if (container != null) {
-                        container.resetBubbles();
-                        container.setVisibility(View.GONE);
-                    }
-
-                    // 确保全屏高斯模糊复位清除
-                    try {
-                        Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
-                        if (blurUtilsDelegate != null) {
-                            Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
-                            if (blurUtils != null) {
-                                Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
-                                if (vri != null) {
-                                    XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
-                                }
-                            }
-                        }
-                    } catch (Throwable ignored) {}
+                    resetHostState((FrameLayout) param.thisObject, "dismiss");
                 }
             }));
 
@@ -290,7 +339,7 @@ public class HyperOpenHook {
                     if (!active) return;
                     try {
                         Object listener = param.thisObject;
-                        Object iconView = XposedHelpers.getObjectField(listener, "this$0");
+                        final Object iconView = XposedHelpers.getObjectField(listener, "this$0");
                         if (iconView == null) return;
 
                         final Object quickOpenView = XposedHelpers.getObjectField(iconView, "mMiuiGxzwQuickOpenView");
@@ -309,51 +358,48 @@ public class HyperOpenHook {
                         final float rawY = event.getRawY();
 
                         if (action == MotionEvent.ACTION_MOVE) {
-                            if (Looper.myLooper() == Looper.getMainLooper()) {
-                                container.onFingerMove(rawX, rawY);
-                            } else {
-                                frameLayout.post(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        container.onFingerMove(rawX, rawY);
-                                    }
-                                });
-                            }
-                            param.setResult(null); // 完全拦截原生滑动处理，避免原生逻辑干扰
-                        } else if (action == MotionEvent.ACTION_UP) {
-                            Runnable upTask = new Runnable() {
+                            // 折叠 120Hz/240Hz 高频触摸采样：每帧最多在主线程执行一次鱼眼计算，零 Runnable 分配
+                            container.scheduleFingerMove(rawX, rawY);
+                            param.setResult(null); // 拦截原生滑动处理，避免原生逻辑干扰
+                        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                            final boolean isUp = (action == MotionEvent.ACTION_UP);
+                            // 对齐原生 MiuiGxzwIconView$2：松手或取消时必须将 isCatchDownEvent 复位为 false
+                            try {
+                                XposedHelpers.setBooleanField(iconView, "isCatchDownEvent", false);
+                            } catch (Throwable ignored) {}
+
+                            Runnable finishTask = new Runnable() {
                                 @Override
                                 public void run() {
-                                    container.onFingerUp();
+                                    // 对齐原生 Lambda4：通知 MiuiGxzwIconView 手指已抬起，确保传感器/动画状态完整收尾
+                                    try {
+                                        XposedHelpers.callMethod(iconView, "onTouchUp", true);
+                                    } catch (Throwable ignored) {}
+
+                                    ShortcutItem selected = null;
+                                    if (isUp) {
+                                        selected = container.consumeSelectedAndReset();
+                                    } else {
+                                        container.resetBubbles();
+                                    }
+
+                                    // 优先在主线程立刻关闭并移除悬浮面板窗口，随后在后台 IPC 线程异步发起应用启动：
+                                    // 即使 system_server 因其他模块阻塞 startActivity，也绝不卡住 SystemUI 手势收尾与窗口销毁
                                     try {
                                         XposedHelpers.callMethod(quickOpenView, "dismiss", 0);
                                     } catch (Throwable t) {
                                         Log.e(TAG, "调用 dismiss 异常", t);
                                     }
-                                }
-                            };
-                            if (Looper.myLooper() == Looper.getMainLooper()) {
-                                upTask.run();
-                            } else {
-                                frameLayout.post(upTask);
-                            }
-                            param.setResult(null); // 完全拦截原生松手动作
-                        } else if (action == MotionEvent.ACTION_CANCEL) {
-                            Runnable cancelTask = new Runnable() {
-                                @Override
-                                public void run() {
-                                    container.resetBubbles();
-                                    try {
-                                        XposedHelpers.callMethod(quickOpenView, "dismiss", 0);
-                                    } catch (Throwable t) {
-                                        Log.e(TAG, "调用 dismiss 异常", t);
+
+                                    if (selected != null) {
+                                        selected.executeAsync(frameLayout.getContext());
                                     }
                                 }
                             };
                             if (Looper.myLooper() == Looper.getMainLooper()) {
-                                cancelTask.run();
+                                finishTask.run();
                             } else {
-                                frameLayout.post(cancelTask);
+                                frameLayout.post(finishTask);
                             }
                             param.setResult(null);
                         }
@@ -366,6 +412,211 @@ public class HyperOpenHook {
         } catch (Throwable t) {
             Log.e(TAG, "Hook MiuiGxzwIconView$2 失败", t);
         }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // 状态复位：dismiss / 息屏 / 窗口移除 统一走这里
+    // ──────────────────────────────────────────────────────────────
+
+    private static CustomHyperOpenContainer getContainer(FrameLayout host) {
+        Object o = XposedHelpers.getAdditionalInstanceField(host, "customContainer");
+        return o instanceof CustomHyperOpenContainer ? (CustomHyperOpenContainer) o : null;
+    }
+
+    /**
+     * 把宿主恢复到「从未展开过」的状态：容器隐藏复位、全屏模糊清零、
+     * 本模块追加的窗口 flag 精确还原。操作幂等，可重复调用。
+     * 必须在主线程调用。
+     */
+    private static void resetHostState(FrameLayout view, String why) {
+        if (view == null) return;
+
+        CustomHyperOpenContainer container = getContainer(view);
+        if (container != null) {
+            try {
+                container.resetBubbles();
+            } catch (Throwable t) {
+                Log.w(TAG, "复位气泡失败(" + why + ")", t);
+            }
+            if (container.getVisibility() != View.GONE) {
+                container.setVisibility(View.GONE);
+            }
+        }
+
+        // 原生 removeQuickView() 在移除窗口时已经调用过 applyBlur(vri, 0)；
+        // 仅当宿主仍附着在窗口上时才补充清零全屏模糊，避免冗余跨线程/渲染调用。
+        if (view.isAttachedToWindow()) {
+            try {
+                Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
+                if (blurUtilsDelegate != null) {
+                    Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
+                    if (blurUtils != null) {
+                        Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                        if (vri != null) {
+                            XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        restoreWindowFlags(view, why);
+    }
+
+    /**
+     * 还原本模块在展开时追加到窗口 LayoutParams 上的 flag（FLAG_BLUR_BEHIND / FLAG_NOT_TOUCH_MODAL）。
+     *
+     * 只在窗口仍附着且可见时才下发 updateViewLayout；窗口已移除/不可见时仅修改
+     * LayoutParams 对象本身，下次 addView / relayout 自然使用干净的 flag，
+     * 不额外给 system_server 增加窗口事务。
+     */
+    private static void restoreWindowFlags(FrameLayout view, String why) {
+        try {
+            Object saved = XposedHelpers.getAdditionalInstanceField(view, FIELD_ADDED_FLAGS);
+            if (!(saved instanceof Integer)) return;
+            XposedHelpers.removeAdditionalInstanceField(view, FIELD_ADDED_FLAGS);
+            int added = (Integer) saved;
+            if (added == 0) return;
+
+            WindowManager.LayoutParams lp = (WindowManager.LayoutParams) XposedHelpers.getObjectField(view, "mLayoutParams");
+            if (lp == null || (lp.flags & added) == 0) return;
+            lp.flags &= ~added;
+
+            if (view.isAttachedToWindow() && view.getWindowVisibility() == View.VISIBLE) {
+                WindowManager wm = (WindowManager) XposedHelpers.getObjectField(view, "mWindowManager");
+                if (wm != null) {
+                    wm.updateViewLayout(view, lp);
+                }
+            }
+            Log.i(TAG, "已还原窗口 flag(" + why + "): 0x" + Integer.toHexString(added));
+        } catch (Throwable t) {
+            Log.w(TAG, "还原窗口 flag 失败(" + why + ")", t);
+        }
+    }
+
+    /** 宿主窗口被移除时立即复位，防止 VISIBLE 容器 / 追加 flag 残留到下一次 attach */
+    private static void armDetachReset(final FrameLayout view) {
+        try {
+            if (XposedHelpers.getAdditionalInstanceField(view, FIELD_ATTACH_LISTENER) != null) {
+                return;
+            }
+            View.OnAttachStateChangeListener l = new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {}
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    if (!active) return;
+                    try {
+                        resetHostState((FrameLayout) v, "detached");
+                    } catch (Throwable t) {
+                        Log.w(TAG, "窗口移除复位失败", t);
+                    }
+                }
+            };
+            view.addOnAttachStateChangeListener(l);
+            XposedHelpers.setAdditionalInstanceField(view, FIELD_ATTACH_LISTENER, l);
+        } catch (Throwable t) {
+            Log.w(TAG, "挂载窗口移除复位监听失败", t);
+        }
+    }
+
+    /** 息屏时：若面板仍处于展示态，先走原生 dismiss 收尾，再无条件复位本模块状态 */
+    private static void onScreenOff() {
+        if (!active) return;
+        for (FrameLayout host : snapshotHosts()) {
+            try {
+                CustomHyperOpenContainer c = getContainer(host);
+                if (c != null && c.getVisibility() == View.VISIBLE) {
+                    try {
+                        XposedHelpers.callMethod(host, "dismiss", 0);
+                    } catch (Throwable t) {
+                        Log.w(TAG, "息屏时调用原生 dismiss 失败", t);
+                    }
+                }
+                resetHostState(host, "screen_off");
+            } catch (Throwable t) {
+                Log.w(TAG, "息屏复位失败", t);
+            }
+        }
+    }
+
+    /**
+     * 注册进程级广播：
+     *   - 配置变更：仅触发后台异步拉取，主线程不做任何跨进程调用；
+     *   - 息屏：复位所有宿主，杜绝预览状态直接锁屏后的残留。
+     */
+    private static synchronized void ensureProcessReceivers(Context context) {
+        if (configReceiver != null || context == null) return;
+        Context app = context.getApplicationContext();
+        final Context ctx = app != null ? app : context;
+
+        BroadcastReceiver cfg = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent intent) {
+                if (!active) return;
+                Log.i(TAG, "收到模块配置变更广播，后台异步热重载！");
+                HyperOpenConfig.refreshAsync(c);
+            }
+        };
+        BroadcastReceiver screen = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context c, Intent intent) {
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    onScreenOff();
+                }
+            }
+        };
+
+        try {
+            IntentFilter f = new IntentFilter(HyperOpenConfig.ACTION_CONFIG_CHANGED);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ctx.registerReceiver(cfg, f, Context.RECEIVER_EXPORTED);
+            } else {
+                ctx.registerReceiver(cfg, f);
+            }
+            configReceiver = cfg;
+        } catch (Throwable t) {
+            Log.w(TAG, "注册配置变更广播失败", t);
+        }
+
+        try {
+            IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ctx.registerReceiver(screen, f, Context.RECEIVER_EXPORTED);
+            } else {
+                ctx.registerReceiver(screen, f);
+            }
+            screenReceiver = screen;
+        } catch (Throwable t) {
+            Log.w(TAG, "注册息屏广播失败", t);
+        }
+
+        receiverContext = ctx;
+    }
+
+    private static synchronized void releaseProcessReceivers() {
+        if (receiverContext == null) return;
+        if (configReceiver != null) {
+            try { receiverContext.unregisterReceiver(configReceiver); } catch (Throwable ignored) {}
+        }
+        if (screenReceiver != null) {
+            try { receiverContext.unregisterReceiver(screenReceiver); } catch (Throwable ignored) {}
+        }
+        configReceiver = null;
+        screenReceiver = null;
+        receiverContext = null;
+    }
+
+    private static List<FrameLayout> snapshotHosts() {
+        List<FrameLayout> out = new ArrayList<>();
+        synchronized (HOSTS) {
+            for (WeakReference<FrameLayout> ref : HOSTS) {
+                FrameLayout h = ref.get();
+                if (h != null) out.add(h);
+            }
+        }
+        return out;
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -427,22 +678,29 @@ public class HyperOpenHook {
         }
         Log.e(TAG, "!!! 安全模式触发：正在即时停用全部 Hook !!!");
 
+        HyperOpenConfig.setOnConfigUpdatedListener(null);
+        releaseProcessReceivers();
+
         // 2. 拆除视图树上已注入的自定义容器
         synchronized (HOSTS) {
             for (WeakReference<FrameLayout> ref : HOSTS) {
                 FrameLayout host = ref.get();
                 if (host == null) continue;
                 try {
-                    CustomHyperOpenContainer container = (CustomHyperOpenContainer)
-                        XposedHelpers.getAdditionalInstanceField(host, "customContainer");
+                    // 先还原模糊与窗口 flag，再摘除容器
+                    resetHostState(host, "uninstall");
+                    CustomHyperOpenContainer container = getContainer(host);
                     if (container != null) {
-                        container.resetBubbles();
-                        container.setVisibility(View.GONE);
                         if (container.getParent() instanceof ViewGroup) {
                             ((ViewGroup) container.getParent()).removeView(container);
                         }
                     }
                     XposedHelpers.removeAdditionalInstanceField(host, "customContainer");
+                    Object l = XposedHelpers.getAdditionalInstanceField(host, FIELD_ATTACH_LISTENER);
+                    if (l instanceof View.OnAttachStateChangeListener) {
+                        host.removeOnAttachStateChangeListener((View.OnAttachStateChangeListener) l);
+                    }
+                    XposedHelpers.removeAdditionalInstanceField(host, FIELD_ATTACH_LISTENER);
                 } catch (Throwable t) {
                     Log.w(TAG, "移除已注入的自定义容器失败", t);
                 }

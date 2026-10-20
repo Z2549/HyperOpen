@@ -14,6 +14,8 @@ import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.lang.ref.WeakReference;
+
 import io.github.qmryqmm.hyperopen.factory.HyperOSBlurHelper;
 import io.github.qmryqmm.hyperopen.factory.HyperOSMaterialFactory;
 
@@ -35,6 +37,7 @@ public class CircularRegionBackdropView extends FrameLayout {
 
     private OverlayDrawView overlayView;
     private Drawable systemBackdropBlurDrawable;
+    private WeakReference<Object> boundVriRef;
     private boolean systemBlurEnabled = true;
 
     public CircularRegionBackdropView(@NonNull Context context) {
@@ -60,6 +63,7 @@ public class CircularRegionBackdropView extends FrameLayout {
             this.systemBlurEnabled = enabled;
             if (!enabled) {
                 systemBackdropBlurDrawable = null;
+                boundVriRef = null;
                 setBackground(null);
             } else if (currentRadiusPx > 0) {
                 updateGeometry(currentRadiusPx);
@@ -103,7 +107,11 @@ public class CircularRegionBackdropView extends FrameLayout {
     protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
         super.onVisibilityChanged(changedView, visibility);
         if (visibility == View.VISIBLE && currentRadiusPx > 0 && systemBlurEnabled) {
-            post(() -> updateGeometry(currentRadiusPx));
+            Object currentVri = HyperOSBlurHelper.findViewRootImpl(this);
+            Object boundVri = boundVriRef != null ? boundVriRef.get() : null;
+            if (systemBackdropBlurDrawable == null || currentVri != boundVri) {
+                post(() -> updateGeometry(currentRadiusPx));
+            }
         }
     }
 
@@ -126,10 +134,13 @@ public class CircularRegionBackdropView extends FrameLayout {
     }
 
     public void setBlurRadius(float radiusDp) {
-        this.blurRadiusDp = Math.max(0f, radiusDp);
-        refreshVisuals();
-        if (currentRadiusPx > 0) {
-            updateGeometry(currentRadiusPx);
+        float clamped = Math.max(0f, radiusDp);
+        if (Math.abs(this.blurRadiusDp - clamped) > 0.01f) {
+            this.blurRadiusDp = clamped;
+            refreshVisuals();
+            if (currentRadiusPx > 0) {
+                updateGeometry(currentRadiusPx);
+            }
         }
     }
 
@@ -138,6 +149,7 @@ public class CircularRegionBackdropView extends FrameLayout {
      */
     public void reset() {
         systemBackdropBlurDrawable = null;
+        boundVriRef = null;
         setBackground(null);
     }
 
@@ -155,21 +167,33 @@ public class CircularRegionBackdropView extends FrameLayout {
 
         if (blurPx <= 0) {
             systemBackdropBlurDrawable = null;
+            boundVriRef = null;
             setBackground(null);
         } else {
-            // 每次重新展开时强制检查并绑定当前活跃的 ViewRootImpl，彻底消除复用失效引用的 Bug
-            Drawable bd = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, radiusPx, blurPx, tint);
-            if (bd != null) {
-                systemBackdropBlurDrawable = bd;
-                setBackground(systemBackdropBlurDrawable);
-                try {
-                    systemBackdropBlurDrawable.setVisible(true, true);
-                } catch (Throwable ignored) {}
-            } else if (systemBackdropBlurDrawable != null) {
+            Object currentVri = HyperOSBlurHelper.findViewRootImpl(this);
+            Object boundVri = boundVriRef != null ? boundVriRef.get() : null;
+
+            // 仅当未创建或宿主 ViewRootImpl 发生变化时才重新创建 BackgroundBlurDrawable
+            if (systemBackdropBlurDrawable != null && currentVri != null && currentVri == boundVri) {
                 HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, radiusPx, blurPx, tint);
                 try {
                     systemBackdropBlurDrawable.setVisible(true, false);
                 } catch (Throwable ignored) {}
+            } else {
+                Drawable bd = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, radiusPx, blurPx, tint);
+                if (bd != null) {
+                    systemBackdropBlurDrawable = bd;
+                    boundVriRef = currentVri != null ? new WeakReference<>(currentVri) : null;
+                    setBackground(systemBackdropBlurDrawable);
+                    try {
+                        systemBackdropBlurDrawable.setVisible(true, true);
+                    } catch (Throwable ignored) {}
+                } else if (systemBackdropBlurDrawable != null) {
+                    HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, radiusPx, blurPx, tint);
+                    try {
+                        systemBackdropBlurDrawable.setVisible(true, false);
+                    } catch (Throwable ignored) {}
+                }
             }
         }
 
@@ -190,6 +214,7 @@ public class CircularRegionBackdropView extends FrameLayout {
         if (blurPx <= 0) {
             if (systemBackdropBlurDrawable != null) {
                 systemBackdropBlurDrawable = null;
+                boundVriRef = null;
                 setBackground(null);
             }
         } else if (systemBackdropBlurDrawable != null) {
@@ -203,12 +228,14 @@ public class CircularRegionBackdropView extends FrameLayout {
     }
 
     /**
-     * 顶层深邃光影与双向菲涅尔镜面圆环 (复用 HyperOSMaterialFactory.drawUnifiedCircularOptics 与气泡完全统一)
+     * 顶层深邃光影与双向菲涅尔镜面圆环 (复用 HyperOSMaterialFactory.drawUnifiedCircularOpticsCached 与气泡完全统一，零对象分配)
      */
     private class OverlayDrawView extends View {
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final HyperOSMaterialFactory.CircularOpticsCache opticsCache =
+            new HyperOSMaterialFactory.CircularOpticsCache();
 
         public OverlayDrawView(Context context) {
             super(context);
@@ -219,8 +246,8 @@ public class CircularRegionBackdropView extends FrameLayout {
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            HyperOSMaterialFactory.drawUnifiedCircularOptics(
-                canvas, getWidth(), getHeight(), style, false, bgPaint, highlightPaint, borderPaint
+            HyperOSMaterialFactory.drawUnifiedCircularOpticsCached(
+                canvas, getWidth(), getHeight(), style, false, bgPaint, highlightPaint, borderPaint, opticsCache
             );
         }
     }

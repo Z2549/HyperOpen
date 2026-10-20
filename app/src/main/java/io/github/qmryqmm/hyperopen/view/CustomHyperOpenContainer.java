@@ -4,12 +4,14 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PointF;
 import android.os.Build;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -22,12 +24,17 @@ import io.github.qmryqmm.hyperopen.model.ShortcutItem;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CustomHyperOpenContainer extends FrameLayout {
+
+    private static final OvershootInterpolator EXPAND_INTERPOLATOR = new OvershootInterpolator(1.2f);
 
     private HyperOpenConfig config;
     private final ClassLoader systemuiClassLoader;
     private int resolvedStyle;
+    private int lastBuiltIconSizePx = -1;
 
     private float fodCenterX = 540f;
     private float fodCenterY = 1920f;
@@ -42,6 +49,20 @@ public class CustomHyperOpenContainer extends FrameLayout {
     private CircularBubbleView currentSelectedBubble = null;
 
     private Vibrator vibrator;
+
+    // 240Hz 触摸采样折叠（Coalescing）：每帧最多向主线程投递一次 onFingerMove，实现零 Runnable 分配
+    private volatile float pendingTouchX;
+    private volatile float pendingTouchY;
+    private final AtomicBoolean movePending = new AtomicBoolean(false);
+    private final Runnable coalescedMoveTask = new Runnable() {
+        @Override
+        public void run() {
+            movePending.set(false);
+            if (getVisibility() == View.VISIBLE) {
+                onFingerMove(pendingTouchX, pendingTouchY);
+            }
+        }
+    };
 
     public CustomHyperOpenContainer(Context context, HyperOpenConfig config, ClassLoader classLoader) {
         super(context);
@@ -208,36 +229,76 @@ public class CustomHyperOpenContainer extends FrameLayout {
     }
 
     /**
+     * 判断当前已构建的气泡集合是否与最新启用项完全一致，一致则直接复用 View 实例避免重复 inflación 与 GC
+     */
+    private boolean canReuseExistingBubbles(List<ShortcutItem> activeItems, int iconSizePx) {
+        if (lastBuiltIconSizePx != iconSizePx || bubbles.size() != activeItems.size() || bubbles.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < activeItems.size(); i++) {
+            ShortcutItem a = bubbles.get(i).item;
+            ShortcutItem b = activeItems.get(i);
+            if (a == null || b == null) return false;
+            if (!Objects.equals(a.id, b.id)
+                    || !Objects.equals(a.title, b.title)
+                    || !Objects.equals(a.subtitle, b.subtitle)
+                    || !Objects.equals(a.actionType, b.actionType)
+                    || !Objects.equals(a.actionPayload, b.actionPayload)
+                    || !Objects.equals(a.iconPackage, b.iconPackage)
+                    || !Objects.equals(a.iconGlyph, b.iconGlyph)
+                    || a.tintColor != b.tintColor
+                    || a.glyphPadEnabled != b.glyphPadEnabled
+                    || a.glyphPadColor != b.glyphPadColor
+                    || a.glyphPadMode != b.glyphPadMode
+                    || a.appIconCropMode != b.appIconCropMode) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * 设置指纹中心并根据最新配置构建网格与散开动画
      */
     public void setupAndExpand(float fodX, float fodY) {
         this.fodCenterX = fodX;
         this.fodCenterY = fodY;
+        this.currentSelectedBubble = null;
+
+        // 重置顶部提示文字为初始状态
+        if (headerTitle != null && headerSubtitle != null) {
+            headerTitle.setText("滑动选择快捷方式");
+            headerTitle.setTextColor(Color.WHITE);
+            headerSubtitle.setText("移至目标图标后松手直接打开");
+        }
 
         // 胶囊头部自愈：确保每次展开时胶囊背景都是胶囊形且在最上层
         ensureHeaderPillIntact();
-
-        bubblesContainer.removeAllViews();
-        bubbles.clear();
-        currentSelectedBubble = null;
 
         float regionDiameterPx = dpToPx(config.regionDiameter);
         float regionRadiusPx = regionDiameterPx / 2f;
         float regionCenterY = fodCenterY - dpToPx(config.offsetY);
         float iconSizePx = dpToPx(config.iconSize);
+        int iconSizeInt = (int) iconSizePx;
 
         // 更新底衬大小与位置
         regionBackdrop.setVisibility(config.showRegionBg ? View.VISIBLE : View.GONE);
         regionBackdrop.setStyle(resolvedStyle);
         regionBackdrop.setBlurRadius(config.regionBlurRadius);
         regionBackdrop.updateGeometry(regionRadiusPx);
-        LayoutParams rLp = new LayoutParams((int) regionDiameterPx, (int) regionDiameterPx);
+
+        ViewGroup.LayoutParams existingRLp = regionBackdrop.getLayoutParams();
+        LayoutParams rLp = (existingRLp instanceof LayoutParams)
+            ? (LayoutParams) existingRLp
+            : new LayoutParams((int) regionDiameterPx, (int) regionDiameterPx);
+        rLp.width = (int) regionDiameterPx;
+        rLp.height = (int) regionDiameterPx;
         rLp.leftMargin = (int) (fodCenterX - regionRadiusPx);
         rLp.topMargin = (int) (regionCenterY - regionRadiusPx);
         regionBackdrop.setLayoutParams(rLp);
 
         // 筛选启用的快捷项
-        List<ShortcutItem> activeItems = new ArrayList<>();
+        List<ShortcutItem> activeItems = new ArrayList<>(config.shortcuts.size());
         for (ShortcutItem item : config.shortcuts) {
             if (item.enabled) activeItems.add(item);
         }
@@ -253,33 +314,64 @@ public class CustomHyperOpenContainer extends FrameLayout {
             spacingOffsetPx
         );
 
-        // 实例化圆形气泡
-        for (int i = 0; i < points.size(); i++) {
-            ShortcutItem item = activeItems.get(i);
-            PointF pt = points.get(i);
+        if (canReuseExistingBubbles(activeItems, iconSizeInt)) {
+            // 复用已有气泡实例：仅更新目标坐标、Margin 与模糊通道，消除展开时的 View 树重建开销
+            for (int i = 0; i < points.size(); i++) {
+                CircularBubbleView bubble = bubbles.get(i);
+                PointF pt = points.get(i);
+                bubble.targetX = pt.x;
+                bubble.targetY = pt.y;
+                bubble.setMaterialStyle(resolvedStyle);
+                bubble.setBlurRadius(config.bubbleBlurRadius);
+                bubble.setBubblePaddingPercent(config.bubblePaddingPercent);
+                bubble.setIconAlpha(config.iconAlpha);
+                bubble.ensureBlurAndRefreshBackground();
 
-            CircularBubbleView bubble = new CircularBubbleView(
-                getContext(), item, resolvedStyle, (int) iconSizePx, systemuiClassLoader, config
-            );
-            bubble.targetX = pt.x;
-            bubble.targetY = pt.y;
+                LayoutParams bLp = (LayoutParams) bubble.getLayoutParams();
+                int newLeft = (int) (pt.x - iconSizePx / 2f);
+                int newTop = (int) (pt.y - iconSizePx / 2f);
+                if (bLp.leftMargin != newLeft || bLp.topMargin != newTop || bLp.width != iconSizeInt || bLp.height != iconSizeInt) {
+                    bLp.width = iconSizeInt;
+                    bLp.height = iconSizeInt;
+                    bLp.leftMargin = newLeft;
+                    bLp.topMargin = newTop;
+                    bubble.setLayoutParams(bLp);
+                }
+            }
+        } else {
+            bubblesContainer.removeAllViews();
+            bubbles.clear();
+            lastBuiltIconSizePx = iconSizeInt;
 
-            LayoutParams bLp = new LayoutParams((int) iconSizePx, (int) iconSizePx);
-            bLp.leftMargin = (int) (pt.x - iconSizePx / 2f);
-            bLp.topMargin = (int) (pt.y - iconSizePx / 2f);
-            bubble.setLayoutParams(bLp);
+            // 实例化圆形气泡
+            for (int i = 0; i < points.size(); i++) {
+                ShortcutItem item = activeItems.get(i);
+                PointF pt = points.get(i);
 
-            bubblesContainer.addView(bubble);
-            bubbles.add(bubble);
+                CircularBubbleView bubble = new CircularBubbleView(
+                    getContext(), item, resolvedStyle, iconSizeInt, systemuiClassLoader, config
+                );
+                bubble.targetX = pt.x;
+                bubble.targetY = pt.y;
+
+                LayoutParams bLp = new LayoutParams(iconSizeInt, iconSizeInt);
+                bLp.leftMargin = (int) (pt.x - iconSizePx / 2f);
+                bLp.topMargin = (int) (pt.y - iconSizePx / 2f);
+                bubble.setLayoutParams(bLp);
+
+                bubblesContainer.addView(bubble);
+                bubbles.add(bubble);
+            }
         }
 
         // 播放散开弹射动画 (从指纹中心散开)
-        playExpandAnimation(iconSizePx);
+        playExpandAnimation();
     }
 
-    private void playExpandAnimation(float iconSizePx) {
+    private void playExpandAnimation() {
         for (int i = 0; i < bubbles.size(); i++) {
-            CircularBubbleView b = bubbles.get(i);
+            final CircularBubbleView b = bubbles.get(i);
+            b.animate().cancel();
             float startTranslationX = fodCenterX - b.targetX;
             float startTranslationY = fodCenterY - b.targetY;
 
@@ -288,19 +380,38 @@ public class CustomHyperOpenContainer extends FrameLayout {
             b.setScaleX(0.1f);
             b.setScaleY(0.1f);
             b.setAlpha(0f);
+            b.syncBlurCornerRadiusWithViewScale();
 
+            // SkRRect::setRectRadii 在 RenderThread 合成时自动钳制圆角保持 100% 正圆，
+            // 无需设置每帧 ValueAnimator UpdateListener 反射调用 updateCornerRadius
             b.animate()
                 .translationX(0f)
                 .translationY(0f)
                 .scaleX(1.0f)
                 .scaleY(1.0f)
                 .alpha(1.0f)
-                .setInterpolator(new OvershootInterpolator(1.2f))
+                .setInterpolator(EXPAND_INTERPOLATOR)
                 .setDuration(320)
                 .setStartDelay(i * 15L)
-                .setUpdateListener(anim -> b.syncBlurCornerRadiusWithViewScale())
+                .setUpdateListener(null)
                 .withEndAction(() -> b.applyScale(1.0f))
                 .start();
+        }
+    }
+
+    /**
+     * 供手势监听线程（如 MiuiGestureMonitor binder 线程）高频调用：
+     * 折叠多个 120Hz/240Hz ACTION_MOVE 采样点，每帧最多在主线程执行一次 {@link #onFingerMove(float, float)}，
+     * 零 Runnable 对象分配。
+     */
+    public void scheduleFingerMove(float rawX, float rawY) {
+        this.pendingTouchX = rawX;
+        this.pendingTouchY = rawY;
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            movePending.set(false);
+            onFingerMove(rawX, rawY);
+        } else if (movePending.compareAndSet(false, true)) {
+            post(coalescedMoveTask);
         }
     }
 
@@ -315,8 +426,11 @@ public class CustomHyperOpenContainer extends FrameLayout {
         CircularBubbleView closest = null;
         float minDistance = Float.MAX_VALUE;
 
-        for (CircularBubbleView b : bubbles) {
-            float dist = (float) Math.hypot(touchX - b.targetX, touchY - b.targetY);
+        for (int i = 0, n = bubbles.size(); i < n; i++) {
+            CircularBubbleView b = bubbles.get(i);
+            float dx = touchX - b.targetX;
+            float dy = touchY - b.targetY;
+            float dist = (float) Math.hypot(dx, dy);
             if (dist < minDistance) {
                 minDistance = dist;
                 closest = b;
@@ -364,19 +478,33 @@ public class CustomHyperOpenContainer extends FrameLayout {
     }
 
     /**
-     * 手指松开时调用：执行目标动作或取消
+     * 提取当前选中的快捷方式、触发触觉反馈并立即复位气泡状态（供 SystemUI 异步分发启动使用，避免阻塞主线程 dismiss）
      */
-    public void onFingerUp() {
+    public ShortcutItem consumeSelectedAndReset() {
+        ShortcutItem selected = null;
         if (currentSelectedBubble != null) {
-            // 执行动作
-            currentSelectedBubble.item.execute(getContext());
+            selected = currentSelectedBubble.item;
             triggerHaptic();
         }
         resetBubbles();
+        return selected;
+    }
+
+    /**
+     * 手指松开时调用：执行目标动作或取消
+     */
+    public void onFingerUp() {
+        ShortcutItem selected = consumeSelectedAndReset();
+        if (selected != null) {
+            selected.execute(getContext());
+        }
     }
 
     public void resetBubbles() {
-        for (CircularBubbleView b : bubbles) {
+        movePending.set(false);
+        removeCallbacks(coalescedMoveTask);
+        for (int i = 0, n = bubbles.size(); i < n; i++) {
+            CircularBubbleView b = bubbles.get(i);
             b.setSelectedState(false);
             b.applyScale(1.0f);
             b.setIconAlpha(config != null ? config.iconAlpha : 1.0f);

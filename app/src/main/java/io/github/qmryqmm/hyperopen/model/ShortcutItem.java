@@ -15,6 +15,8 @@ import org.json.JSONObject;
 
 import java.io.DataOutputStream;
 
+import io.github.qmryqmm.hyperopen.util.IpcExecutor;
+
 public class ShortcutItem {
     private static final String TAG = "HyperOpen_Shortcut";
 
@@ -126,6 +128,22 @@ public class ShortcutItem {
             iconPackage, iconGlyph, tintColor, enabled,
             glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode
         );
+    }
+
+    /**
+     * 在后台 IPC 线程池中异步执行该快捷方式动作：
+     * 即使其他模块（如 freeformx）挂在 system_server 的 startActivity 路径上造成 Binder 线程拥堵，
+     * 也不会阻塞 SystemUI 主线程与手势收尾。
+     */
+    public void executeAsync(final Context context) {
+        if (context == null) return;
+        final Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        IpcExecutor.runAsync(new Runnable() {
+            @Override
+            public void run() {
+                execute(appCtx);
+            }
+        });
     }
 
     /**
@@ -315,7 +333,7 @@ public class ShortcutItem {
     }
 
     private static void runRootAmStart(String payload) {
-        new Thread(() -> {
+        IpcExecutor.runAsync(() -> {
             DataOutputStream os = null;
             Process p = null;
             try {
@@ -337,11 +355,11 @@ public class ShortcutItem {
                     try { p.destroy(); } catch (Throwable ignored) {}
                 }
             }
-        }).start();
+        });
     }
 
     private static void runShellCommand(String cmd) {
-        new Thread(() -> {
+        IpcExecutor.runAsync(() -> {
             try {
                 Process p = Runtime.getRuntime().exec("sh");
                 DataOutputStream os = new DataOutputStream(p.getOutputStream());
@@ -352,7 +370,7 @@ public class ShortcutItem {
             } catch (Throwable t) {
                 Log.e(TAG, "Shell 脚本执行异常", t);
             }
-        }).start();
+        });
     }
 
     private static void showToast(Context context, String msg) {

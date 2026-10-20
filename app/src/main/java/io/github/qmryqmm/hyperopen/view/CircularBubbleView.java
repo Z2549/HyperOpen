@@ -12,6 +12,8 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.lang.ref.WeakReference;
+
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig;
 import io.github.qmryqmm.hyperopen.factory.HyperOSBlurHelper;
 import io.github.qmryqmm.hyperopen.factory.HyperOSMaterialFactory;
@@ -38,6 +40,9 @@ public class CircularBubbleView extends FrameLayout {
     private final HyperOSMaterialFactory.CircularBubbleDrawable opticDrawable;
     @Nullable
     private Drawable systemBackdropBlurDrawable;
+    @Nullable
+    private WeakReference<Object> boundVriRef;
+    private float lastBlurCornerRadiusPx = -1f;
     private boolean systemBlurEnabled = true;
     @Nullable
     private ValueAnimator selectedScaleAnimator;
@@ -99,6 +104,8 @@ public class CircularBubbleView extends FrameLayout {
             this.systemBlurEnabled = enabled;
             if (!enabled) {
                 systemBackdropBlurDrawable = null;
+                boundVriRef = null;
+                lastBlurCornerRadiusPx = -1f;
             }
             ensureBlurAndRefreshBackground();
         }
@@ -115,7 +122,7 @@ public class CircularBubbleView extends FrameLayout {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        if (w > 0 && h > 0 && systemBlurEnabled) {
+        if (w > 0 && h > 0 && systemBlurEnabled && (w != oldw || h != oldh)) {
             ensureBlurAndRefreshBackground();
         }
     }
@@ -154,18 +161,26 @@ public class CircularBubbleView extends FrameLayout {
      * 确保 SurfaceFlinger 硬件 BackgroundBlurDrawable 已绑定至当前活跃的 ViewRootImpl，
      * 并与光学层合成为统一的圆形气泡背景。
      */
-    private void ensureBlurAndRefreshBackground() {
+    public void ensureBlurAndRefreshBackground() {
         int blurPx = getBlurRadiusPx();
         float scaledRadiusPx = getScaledBlurCornerRadiusPx();
         int tint = HyperOSMaterialFactory.getUnifiedBlurTint(activeStyle);
 
         if (blurPx <= 0) {
             systemBackdropBlurDrawable = null;
+            boundVriRef = null;
+            lastBlurCornerRadiusPx = -1f;
         } else {
-            if (systemBackdropBlurDrawable == null) {
+            Object currentVri = HyperOSBlurHelper.findViewRootImpl(this);
+            Object boundVri = boundVriRef != null ? boundVriRef.get() : null;
+
+            if (systemBackdropBlurDrawable == null || (currentVri != null && currentVri != boundVri)) {
                 systemBackdropBlurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, scaledRadiusPx, blurPx, tint);
+                boundVriRef = currentVri != null ? new WeakReference<>(currentVri) : null;
+                lastBlurCornerRadiusPx = scaledRadiusPx;
             } else {
                 HyperOSBlurHelper.updateBlurDrawable(systemBackdropBlurDrawable, scaledRadiusPx, blurPx, tint);
+                lastBlurCornerRadiusPx = scaledRadiusPx;
             }
             if (systemBackdropBlurDrawable != null) {
                 try {
@@ -186,11 +201,14 @@ public class CircularBubbleView extends FrameLayout {
         if (blurPx > 0 && systemBackdropBlurDrawable == null && isAttachedToWindow()) {
             float scaledRadiusPx = getScaledBlurCornerRadiusPx();
             int tint = HyperOSMaterialFactory.getUnifiedBlurTint(activeStyle);
+            Object currentVri = HyperOSBlurHelper.findViewRootImpl(this);
             systemBackdropBlurDrawable = HyperOSBlurHelper.createSystemBackdropBlurDrawable(this, scaledRadiusPx, blurPx, tint);
+            boundVriRef = currentVri != null ? new WeakReference<>(currentVri) : null;
+            lastBlurCornerRadiusPx = scaledRadiusPx;
         }
 
         if (blurPx > 0 && systemBackdropBlurDrawable != null) {
-            HyperOSBlurHelper.updateCornerRadius(systemBackdropBlurDrawable, getScaledBlurCornerRadiusPx());
+            syncBlurCornerRadiusWithViewScale();
             Drawable currentBg = getBackground();
             if (currentBg instanceof LayerDrawable && ((LayerDrawable) currentBg).getNumberOfLayers() == 2
                     && ((LayerDrawable) currentBg).getDrawable(0) == systemBackdropBlurDrawable
@@ -235,6 +253,7 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     public void resetBlur() {
+        animate().cancel();
         if (selectedScaleAnimator != null) {
             selectedScaleAnimator.cancel();
             selectedScaleAnimator = null;
@@ -247,6 +266,8 @@ public class CircularBubbleView extends FrameLayout {
         setScaleY(1.0f);
         opticDrawable.setSelected(false);
         systemBackdropBlurDrawable = null;
+        boundVriRef = null;
+        lastBlurCornerRadiusPx = -1f;
         refreshBackground();
     }
 
@@ -305,11 +326,15 @@ public class CircularBubbleView extends FrameLayout {
     }
 
     /**
-     * 保持 BackgroundBlurDrawable 圆角半径始终覆盖缩放后正圆
+     * 保持 BackgroundBlurDrawable 圆角半径始终覆盖缩放后正圆（仅在数值发生变化时才触发反射更新）
      */
     public void syncBlurCornerRadiusWithViewScale() {
         if (systemBackdropBlurDrawable != null) {
-            HyperOSBlurHelper.updateCornerRadius(systemBackdropBlurDrawable, getScaledBlurCornerRadiusPx());
+            float r = getScaledBlurCornerRadiusPx();
+            if (Math.abs(r - lastBlurCornerRadiusPx) > 0.5f) {
+                lastBlurCornerRadiusPx = r;
+                HyperOSBlurHelper.updateCornerRadius(systemBackdropBlurDrawable, r);
+            }
         }
     }
 

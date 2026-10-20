@@ -6,6 +6,7 @@ import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -15,10 +16,14 @@ import androidx.compose.ui.graphics.vector.VectorGroup
 import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.toPath
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 将 Compose Miuix [ImageVector] 真实矢量指令转为 Android 平台 [Drawable]，
  * 支持圆形纯色/微透/反色衬底渲染与呼吸辉光。
+ *
+ * 性能优化：对每个 [ImageVector] 的解析后 [android.graphics.Path]、线帽属性与总边界框做进程级静态缓存，
+ * 避免每次构建气泡时重复解析 SVG PathNode、矩阵变换与 computeBounds。
  */
 class MiuixVectorDrawable(
     val vector: ImageVector,
@@ -33,10 +38,10 @@ class MiuixVectorDrawable(
         val paint: Paint,
     )
 
-    private val elements = mutableListOf<PathElement>()
+    private val elements = ArrayList<PathElement>(8)
     private val padPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val padBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val totalBounds = android.graphics.RectF()
+    private val totalBounds: RectF
 
     // 图标前景色
     private val iconColor: Int = when {
@@ -46,8 +51,6 @@ class MiuixVectorDrawable(
     }
 
     init {
-        val totalCombinedPath = android.graphics.Path()
-
         if (padEnabled) {
             val baseColor = if (padColor != 0) padColor else tintColor
             padPaint.style = Paint.Style.FILL
@@ -62,53 +65,22 @@ class MiuixVectorDrawable(
             padBorderPaint.color = Color.argb(45, 255, 255, 255)
         }
 
-        fun traverse(group: VectorGroup, parentMatrix: android.graphics.Matrix) {
-            val groupMatrix = android.graphics.Matrix(parentMatrix).apply {
-                preTranslate(group.translationX, group.translationY)
-                preTranslate(group.pivotX, group.pivotY)
-                preRotate(group.rotation)
-                preScale(group.scaleX, group.scaleY)
-                preTranslate(-group.pivotX, -group.pivotY)
-            }
+        val parsed = getOrParseVector(vector)
+        totalBounds = parsed.totalBounds
 
-            for (node in group) {
-                when (node) {
-                    is VectorPath -> {
-                        val originalPath = node.pathData.toPath().asAndroidPath()
-                        val transformedPath = android.graphics.Path()
-                        originalPath.transform(groupMatrix, transformedPath)
-                        totalCombinedPath.addPath(transformedPath)
-
-                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = iconColor
-                        }
-
-                        if (node.stroke != null) {
-                            paint.style = Paint.Style.STROKE
-                            paint.strokeWidth = if (node.strokeLineWidth > 0f) node.strokeLineWidth else 1.75f
-                            paint.strokeCap = when (node.strokeLineCap) {
-                                StrokeCap.Round -> Paint.Cap.ROUND
-                                StrokeCap.Square -> Paint.Cap.SQUARE
-                                else -> Paint.Cap.BUTT
-                            }
-                            paint.strokeJoin = when (node.strokeLineJoin) {
-                                StrokeJoin.Round -> Paint.Join.ROUND
-                                StrokeJoin.Bevel -> Paint.Join.BEVEL
-                                else -> Paint.Join.MITER
-                            }
-                            paint.strokeMiter = node.strokeLineMiter
-                        } else {
-                            paint.style = Paint.Style.FILL
-                        }
-
-                        elements.add(PathElement(transformedPath, paint))
-                    }
-                    is VectorGroup -> traverse(node, groupMatrix)
+        for (spec in parsed.nodes) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = iconColor
+                style = spec.style
+                if (spec.style == Paint.Style.STROKE) {
+                    strokeWidth = spec.strokeWidth
+                    strokeCap = spec.strokeCap
+                    strokeJoin = spec.strokeJoin
+                    strokeMiter = spec.strokeMiter
                 }
             }
+            elements.add(PathElement(spec.path, paint))
         }
-        traverse(vector.root, android.graphics.Matrix())
-        totalCombinedPath.computeBounds(totalBounds, true)
     }
 
     override fun draw(canvas: Canvas) {
@@ -166,6 +138,95 @@ class MiuixVectorDrawable(
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
     companion object {
+        private class ParsedNodeSpec(
+            val path: android.graphics.Path,
+            val style: Paint.Style,
+            val strokeWidth: Float,
+            val strokeCap: Paint.Cap,
+            val strokeJoin: Paint.Join,
+            val strokeMiter: Float,
+        )
+
+        private class ParsedVector(
+            val nodes: List<ParsedNodeSpec>,
+            val totalBounds: RectF,
+        )
+
+        private val PARSED_VECTOR_CACHE = ConcurrentHashMap<ImageVector, ParsedVector>()
+
+        private fun getOrParseVector(vector: ImageVector): ParsedVector {
+            PARSED_VECTOR_CACHE[vector]?.let { return it }
+
+            val nodes = ArrayList<ParsedNodeSpec>(8)
+            val totalCombinedPath = android.graphics.Path()
+
+            fun traverse(group: VectorGroup, parentMatrix: android.graphics.Matrix) {
+                val groupMatrix = android.graphics.Matrix(parentMatrix).apply {
+                    preTranslate(group.translationX, group.translationY)
+                    preTranslate(group.pivotX, group.pivotY)
+                    preRotate(group.rotation)
+                    preScale(group.scaleX, group.scaleY)
+                    preTranslate(-group.pivotX, -group.pivotY)
+                }
+
+                for (node in group) {
+                    when (node) {
+                        is VectorPath -> {
+                            val originalPath = node.pathData.toPath().asAndroidPath()
+                            val transformedPath = android.graphics.Path()
+                            originalPath.transform(groupMatrix, transformedPath)
+                            totalCombinedPath.addPath(transformedPath)
+
+                            if (node.stroke != null) {
+                                val style = Paint.Style.STROKE
+                                val strokeWidth = if (node.strokeLineWidth > 0f) node.strokeLineWidth else 1.75f
+                                val strokeCap = when (node.strokeLineCap) {
+                                    StrokeCap.Round -> Paint.Cap.ROUND
+                                    StrokeCap.Square -> Paint.Cap.SQUARE
+                                    else -> Paint.Cap.BUTT
+                                }
+                                val strokeJoin = when (node.strokeLineJoin) {
+                                    StrokeJoin.Round -> Paint.Join.ROUND
+                                    StrokeJoin.Bevel -> Paint.Join.BEVEL
+                                    else -> Paint.Join.MITER
+                                }
+                                nodes.add(
+                                    ParsedNodeSpec(
+                                        path = transformedPath,
+                                        style = style,
+                                        strokeWidth = strokeWidth,
+                                        strokeCap = strokeCap,
+                                        strokeJoin = strokeJoin,
+                                        strokeMiter = node.strokeLineMiter,
+                                    )
+                                )
+                            } else {
+                                nodes.add(
+                                    ParsedNodeSpec(
+                                        path = transformedPath,
+                                        style = Paint.Style.FILL,
+                                        strokeWidth = 0f,
+                                        strokeCap = Paint.Cap.BUTT,
+                                        strokeJoin = Paint.Join.MITER,
+                                        strokeMiter = 4f,
+                                    )
+                                )
+                            }
+                        }
+                        is VectorGroup -> traverse(node, groupMatrix)
+                    }
+                }
+            }
+
+            traverse(vector.root, android.graphics.Matrix())
+            val bounds = RectF()
+            totalCombinedPath.computeBounds(bounds, true)
+
+            val parsed = ParsedVector(nodes, bounds)
+            PARSED_VECTOR_CACHE.putIfAbsent(vector, parsed)
+            return parsed
+        }
+
         private fun blendWithWhite(color: Int, ratio: Float): Int {
             val r = ratio.coerceIn(0f, 1f)
             val a = Color.alpha(color)

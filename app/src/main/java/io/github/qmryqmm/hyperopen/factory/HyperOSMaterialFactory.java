@@ -83,6 +83,149 @@ public class HyperOSMaterialFactory {
     }
 
     /**
+     * 正圆形物理光学层的 Shader 预构建缓存：
+     * 气泡与视界底衬的尺寸在布局后恒定（鱼眼缩放走 RenderNode setScaleX/Y，不改变 bounds），
+     * 缓存 Shader 后可在 onDraw 中实现 0 对象分配、0 Native SkShader 抖动。
+     */
+    public static final class CircularOpticsCache {
+        private int cachedW = -1;
+        private int cachedH = -1;
+        private int cachedStyle = -1;
+        private boolean cachedSelected = false;
+
+        Shader lensRefraction;
+        Shader specularAndCaustic;
+        Shader crestShader;
+        Shader borderGrad;
+        Shader radialMatte;
+        int gaussianBorderColor;
+
+        void ensure(int width, int height, int style, boolean isSelected) {
+            if (cachedW == width && cachedH == height && cachedStyle == style && cachedSelected == isSelected) {
+                return;
+            }
+            cachedW = width;
+            cachedH = height;
+            cachedStyle = style;
+            cachedSelected = isSelected;
+
+            float cx = width / 2f;
+            float cy = height / 2f;
+            float radius = Math.min(cx, cy) - 2.0f;
+            if (radius <= 0f) return;
+
+            if (style == STYLE_SOFT_GLASS) {
+                int centerClear = isSelected ? 0x10FFFFFF : 0x04FFFFFF;
+                int midRefract = isSelected ? 0x18FFFFFF : 0x0AFFFFFF;
+                int innerRimCaustic = isSelected ? 0x52FFFFFF : 0x34FFFFFF;
+                int outerEdge = isSelected ? 0x22FFFFFF : 0x12FFFFFF;
+                lensRefraction = new RadialGradient(
+                    cx, cy - radius * 0.08f, radius,
+                    new int[]{centerClear, midRefract, innerRimCaustic, outerEdge},
+                    new float[]{0f, 0.62f, 0.90f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+
+                int topSpecular = isSelected ? 0xB0FFFFFF : 0x82FFFFFF;
+                int topFade = isSelected ? 0x32FFFFFF : 0x1EFFFFFF;
+                int bottomCaustic = isSelected ? 0x3CFFFFFF : 0x24FFFFFF;
+                specularAndCaustic = new LinearGradient(
+                    0, cy - radius, 0, cy + radius,
+                    new int[]{topSpecular, topFade, 0x00FFFFFF, 0x00FFFFFF, bottomCaustic},
+                    new float[]{0f, 0.24f, 0.48f, 0.78f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+
+                float crescentRadius = radius * 0.91f;
+                if (crescentRadius > 2f) {
+                    int crestTop = isSelected ? 0x68FFFFFF : 0x46FFFFFF;
+                    crestShader = new RadialGradient(
+                        cx, cy - radius * 0.56f, radius * 0.72f,
+                        new int[]{crestTop, 0x12FFFFFF, 0x00FFFFFF},
+                        new float[]{0f, 0.55f, 1f},
+                        Shader.TileMode.CLAMP
+                    );
+                } else {
+                    crestShader = null;
+                }
+
+                int bTop = isSelected ? 0xFFFFFFFF : 0xEEFFFFFF;
+                int bUpperMid = isSelected ? 0x90FFFFFF : 0x58FFFFFF;
+                int bWaist = isSelected ? 0x42FFFFFF : 0x22FFFFFF;
+                int bBottom = isSelected ? 0x98FFFFFF : 0x64FFFFFF;
+                borderGrad = new LinearGradient(
+                    cx - radius * 0.25f, cy - radius, cx + radius * 0.25f, cy + radius,
+                    new int[]{bTop, bUpperMid, bWaist, bBottom},
+                    new float[]{0f, 0.35f, 0.72f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                radialMatte = null;
+            } else {
+                int d0 = isSelected ? 0x28FFFFFF : 0x14FFFFFF;
+                int d1 = isSelected ? 0x14FFFFFF : 0x0AFFFFFF;
+                radialMatte = new RadialGradient(
+                    cx, cy, radius,
+                    new int[]{d0, d1, 0x00FFFFFF},
+                    new float[]{0f, 0.70f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                gaussianBorderColor = isSelected ? 0x98FFFFFF : 0x45FFFFFF;
+                lensRefraction = null;
+                specularAndCaustic = null;
+                crestShader = null;
+                borderGrad = null;
+            }
+        }
+    }
+
+    /**
+     * 使用预构建的 CircularOpticsCache 绘制正圆形物理光学层（onDraw 零分配）
+     */
+    public static void drawUnifiedCircularOpticsCached(
+        @NonNull Canvas canvas,
+        int width,
+        int height,
+        int style,
+        boolean isSelected,
+        @NonNull Paint bgPaint,
+        @NonNull Paint highlightPaint,
+        @NonNull Paint borderPaint,
+        @NonNull CircularOpticsCache cache
+    ) {
+        if (width <= 0 || height <= 0) return;
+        float cx = width / 2f;
+        float cy = height / 2f;
+        float radius = Math.min(cx, cy) - 2.0f;
+        if (radius <= 0f) return;
+
+        cache.ensure(width, height, style, isSelected);
+
+        if (style == STYLE_SOFT_GLASS) {
+            bgPaint.setShader(cache.lensRefraction);
+            canvas.drawCircle(cx, cy, radius, bgPaint);
+
+            highlightPaint.setShader(cache.specularAndCaustic);
+            canvas.drawCircle(cx, cy, radius, highlightPaint);
+
+            float crescentRadius = radius * 0.91f;
+            if (crescentRadius > 2f && cache.crestShader != null) {
+                highlightPaint.setShader(cache.crestShader);
+                canvas.drawCircle(cx, cy, crescentRadius, highlightPaint);
+            }
+
+            borderPaint.setShader(cache.borderGrad);
+            canvas.drawCircle(cx, cy, radius, borderPaint);
+        } else {
+            bgPaint.setShader(cache.radialMatte);
+            canvas.drawCircle(cx, cy, radius, bgPaint);
+
+            borderPaint.setShader(null);
+            borderPaint.setColor(cache.gaussianBorderColor);
+            canvas.drawCircle(cx, cy, radius, borderPaint);
+        }
+    }
+
+    /**
      * 统一绘制正圆形物理光学层（供 CircularRegionBackdropView 与 CircularBubbleDrawable 共同复用，确保全组件视觉 100% 统一）：
      * - 液态玻璃 (STYLE_SOFT_GLASS)：中空清透凸透镜核心 + 边缘全反射内壁微光焦散 + 顶部弯月镜面天光切面 + 底部折射漫反射 + 双极菲涅尔晶亮圆环描边
      * - 高斯模糊 (STYLE_GAUSSIAN_BLUR)：沉稳微晶哑光磨砂漫反射底衬 + 细腻全包围微光描边（无切面反光）
@@ -191,6 +334,14 @@ public class HyperOSMaterialFactory {
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+        private final RectF pillRect = new RectF();
+        private int cachedW = -1;
+        private int cachedH = -1;
+        private int cachedStyle = -1;
+        private Shader cachedBgShader;
+        private Shader cachedHlShader;
+        private Shader cachedBorderShader;
+
         public HeaderPillDrawable(int style) {
             this.style = style;
             borderPaint.setStyle(Paint.Style.STROKE);
@@ -204,63 +355,73 @@ public class HyperOSMaterialFactory {
             }
         }
 
+        private void ensureShaders(int width, int height) {
+            if (cachedW == width && cachedH == height && cachedStyle == style) {
+                return;
+            }
+            cachedW = width;
+            cachedH = height;
+            cachedStyle = style;
+            pillRect.set(1.5f, 1.5f, width - 1.5f, height - 1.5f);
+
+            if (style == STYLE_SOFT_GLASS) {
+                cachedBgShader = new LinearGradient(
+                    0, 0, 0, height,
+                    new int[]{0x28FFFFFF, 0x06FFFFFF, 0x04FFFFFF, 0x1EFFFFFF},
+                    new float[]{0f, 0.38f, 0.72f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                cachedHlShader = new LinearGradient(
+                    0, 0, 0, height,
+                    new int[]{0x80FFFFFF, 0x1EFFFFFF, 0x00FFFFFF, 0x00FFFFFF, 0x22FFFFFF},
+                    new float[]{0f, 0.25f, 0.48f, 0.78f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                cachedBorderShader = new LinearGradient(
+                    0, 0, width * 0.15f, height,
+                    new int[]{0xEEFFFFFF, 0x58FFFFFF, 0x22FFFFFF, 0x64FFFFFF},
+                    new float[]{0f, 0.35f, 0.72f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+            } else {
+                cachedBgShader = new LinearGradient(
+                    0, 0, 0, height,
+                    new int[]{0x14FFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
+                    new float[]{0f, 0.70f, 1f},
+                    Shader.TileMode.CLAMP
+                );
+                cachedHlShader = null;
+                cachedBorderShader = null;
+            }
+        }
+
         @Override
         public void draw(@NonNull Canvas canvas) {
             int width = getBounds().width();
             int height = getBounds().height();
             if (width <= 0 || height <= 0) return;
 
+            ensureShaders(width, height);
             float radius = Math.min(width, height) / 2f;
-            RectF pill = new RectF(1.5f, 1.5f, width - 1.5f, height - 1.5f);
 
             if (style == STYLE_SOFT_GLASS) {
                 // ================= 液态玻璃（与圆形视界区域底衬完全统一） =================
-                // 1. 胶囊表面张力折射底衬（顶底微润、中心清透）
-                LinearGradient bgShader = new LinearGradient(
-                    0, 0, 0, height,
-                    new int[]{0x28FFFFFF, 0x06FFFFFF, 0x04FFFFFF, 0x1EFFFFFF},
-                    new float[]{0f, 0.38f, 0.72f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                bgPaint.setShader(bgShader);
-                canvas.drawRoundRect(pill, radius, radius, bgPaint);
+                bgPaint.setShader(cachedBgShader);
+                canvas.drawRoundRect(pillRect, radius, radius, bgPaint);
 
-                // 2. 顶部天光镜面切面与底部回光
-                LinearGradient hlShader = new LinearGradient(
-                    0, 0, 0, height,
-                    new int[]{0x80FFFFFF, 0x1EFFFFFF, 0x00FFFFFF, 0x00FFFFFF, 0x22FFFFFF},
-                    new float[]{0f, 0.25f, 0.48f, 0.78f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                highlightPaint.setShader(hlShader);
-                canvas.drawRoundRect(pill, radius, radius, highlightPaint);
+                highlightPaint.setShader(cachedHlShader);
+                canvas.drawRoundRect(pillRect, radius, radius, highlightPaint);
 
-                // 3. 双极菲涅尔镜面高亮描边（顶亮、腰透、底润）
-                LinearGradient borderShader = new LinearGradient(
-                    0, 0, width * 0.15f, height,
-                    new int[]{0xEEFFFFFF, 0x58FFFFFF, 0x22FFFFFF, 0x64FFFFFF},
-                    new float[]{0f, 0.35f, 0.72f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                borderPaint.setShader(borderShader);
-                canvas.drawRoundRect(pill, radius, radius, borderPaint);
-
+                borderPaint.setShader(cachedBorderShader);
+                canvas.drawRoundRect(pillRect, radius, radius, borderPaint);
             } else {
                 // ================= 高斯模糊（与圆形视界区域底衬完全统一的沉稳哑光微晶磨砂） =================
-                // 1. 沉稳微晶哑光磨砂漫反射底衬
-                LinearGradient blurBgShader = new LinearGradient(
-                    0, 0, 0, height,
-                    new int[]{0x14FFFFFF, 0x0AFFFFFF, 0x00FFFFFF},
-                    new float[]{0f, 0.70f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                bgPaint.setShader(blurBgShader);
-                canvas.drawRoundRect(pill, radius, radius, bgPaint);
+                bgPaint.setShader(cachedBgShader);
+                canvas.drawRoundRect(pillRect, radius, radius, bgPaint);
 
-                // 2. 纯净全包围哑光边框（无切面反光）
                 borderPaint.setShader(null);
                 borderPaint.setColor(0x45FFFFFF);
-                canvas.drawRoundRect(pill, radius, radius, borderPaint);
+                canvas.drawRoundRect(pillRect, radius, radius, borderPaint);
             }
         }
 
@@ -284,7 +445,7 @@ public class HyperOSMaterialFactory {
 
     /**
      * 专属自定义圆形气泡材质 Drawable：
-     * 直接复用 drawUnifiedCircularOptics，使图标气泡留白区域的液态玻璃与高斯模糊样式
+     * 直接复用 drawUnifiedCircularOpticsCached，使图标气泡留白区域的液态玻璃与高斯模糊样式
      * 同圆形视界区域底衬 (CircularRegionBackdropView) 保持 100% 统一。
      */
     public static class CircularBubbleDrawable extends Drawable {
@@ -298,6 +459,10 @@ public class HyperOSMaterialFactory {
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint outerAuraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private final CircularOpticsCache opticsCache = new CircularOpticsCache();
+        private int glowCachedW = -1;
+        private int glowCachedH = -1;
 
         public CircularBubbleDrawable(int style, int tintColor, boolean isSelected) {
             this(style, tintColor, isSelected, true);
@@ -334,6 +499,32 @@ public class HyperOSMaterialFactory {
             }
         }
 
+        private void ensureGlowShaders(int width, int height, float cx, float cy, float radius) {
+            if (glowCachedW == width && glowCachedH == height) {
+                return;
+            }
+            glowCachedW = width;
+            glowCachedH = height;
+
+            int coreColor = (tintColor & 0x00FFFFFF) | 0x66000000;
+            RadialGradient glowShader = new RadialGradient(
+                cx, cy, radius * 0.88f,
+                new int[]{coreColor, (coreColor & 0x00FFFFFF) | 0x14000000, 0x00000000},
+                new float[]{0f, 0.55f, 1f},
+                Shader.TileMode.CLAMP
+            );
+            glowPaint.setShader(glowShader);
+
+            int auraColor = (tintColor & 0x00FFFFFF) | 0x38000000;
+            RadialGradient auraShader = new RadialGradient(
+                cx, cy, radius,
+                new int[]{0x00000000, auraColor, 0x00000000},
+                new float[]{0.68f, 0.88f, 1f},
+                Shader.TileMode.CLAMP
+            );
+            outerAuraPaint.setShader(auraShader);
+        }
+
         @Override
         public void draw(@NonNull Canvas canvas) {
             int width = getBounds().width();
@@ -345,29 +536,15 @@ public class HyperOSMaterialFactory {
             float radius = Math.min(cx, cy) - 2.0f;
             if (radius <= 0f) return;
 
-            // 1~3. 统一绘制与圆形视界区域底衬完全一致的液态玻璃 / 高斯模糊光学层
-            drawUnifiedCircularOptics(canvas, width, height, style, isSelected, bgPaint, highlightPaint, borderPaint);
+            // 1~3. 统一绘制与圆形视界区域底衬完全一致的液态玻璃 / 高斯模糊光学层（缓存 Shader，0 分配）
+            drawUnifiedCircularOpticsCached(
+                canvas, width, height, style, isSelected, bgPaint, highlightPaint, borderPaint, opticsCache
+            );
 
             // 4. 选中状态下的主题色内聚呼吸柔光微晕（严格收敛在 radius 内部，绝不越界被方形 View 边界截成八边形）
             if (isSelected && glowEnabled) {
-                int coreColor = (tintColor & 0x00FFFFFF) | 0x66000000;
-                RadialGradient glowShader = new RadialGradient(
-                    cx, cy, radius * 0.88f,
-                    new int[]{coreColor, (coreColor & 0x00FFFFFF) | 0x14000000, 0x00000000},
-                    new float[]{0f, 0.55f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                glowPaint.setShader(glowShader);
+                ensureGlowShaders(width, height, cx, cy, radius);
                 canvas.drawCircle(cx, cy, radius, glowPaint);
-
-                int auraColor = (tintColor & 0x00FFFFFF) | 0x38000000;
-                RadialGradient auraShader = new RadialGradient(
-                    cx, cy, radius,
-                    new int[]{0x00000000, auraColor, 0x00000000},
-                    new float[]{0.68f, 0.88f, 1f},
-                    Shader.TileMode.CLAMP
-                );
-                outerAuraPaint.setShader(auraShader);
                 canvas.drawCircle(cx, cy, radius, outerAuraPaint);
             }
         }
