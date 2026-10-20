@@ -61,12 +61,20 @@ public class HyperOSMaterialFactory {
         return new HeaderPillDrawable(style);
     }
 
+    public static Drawable createHeaderPillDrawable(int style, float dimAlpha) {
+        return new HeaderPillDrawable(style, dimAlpha);
+    }
+
+    public static Drawable createCompositeHeaderPillDrawable(@Nullable View view, int style, int blurRadiusPx) {
+        return createCompositeHeaderPillDrawable(view, style, blurRadiusPx, 0f);
+    }
+
     /**
      * 创建结合系统原生 BackgroundBlur 与 HeaderPill 物理光学样式的复合胶囊背景。
      * 模糊底色混合与光学参数与圆形视界区域底衬完全统一。
      */
-    public static Drawable createCompositeHeaderPillDrawable(@Nullable View view, int style, int blurRadiusPx) {
-        HeaderPillDrawable opticDrawable = new HeaderPillDrawable(style);
+    public static Drawable createCompositeHeaderPillDrawable(@Nullable View view, int style, int blurRadiusPx, float dimAlpha) {
+        HeaderPillDrawable opticDrawable = new HeaderPillDrawable(style, dimAlpha);
         if (view == null || blurRadiusPx <= 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return opticDrawable;
         }
@@ -333,6 +341,8 @@ public class HyperOSMaterialFactory {
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float dimAlpha = 0f;
 
         private final RectF pillRect = new RectF();
         private int cachedW = -1;
@@ -343,9 +353,21 @@ public class HyperOSMaterialFactory {
         private Shader cachedBorderShader;
 
         public HeaderPillDrawable(int style) {
+            this(style, 0f);
+        }
+
+        public HeaderPillDrawable(int style, float dimAlpha) {
             this.style = style;
+            setDimAlpha(dimAlpha);
             borderPaint.setStyle(Paint.Style.STROKE);
             borderPaint.setStrokeWidth(2.0f);
+        }
+
+        public void setDimAlpha(float a) {
+            this.dimAlpha = Math.max(0f, Math.min(1f, a));
+            dimPaint.setStyle(Paint.Style.FILL);
+            dimPaint.setColor(android.graphics.Color.argb(Math.round(this.dimAlpha * 255f), 0, 0, 0));
+            invalidateSelf();
         }
 
         public void setStyle(int newStyle) {
@@ -404,6 +426,11 @@ public class HyperOSMaterialFactory {
             ensureShaders(width, height);
             float radius = Math.min(width, height) / 2f;
 
+            // 0. 背景压暗层（位于光学层之下，与模糊层叠加）
+            if (dimAlpha > 0.001f) {
+                canvas.drawRoundRect(pillRect, radius, radius, dimPaint);
+            }
+
             if (style == STYLE_SOFT_GLASS) {
                 // ================= 液态玻璃（与圆形视界区域底衬完全统一） =================
                 bgPaint.setShader(cachedBgShader);
@@ -459,6 +486,8 @@ public class HyperOSMaterialFactory {
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint outerAuraPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float dimAlpha = 0f;
 
         private final CircularOpticsCache opticsCache = new CircularOpticsCache();
         private int glowCachedW = -1;
@@ -499,6 +528,16 @@ public class HyperOSMaterialFactory {
             }
         }
 
+        public void setDimAlpha(float a) {
+            float c = Math.max(0f, Math.min(1f, a));
+            if (Math.abs(this.dimAlpha - c) > 0.0005f) {
+                this.dimAlpha = c;
+                dimPaint.setStyle(Paint.Style.FILL);
+                dimPaint.setColor(android.graphics.Color.argb(Math.round(c * 255f), 0, 0, 0));
+                invalidateSelf();
+            }
+        }
+
         private void ensureGlowShaders(int width, int height, float cx, float cy, float radius) {
             if (glowCachedW == width && glowCachedH == height) {
                 return;
@@ -535,6 +574,11 @@ public class HyperOSMaterialFactory {
             float cy = height / 2f;
             float radius = Math.min(cx, cy) - 2.0f;
             if (radius <= 0f) return;
+
+            // 0. 气泡留白区域背景压暗（位于光学层之下）
+            if (dimAlpha > 0.001f) {
+                canvas.drawCircle(cx, cy, radius, dimPaint);
+            }
 
             // 1~3. 统一绘制与圆形视界区域底衬完全一致的液态玻璃 / 高斯模糊光学层（缓存 Shader，0 分配）
             drawUnifiedCircularOpticsCached(

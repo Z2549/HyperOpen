@@ -94,6 +94,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
         regionBackdrop.setStyle(resolvedStyle);
         if (config != null) {
             regionBackdrop.setBlurRadius(config.regionBlurRadius);
+                regionBackdrop.setDimAlpha(config.regionDimAlpha);
         }
         addView(regionBackdrop);
 
@@ -113,6 +114,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
             if (regionBackdrop != null) {
                 regionBackdrop.setStyle(resolvedStyle);
                 regionBackdrop.setBlurRadius(config.regionBlurRadius);
+                regionBackdrop.setDimAlpha(config.regionDimAlpha);
             }
             // 顶部提示参数（位置、文字大小、居中、模糊与背景）热生效
             applyHeaderPillStyleAndLayout();
@@ -120,6 +122,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
             for (CircularBubbleView b : bubbles) {
                 b.setMaterialStyle(resolvedStyle);
                 b.setBlurRadius(config.bubbleBlurRadius);
+                b.setDimAlpha(config.bubbleDimAlpha);
                 b.setBubblePaddingPercent(config.bubblePaddingPercent);
                 b.setIconAlpha(config.iconAlpha);
             }
@@ -282,7 +285,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
         if (show) {
             int blurDp = config != null ? config.headerBlurRadius : 25;
             int blurPx = blurDp > 0 ? dpToPx(blurDp) : 0;
-            headerPill.setBackground(HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx));
+            headerPill.setBackground(HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx, config != null ? config.headerDimAlpha : 0f));
             headerPill.setClipToOutline(true);
         } else {
             if (headerPill.getBackground() != null) {
@@ -369,6 +372,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
         regionBackdrop.setVisibility(config.showRegionBg ? View.VISIBLE : View.GONE);
         regionBackdrop.setStyle(resolvedStyle);
         regionBackdrop.setBlurRadius(config.regionBlurRadius);
+                regionBackdrop.setDimAlpha(config.regionDimAlpha);
         regionBackdrop.updateGeometry(regionRadiusPx);
 
         ViewGroup.LayoutParams existingRLp = regionBackdrop.getLayoutParams();
@@ -407,6 +411,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 bubble.targetY = pt.y;
                 bubble.setMaterialStyle(resolvedStyle);
                 bubble.setBlurRadius(config.bubbleBlurRadius);
+            bubble.setDimAlpha(config.bubbleDimAlpha);
                 bubble.setBubblePaddingPercent(config.bubblePaddingPercent);
                 bubble.setIconAlpha(config.iconAlpha);
                 bubble.ensureBlurAndRefreshBackground();

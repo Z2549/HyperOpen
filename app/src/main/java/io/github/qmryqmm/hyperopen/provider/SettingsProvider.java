@@ -130,6 +130,9 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putFloat("fisheye_zoom_alpha", sp.getFloat("fisheye_zoom_alpha", 1.0f));
                 bundle.putFloat("fullscreen_blur_mask_alpha", sp.getFloat("fullscreen_blur_mask_alpha", 1.0f));
                 bundle.putFloat("fullscreen_dim_alpha", sp.getFloat("fullscreen_dim_alpha", 0.45f));
+                bundle.putFloat("header_dim_alpha", sp.getFloat("header_dim_alpha", 0f));
+                bundle.putFloat("region_dim_alpha", sp.getFloat("region_dim_alpha", 0f));
+                bundle.putFloat("bubble_dim_alpha", sp.getFloat("bubble_dim_alpha", 0f));
                 bundle.putInt("expand_delay_ms", sp.getInt("expand_delay_ms", 0));
                 bundle.putBoolean("haptic_enabled", sp.getBoolean("haptic_enabled", true));
                 bundle.putInt("haptic_strength", sp.getInt("haptic_strength", 140));

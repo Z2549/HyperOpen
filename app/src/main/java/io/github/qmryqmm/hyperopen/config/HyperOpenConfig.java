@@ -98,6 +98,9 @@ public class HyperOpenConfig {
     public float fullscreenBlurMaskAlpha = 1.0f;
     /** 唤醒指纹快捷方式时全屏遮罩背景压暗程度 (0.0f ~ 1.0f，默认 0.45f) */
     public float fullscreenDimAlpha = 0.45f;
+    public float headerDimAlpha = 0f;   // 顶部提示胶囊背景压暗 (0.0 ~ 1.0)
+    public float regionDimAlpha = 0f;   // 圆形视界背景压暗 (0.0 ~ 1.0)
+    public float bubbleDimAlpha = 0f;   // 图标气泡留白区域压暗 (0.0 ~ 1.0)
     /** 解锁长按唤出快捷方式时图标延迟显示时间 (0 ~ 1500 ms，默认 0 ms 即遵循系统长按阈值立即散开) */
     public int expandDelayMs = 0;
 
@@ -302,6 +305,9 @@ public class HyperOpenConfig {
                     config.fisheyeZoomAlpha = bundle.getFloat("fisheye_zoom_alpha", 1.0f);
                     config.fullscreenBlurMaskAlpha = bundle.getFloat("fullscreen_blur_mask_alpha", 1.0f);
                     config.fullscreenDimAlpha = bundle.getFloat("fullscreen_dim_alpha", 0.45f);
+                    config.headerDimAlpha = bundle.getFloat("header_dim_alpha", 0f);
+                    config.regionDimAlpha = bundle.getFloat("region_dim_alpha", 0f);
+                    config.bubbleDimAlpha = bundle.getFloat("bubble_dim_alpha", 0f);
                     config.expandDelayMs = bundle.getInt("expand_delay_ms", 0);
                     config.hapticEnabled = bundle.getBoolean("haptic_enabled", true);
                     config.hapticStrength = bundle.getInt("haptic_strength", 140);
@@ -362,6 +368,9 @@ public class HyperOpenConfig {
         config.fisheyeZoomAlpha = xPrefs.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = xPrefs.getFloat("fullscreen_blur_mask_alpha", 1.0f);
         config.fullscreenDimAlpha = xPrefs.getFloat("fullscreen_dim_alpha", 0.45f);
+        config.headerDimAlpha = xPrefs.getFloat("header_dim_alpha", 0f);
+        config.regionDimAlpha = xPrefs.getFloat("region_dim_alpha", 0f);
+        config.bubbleDimAlpha = xPrefs.getFloat("bubble_dim_alpha", 0f);
         config.expandDelayMs = xPrefs.getInt("expand_delay_ms", 0);
         config.hapticEnabled = xPrefs.getBoolean("haptic_enabled", true);
         config.hapticStrength = xPrefs.getInt("haptic_strength", 140);
@@ -417,6 +426,9 @@ public class HyperOpenConfig {
         config.fisheyeZoomAlpha = sp.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = sp.getFloat("fullscreen_blur_mask_alpha", 1.0f);
         config.fullscreenDimAlpha = sp.getFloat("fullscreen_dim_alpha", 0.45f);
+        config.headerDimAlpha = sp.getFloat("header_dim_alpha", 0f);
+        config.regionDimAlpha = sp.getFloat("region_dim_alpha", 0f);
+        config.bubbleDimAlpha = sp.getFloat("bubble_dim_alpha", 0f);
         config.expandDelayMs = sp.getInt("expand_delay_ms", 0);
         config.hapticEnabled = sp.getBoolean("haptic_enabled", true);
         config.hapticStrength = sp.getInt("haptic_strength", 140);
@@ -472,6 +484,9 @@ public class HyperOpenConfig {
             .putFloat("fisheye_zoom_alpha", fisheyeZoomAlpha)
             .putFloat("fullscreen_blur_mask_alpha", fullscreenBlurMaskAlpha)
             .putFloat("fullscreen_dim_alpha", fullscreenDimAlpha)
+            .putFloat("header_dim_alpha", headerDimAlpha)
+            .putFloat("region_dim_alpha", regionDimAlpha)
+            .putFloat("bubble_dim_alpha", bubbleDimAlpha)
             .putInt("expand_delay_ms", expandDelayMs)
             .putBoolean("haptic_enabled", hapticEnabled)
             .putInt("haptic_strength", hapticStrength)

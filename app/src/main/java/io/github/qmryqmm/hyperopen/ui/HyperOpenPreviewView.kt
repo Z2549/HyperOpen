@@ -109,6 +109,12 @@ class HyperOpenPreviewView(
     }
     private var pendingPressBubble: CircularBubbleView? = null
 
+    // 排版模式下的图标吸附开关（右上角按钮切换）；关闭后松手的图标保持在放手位置，不自动吸附回蜂窝槽位
+    var snapEnabled: Boolean = true
+        private set
+    private var snapToggleButton: TextView? = null
+    private val freePlacedBubbles = mutableSetOf<CircularBubbleView>()
+
     init {
         initVibrator()
         initViews()
@@ -157,6 +163,9 @@ class HyperOpenPreviewView(
         // 4. 左上角小悬浮返回按钮
         buildFloatingBackButton()
 
+        // 4.1 右上角吸附开关（仅排版模式可见）
+        buildSnapToggleButton()
+
         // 5. 在首次测量前提前建立蜂窝气泡视图树
         setupLayout()
     }
@@ -194,6 +203,89 @@ class HyperOpenPreviewView(
         }
         addView(backBtn, btnLp)
         floatingBackButton = backBtn
+    }
+
+    private fun snapToggleText(): String = if (snapEnabled) "图标吸附：开" else "图标吸附：关"
+
+    private fun buildSnapToggleButton() {
+        val btn = TextView(context).apply {
+            text = snapToggleText()
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(Color.WHITE)
+            paint.isFakeBoldText = true
+            gravity = Gravity.CENTER
+            val padH = dpToPx(14f).toInt()
+            setPadding(padH, 0, padH, 0)
+            background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle, config.headerDimAlpha)
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    if (view.width <= 0 || view.height <= 0) return
+                    outline.setRoundRect(0, 0, view.width, view.height, Math.min(view.width, view.height) / 2f)
+                    outline.alpha = 0f
+                }
+            }
+            clipToOutline = true
+            isClickable = true
+            isFocusable = true
+            visibility = View.GONE
+            setOnClickListener {
+                snapEnabled = !snapEnabled
+                text = snapToggleText()
+                triggerHaptic()
+                if (snapEnabled) {
+                    // 重新开启吸附：所有被自由摆放的图标立即归位到蜂窝槽位
+                    snapAllBubblesToGrid(animated = true)
+                }
+            }
+        }
+        val lp = LayoutParams(LayoutParams.WRAP_CONTENT, dpToPx(40f).toInt()).apply {
+            gravity = Gravity.TOP or Gravity.END
+            rightMargin = dpToPx(18f).toInt()
+            topMargin = dpToPx(46f).toInt()
+        }
+        addView(btn, lp)
+        snapToggleButton = btn
+    }
+
+    /**
+     * 将所有气泡（含被自由摆放的）归位到各自蜂窝槽位
+     */
+    private fun snapAllBubblesToGrid(animated: Boolean) {
+        val iconSizePx = dpToPx(config.iconSize.toFloat())
+        freePlacedBubbles.clear()
+        for (i in 0 until bubbleViews.size.coerceAtMost(gridPoints.size)) {
+            val b = bubbleViews[i]
+            val pt = gridPoints[i]
+            b.targetX = pt.x
+            b.targetY = pt.y
+            val left = (pt.x - iconSizePx / 2f).toInt()
+            val top = (pt.y - iconSizePx / 2f).toInt()
+            val lp = b.layoutParams as LayoutParams
+            if (animated) {
+                val fromX = lp.leftMargin + b.translationX
+                val fromY = lp.topMargin + b.translationY
+                lp.leftMargin = left
+                lp.topMargin = top
+                b.layoutParams = lp
+                b.translationX = fromX - left
+                b.translationY = fromY - top
+                b.animate()
+                    .translationX(0f)
+                    .translationY(0f)
+                    .setDuration(220)
+                    .setInterpolator(OvershootInterpolator(1.1f))
+                    .setUpdateListener { notifyBlurSceneChanged() }
+                    .withEndAction { notifyBlurSceneChanged() }
+                    .start()
+            } else {
+                lp.leftMargin = left
+                lp.topMargin = top
+                b.layoutParams = lp
+                b.translationX = 0f
+                b.translationY = 0f
+            }
+        }
+        notifyBlurSceneChanged()
     }
 
     private fun refreshFloatingBackButtonBackground() {
@@ -242,7 +334,7 @@ class HyperOpenPreviewView(
         }
 
         headerSubtitle = TextView(context).apply {
-            text = "长按图标编辑位置 · 松手直接打开"
+            text = "移至目标图标后松手直接打开"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             setTextColor(0xAAFFFFFF.toInt())
             gravity = Gravity.CENTER
@@ -323,7 +415,7 @@ class HyperOpenPreviewView(
         if (!::headerPill.isInitialized) return
         val show = config.showHeaderPill && config.showHeaderPillBg
         if (show) {
-            headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
+            headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle, config.headerDimAlpha)
             headerPill.clipToOutline = true
         } else {
             headerPill.background = null
@@ -447,9 +539,11 @@ class HyperOpenPreviewView(
         if (::regionBackdrop.isInitialized) {
             regionBackdrop.setStyle(resolvedStyle)
             regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
+            regionBackdrop.setDimAlpha(config.regionDimAlpha)
         }
         applyHeaderPillStyleAndLayout()
         refreshFloatingBackButtonBackground()
+        for (b in bubbleViews) b.setDimAlpha(config.bubbleDimAlpha)
         if (needRebuild || bubbleViews.isEmpty()) {
             setupLayout()
         } else {
@@ -470,6 +564,7 @@ class HyperOpenPreviewView(
 
         bubblesContainer.removeAllViews()
         bubbleViews.clear()
+        freePlacedBubbles.clear()
         activeShortcuts.clear()
         gridPoints.clear()
         currentSelectedBubble = null
@@ -491,6 +586,7 @@ class HyperOpenPreviewView(
         regionBackdrop.setSystemBlurEnabled(false)
         regionBackdrop.setStyle(resolvedStyle)
         regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
+            regionBackdrop.setDimAlpha(config.regionDimAlpha)
         regionBackdrop.updateGeometry(regionRadiusPx)
         val rLp = LayoutParams(regionDiameterPx.toInt(), regionDiameterPx.toInt()).apply {
             leftMargin = (fodX - regionRadiusPx).toInt()
@@ -579,6 +675,16 @@ class HyperOpenPreviewView(
                     if (ev.x >= l && ev.x <= r && ev.y >= t && ev.y <= b) {
                         return false
                     }
+                }
+            }
+        }
+        // 右上角吸附开关（仅排版模式可见）：放行触摸给按钮自身处理点击
+        snapToggleButton?.let { btn ->
+            if (btn.visibility == View.VISIBLE) {
+                val slop = dpToPx(6f)
+                if (ev.x >= btn.left - slop && ev.x <= btn.right + slop &&
+                    ev.y >= btn.top - slop && ev.y <= btn.bottom + slop) {
+                    return false
                 }
             }
         }
@@ -683,6 +789,13 @@ class HyperOpenPreviewView(
         editBanner.alpha = 0f
         editBanner.animate().alpha(1f).setDuration(200).start()
 
+        snapToggleButton?.let {
+            it.text = snapToggleText()
+            it.alpha = 0f
+            it.visibility = View.VISIBLE
+            it.animate().alpha(1f).setDuration(200).start()
+        }
+
         headerTitle.text = "自定义排版模式"
         headerTitle.setTextColor(0xFFFF9933.toInt())
         headerSubtitle.text = "长按并拖动图标交换位置，点击空白完成"
@@ -710,9 +823,19 @@ class HyperOpenPreviewView(
             editBanner.visibility = View.GONE
         }.start()
 
+        snapToggleButton?.let { btn ->
+            btn.animate().alpha(0f).setDuration(150).withEndAction {
+                btn.visibility = View.GONE
+            }.start()
+        }
+        // 退出排版模式：自由摆放的图标统一归位，预览与真实蜂窝布局保持一致
+        if (freePlacedBubbles.isNotEmpty()) {
+            snapAllBubblesToGrid(animated = true)
+        }
+
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
-        headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
+        headerSubtitle.text = "移至目标图标后松手直接打开"
 
         for (b in bubbleViews) {
             b.setSelectedState(false)
@@ -761,6 +884,10 @@ class HyperOpenPreviewView(
             for (i in 0 until bubbleViews.size) {
                 val b = bubbleViews[i]
                 val slotPt = gridPoints[i]
+                // 关闭吸附时，被自由摆放的图标保持原位，不参与槽位重排
+                if (b != draggingBubble && b in freePlacedBubbles) {
+                    continue
+                }
                 b.targetX = slotPt.x
                 b.targetY = slotPt.y
 
@@ -798,20 +925,30 @@ class HyperOpenPreviewView(
         val iconSizePx = dpToPx(config.iconSize.toFloat())
 
         if (idx >= 0 && idx < gridPoints.size) {
-            val pt = gridPoints[idx]
-            b.targetX = pt.x
-            b.targetY = pt.y
-            val targetLeft = (pt.x - iconSizePx / 2f).toInt()
-            val targetTop = (pt.y - iconSizePx / 2f).toInt()
+            if (!snapEnabled) {
+                // 关闭吸附：保持在放手位置，仅更新点击/悬停判定中心，顺序仍按最近槽位记录
+                val lpFree = b.layoutParams as LayoutParams
+                b.targetX = lpFree.leftMargin + iconSizePx / 2f
+                b.targetY = lpFree.topMargin + iconSizePx / 2f
+                freePlacedBubbles.add(b)
+                b.applyScale(1.05f)
+            } else {
+                freePlacedBubbles.remove(b)
+                val pt = gridPoints[idx]
+                b.targetX = pt.x
+                b.targetY = pt.y
+                val targetLeft = (pt.x - iconSizePx / 2f).toInt()
+                val targetTop = (pt.y - iconSizePx / 2f).toInt()
 
-            b.applyScale(1.05f)
+                b.applyScale(1.05f)
 
-            val lp = b.layoutParams as LayoutParams
-            lp.leftMargin = targetLeft
-            lp.topMargin = targetTop
-            b.layoutParams = lp
-            b.translationX = 0f
-            b.translationY = 0f
+                val lp = b.layoutParams as LayoutParams
+                lp.leftMargin = targetLeft
+                lp.topMargin = targetTop
+                b.layoutParams = lp
+                b.translationX = 0f
+                b.translationY = 0f
+            }
         }
         draggingBubble = null
         notifyBlurSceneChanged()
@@ -866,7 +1003,7 @@ class HyperOpenPreviewView(
                 currentSelectedBubble = null
                 headerTitle.text = "滑动选择快捷方式"
                 headerTitle.setTextColor(Color.WHITE)
-                headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
+                headerSubtitle.text = "移至目标图标后松手直接打开"
             }
         }
         notifyBlurSceneChanged()
@@ -881,7 +1018,7 @@ class HyperOpenPreviewView(
         }
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
-        headerSubtitle.text = "长按图标编辑位置 · 松手直接打开"
+        headerSubtitle.text = "移至目标图标后松手直接打开"
         notifyBlurSceneChanged()
     }
 

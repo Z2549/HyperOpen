@@ -33,6 +33,7 @@ public class CircularRegionBackdropView extends FrameLayout {
 
     private int style = HyperOSMaterialFactory.STYLE_SOFT_GLASS;
     private float blurRadiusDp = 25f;
+    private float dimAlpha = 0f;
     private float currentRadiusPx = 0f;
 
     private OverlayDrawView overlayView;
@@ -144,6 +145,15 @@ public class CircularRegionBackdropView extends FrameLayout {
         }
     }
 
+    /** 圆形视界背景压暗 (0.0 ~ 1.0) */
+    public void setDimAlpha(float alpha) {
+        float c = Math.max(0f, Math.min(1f, alpha));
+        if (Math.abs(this.dimAlpha - c) > 0.0005f) {
+            this.dimAlpha = c;
+            if (overlayView != null) overlayView.invalidate();
+        }
+    }
+
     /**
      * 重置模糊实例，避免跨生命周期持有失效的旧 ViewRootImpl 句柄
      */
@@ -234,6 +244,7 @@ public class CircularRegionBackdropView extends FrameLayout {
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final HyperOSMaterialFactory.CircularOpticsCache opticsCache =
             new HyperOSMaterialFactory.CircularOpticsCache();
 
@@ -241,11 +252,16 @@ public class CircularRegionBackdropView extends FrameLayout {
             super(context);
             borderPaint.setStyle(Paint.Style.STROKE);
             borderPaint.setStrokeWidth(2.0f);
+            dimPaint.setStyle(Paint.Style.FILL);
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            if (dimAlpha > 0.001f) {
+                dimPaint.setColor(android.graphics.Color.argb(Math.round(dimAlpha * 255f), 0, 0, 0));
+                canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, Math.min(getWidth(), getHeight()) / 2f, dimPaint);
+            }
             HyperOSMaterialFactory.drawUnifiedCircularOpticsCached(
                 canvas, getWidth(), getHeight(), style, false, bgPaint, highlightPaint, borderPaint, opticsCache
             );

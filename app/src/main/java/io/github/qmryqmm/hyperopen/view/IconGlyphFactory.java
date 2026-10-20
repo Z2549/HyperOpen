@@ -260,10 +260,22 @@ public final class IconGlyphFactory {
     }
 
     /**
-     * 解析 Miuix 矢量图标或兼容内置符号
+     * 解析 Miuix / Remix 矢量图标或兼容内置符号
      */
     @Nullable
     public static Drawable resolveMiuixIcon(@NonNull String glyphKey, int tintColor, boolean padEnabled, int padColor, int padMode) {
+        // 1. 优先尝试 Remix Icon 矢量
+        try {
+            if (io.github.qmryqmm.hyperopen.ui.RemixIconRegistry.INSTANCE.isRemixIcon(glyphKey)) {
+                androidx.compose.ui.graphics.vector.ImageVector rv =
+                    io.github.qmryqmm.hyperopen.ui.RemixIconRegistry.INSTANCE.find(glyphKey);
+                if (rv != null) {
+                    return new MiuixVectorDrawable(rv, tintColor, padEnabled, padColor, padMode);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 2. 尝试 Miuix 官方扩展图标
         try {
             androidx.compose.ui.graphics.vector.ImageVector v =
                 io.github.qmryqmm.hyperopen.ui.MiuixIconRegistry.INSTANCE.find(glyphKey, null);

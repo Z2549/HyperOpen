@@ -62,6 +62,7 @@ public class CircularBubbleView extends FrameLayout {
         this.opticDrawable = new HyperOSMaterialFactory.CircularBubbleDrawable(
             activeStyle, item.tintColor, isSelected, glowEnabled
         );
+        this.opticDrawable.setDimAlpha(config != null ? config.bubbleDimAlpha : 0f);
 
         setLayoutParams(new LayoutParams(sizePx, sizePx));
         setClipChildren(false);
@@ -234,6 +235,11 @@ public class CircularBubbleView extends FrameLayout {
             opticDrawable.setStyle(style);
             ensureBlurAndRefreshBackground();
         }
+    }
+
+    /** 气泡留白区域背景压暗 (0.0 ~ 1.0) */
+    public void setDimAlpha(float alpha) {
+        opticDrawable.setDimAlpha(alpha);
     }
 
     public void setBlurRadius(float radiusDp) {

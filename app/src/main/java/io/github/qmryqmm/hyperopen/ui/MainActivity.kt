@@ -202,6 +202,9 @@ fun HyperOpenApp(
     var fisheyeZoomAlpha by remember { mutableFloatStateOf(initialConfig.fisheyeZoomAlpha) }
     var fullscreenBlurMaskAlpha by remember { mutableFloatStateOf(initialConfig.fullscreenBlurMaskAlpha) }
     var fullscreenDimAlpha by remember { mutableFloatStateOf(initialConfig.fullscreenDimAlpha) }
+    var headerDimAlpha by remember { mutableFloatStateOf(initialConfig.headerDimAlpha) }
+    var regionDimAlpha by remember { mutableFloatStateOf(initialConfig.regionDimAlpha) }
+    var bubbleDimAlpha by remember { mutableFloatStateOf(initialConfig.bubbleDimAlpha) }
     var expandDelayMs by remember { mutableFloatStateOf(initialConfig.expandDelayMs.toFloat()) }
     var hapticEnabled by remember { mutableStateOf(initialConfig.hapticEnabled) }
     var hapticStrength by remember { mutableFloatStateOf(initialConfig.hapticStrength.toFloat()) }
@@ -273,6 +276,9 @@ fun HyperOpenApp(
         c.fisheyeZoomAlpha = fisheyeZoomAlpha
         c.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
         c.fullscreenDimAlpha = fullscreenDimAlpha
+        c.headerDimAlpha = headerDimAlpha
+        c.regionDimAlpha = regionDimAlpha
+        c.bubbleDimAlpha = bubbleDimAlpha
         c.expandDelayMs = expandDelayMs.toInt()
         c.hapticEnabled = hapticEnabled
         c.hapticStrength = hapticStrength.toInt()
@@ -456,6 +462,9 @@ fun HyperOpenApp(
                             this.fisheyeZoomAlpha = fisheyeZoomAlpha
                             this.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
                             this.fullscreenDimAlpha = fullscreenDimAlpha
+                            this.headerDimAlpha = headerDimAlpha
+                            this.regionDimAlpha = regionDimAlpha
+                            this.bubbleDimAlpha = bubbleDimAlpha
                             this.expandDelayMs = expandDelayMs.toInt()
                             this.hapticEnabled = hapticEnabled
                             this.hapticStrength = hapticStrength.toInt()
@@ -605,15 +614,17 @@ fun HyperOpenApp(
 
                             // 4. 顶部提示胶囊与左上角返回按钮的毛玻璃底衬
                             if (currentConfig.showHeaderPill && currentConfig.showHeaderPillBg && currentConfig.headerBlurRadius > 0 && blurScene.headerWidthPx > 0f && blurScene.headerHeightPx > 0f) {
+                                // 与真实锁屏 createCompositeHeaderPillDrawable 的 layerInset(2px) 对齐：模糊层四周内缩 2px
+                                val headerInsetPx = 2f
                                 Box(
                                     modifier = Modifier
                                         .offset(
-                                            x = with(density) { blurScene.headerLeftPx.toDp() },
-                                            y = with(density) { blurScene.headerTopPx.toDp() }
+                                            x = with(density) { (blurScene.headerLeftPx + headerInsetPx).toDp() },
+                                            y = with(density) { (blurScene.headerTopPx + headerInsetPx).toDp() }
                                         )
                                         .size(
-                                            width = with(density) { blurScene.headerWidthPx.toDp() },
-                                            height = with(density) { blurScene.headerHeightPx.toDp() }
+                                            width = with(density) { (blurScene.headerWidthPx - headerInsetPx * 2f).coerceAtLeast(1f).toDp() },
+                                            height = with(density) { (blurScene.headerHeightPx - headerInsetPx * 2f).coerceAtLeast(1f).toDp() }
                                         )
                                         .textureBlur(
                                             backdrop = bubbleBackdrop,
@@ -741,6 +752,12 @@ fun HyperOpenApp(
                                     onFullscreenBlurMaskAlpha = { fullscreenBlurMaskAlpha = it; persist() },
                                     fullscreenDimAlpha = fullscreenDimAlpha,
                                     onFullscreenDimAlpha = { fullscreenDimAlpha = it; persist() },
+                                    headerDimAlpha = headerDimAlpha,
+                                    onHeaderDimAlpha = { headerDimAlpha = it; persist() },
+                                    regionDimAlpha = regionDimAlpha,
+                                    onRegionDimAlpha = { regionDimAlpha = it; persist() },
+                                    bubbleDimAlpha = bubbleDimAlpha,
+                                    onBubbleDimAlpha = { bubbleDimAlpha = it; persist() },
                                     expandDelayMs = expandDelayMs,
                                     onExpandDelayMs = { expandDelayMs = it; persist() },
                                     hapticEnabled = hapticEnabled,
@@ -909,6 +926,28 @@ private fun AppBottomBar(
 // ─────────────────────────────────────────────────────────────────────
 
 @Composable
+private fun CollapsibleSectionTitle(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) { SmallTitle(title) }
+        Text(
+            text = if (expanded) "收起 ▲" else "展开 ▼",
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 24.dp),
+        )
+    }
+}
+
+@Composable
 fun ParamsPage(
     contentPadding: PaddingValues,
     materialStyle: Int, onMaterialStyle: (Int) -> Unit,
@@ -929,6 +968,9 @@ fun ParamsPage(
     fisheyeZoomAlpha: Float, onFisheyeZoomAlpha: (Float) -> Unit,
     fullscreenBlurMaskAlpha: Float, onFullscreenBlurMaskAlpha: (Float) -> Unit,
     fullscreenDimAlpha: Float, onFullscreenDimAlpha: (Float) -> Unit,
+    headerDimAlpha: Float, onHeaderDimAlpha: (Float) -> Unit,
+    regionDimAlpha: Float, onRegionDimAlpha: (Float) -> Unit,
+    bubbleDimAlpha: Float, onBubbleDimAlpha: (Float) -> Unit,
     expandDelayMs: Float, onExpandDelayMs: (Float) -> Unit,
     hapticEnabled: Boolean, onHapticEnabled: (Boolean) -> Unit,
     hapticStrength: Float, onHapticStrength: (Float) -> Unit,
@@ -944,8 +986,12 @@ fun ParamsPage(
     val ctx = LocalContext.current
     val lazyListState = rememberLazyListState()
 
-    fun triggerSampleHaptic(
-        mode: Int = hapticMode,
+    // 各分区折叠状态（key → 是否已收起），默认全部展开
+    val collapsed = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    fun isOpen(key: String) = collapsed[key] != true
+    fun toggle(key: String) { collapsed[key] = isOpen(key) }
+
+    fun triggerSampleHaptic(        mode: Int = hapticMode,
         strength: Int = hapticStrength.toInt(),
         durationMs: Int = hapticDurationMs.toInt(),
         enabled: Boolean = hapticEnabled,
@@ -973,8 +1019,8 @@ fun ParamsPage(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // ── 材质与系统风格 ──
-        item(key = "material_title") { SmallTitle("材质与系统风格") }
-        item(key = "material_card") {
+        item(key = "material_title") { CollapsibleSectionTitle("材质与系统风格", isOpen("material")) { toggle("material") } }
+        if (isOpen("material")) item(key = "material_card") {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -1020,8 +1066,8 @@ fun ParamsPage(
         }
 
         // ── 几何与位置参数 ──
-        item(key = "geometry_title") { SmallTitle("几何与位置参数") }
-        item(key = "geometry_card") {
+        item(key = "geometry_title") { CollapsibleSectionTitle("几何与位置参数", isOpen("geometry")) { toggle("geometry") } }
+        if (isOpen("geometry")) item(key = "geometry_card") {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -1055,13 +1101,21 @@ fun ParamsPage(
                         valueRange = 0f..50f,
                         onValueChange = onRegionBlurRadius,
                     )
+                    SliderPreference(
+                        title = "圆形视界背景压暗程度",
+                        summary = "在毛玻璃底盘之上叠加黑色压暗，提升图标对比度",
+                        valueText = if (regionDimAlpha.toInt() <= 0) "不压暗" else "${(regionDimAlpha * 100).toInt()} %",
+                        value = regionDimAlpha * 100f,
+                        valueRange = 0f..100f,
+                        onValueChange = { onRegionDimAlpha(it / 100f) },
+                    )
                 }
             }
         }
 
         // ── 顶部提示胶囊参数 ──
-        item(key = "header_pill_title") { SmallTitle("顶部提示胶囊参数") }
-        item(key = "header_pill_card") {
+        item(key = "header_pill_title") { CollapsibleSectionTitle("顶部提示胶囊参数", isOpen("header_pill")) { toggle("header_pill") } }
+        if (isOpen("header_pill")) item(key = "header_pill_card") {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -1116,14 +1170,22 @@ fun ParamsPage(
                             valueRange = 0f..50f,
                             onValueChange = onHeaderBlurRadius,
                         )
+                        SliderPreference(
+                            title = "顶部提示背景压暗程度",
+                            summary = "在胶囊毛玻璃背景之上叠加黑色压暗",
+                            valueText = if (headerDimAlpha.toInt() <= 0) "不压暗" else "${(headerDimAlpha * 100).toInt()} %",
+                            value = headerDimAlpha * 100f,
+                            valueRange = 0f..100f,
+                            onValueChange = { onHeaderDimAlpha(it / 100f) },
+                        )
                     }
                 }
             }
         }
 
         // ── 图标与物理动力学 ──
-        item(key = "physics_title") { SmallTitle("图标与物理动力学") }
-        item(key = "physics_card") {
+        item(key = "physics_title") { CollapsibleSectionTitle("图标与物理动力学", isOpen("physics")) { toggle("physics") } }
+        if (isOpen("physics")) item(key = "physics_card") {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -1200,6 +1262,14 @@ fun ParamsPage(
                     onValueChange = onBubbleBlurRadius,
                 )
                 SliderPreference(
+                    title = "气泡留白区域压暗程度",
+                    summary = "在每个图标气泡的毛玻璃底衬之上叠加黑色压暗",
+                    valueText = if (bubbleDimAlpha.toInt() <= 0) "不压暗" else "${(bubbleDimAlpha * 100).toInt()} %",
+                    value = bubbleDimAlpha * 100f,
+                    valueRange = 0f..100f,
+                    onValueChange = { onBubbleDimAlpha(it / 100f) },
+                )
+                SliderPreference(
                     title = "选中时图标缩放倍率",
                     valueText = "%.2f x".format(selectedIconScale),
                     value = selectedIconScale,
@@ -1216,8 +1286,8 @@ fun ParamsPage(
         }
 
         // ── 震动与触觉反馈 ──
-        item(key = "haptic_title") { SmallTitle("震动与触觉反馈") }
-        item(key = "haptic_card") {
+        item(key = "haptic_title") { CollapsibleSectionTitle("震动与触觉反馈", isOpen("haptic")) { toggle("haptic") } }
+        if (isOpen("haptic")) item(key = "haptic_card") {
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -1414,19 +1484,24 @@ fun ShortcutRow(
     onClick: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val vectorIcon = remember(item.iconPackage, item.iconGlyph) {
+        if (item.iconPackage.isBlank()) {
+            if (RemixIconRegistry.isRemixIcon(item.iconGlyph)) {
+                RemixIconRegistry.find(item.iconGlyph)
+            } else {
+                MiuixIconRegistry.find(item.iconGlyph)
+            }
+        } else null
+    }
     val painter = remember(item.id, item.iconPackage, item.iconGlyph, item.appIconCropMode, item.actionType, item.actionPayload) {
-        val miuixIcon = MiuixIconRegistry.find(item.iconGlyph)
-        if (item.iconPackage.isBlank() && miuixIcon != null) {
+        if (item.iconPackage.isBlank() && vectorIcon != null) {
             null
         } else {
             IconPainter.resolve(item, ctx, item.appIconCropMode)
         }
     }
-    val miuixIcon = remember(item.iconPackage, item.iconGlyph) {
-        if (item.iconPackage.isBlank()) MiuixIconRegistry.find(item.iconGlyph) else null
-    }
 
-    val itemPadBg = if (miuixIcon != null && item.glyphPadEnabled) {
+    val itemPadBg = if (vectorIcon != null && item.glyphPadEnabled) {
         when (item.glyphPadMode) {
             HyperOpenConfig.GLYPH_PAD_MODE_SOLID -> Color(item.glyphPadColor)
             HyperOpenConfig.GLYPH_PAD_MODE_INVERTED -> Color(0x30FFFFFF)
@@ -1435,7 +1510,7 @@ fun ShortcutRow(
     } else {
         MiuixTheme.colorScheme.surfaceVariant
     }
-    val itemIconTint = if (miuixIcon != null && item.glyphPadEnabled) {
+    val itemIconTint = if (vectorIcon != null && item.glyphPadEnabled) {
         if (item.glyphPadMode == HyperOpenConfig.GLYPH_PAD_MODE_INVERTED) Color(item.glyphPadColor)
         else Color.White
     } else {
@@ -1454,9 +1529,9 @@ fun ShortcutRow(
                         .background(itemPadBg),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (miuixIcon != null) {
+                    if (vectorIcon != null) {
                         Icon(
-                            imageVector = miuixIcon,
+                            imageVector = vectorIcon,
                             contentDescription = item.title,
                             tint = itemIconTint,
                             modifier = Modifier.size(if (item.glyphPadEnabled) 20.dp else 24.dp),
@@ -1517,6 +1592,7 @@ fun ShortcutEditPage(
 
     var showAppPicker by remember { mutableStateOf(false) }
     var showMiuixIconPicker by remember { mutableStateOf(false) }
+    var showRemixIconPicker by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -1584,11 +1660,17 @@ fun ShortcutEditPage(
     }
 
     // 实时图标预览与是否为应用图标判定
-    val miuixVector = remember(iconPackage, iconGlyph) {
-        if (iconPackage.isBlank()) MiuixIconRegistry.find(iconGlyph) else null
+    val vectorIcon = remember(iconPackage, iconGlyph) {
+        if (iconPackage.isBlank()) {
+            if (RemixIconRegistry.isRemixIcon(iconGlyph)) {
+                RemixIconRegistry.find(iconGlyph)
+            } else {
+                MiuixIconRegistry.find(iconGlyph)
+            }
+        } else null
     }
     val rawAppIconDrawable = remember(iconPackage, iconGlyph, actionType, actionPayload) {
-        if (miuixVector != null) {
+        if (vectorIcon != null) {
             null
         } else {
             IconGlyphFactory.resolveRawAppIcon(ctx, iconPackage, iconGlyph, actionType, actionPayload)
@@ -1596,7 +1678,7 @@ fun ShortcutEditPage(
     }
     val isAppIcon = rawAppIconDrawable != null
     val appDrawablePainter = remember(rawAppIconDrawable, iconGlyph, appIconCropMode, initialItem.tintColor) {
-        if (miuixVector != null) {
+        if (vectorIcon != null) {
             null
         } else {
             val processed = if (rawAppIconDrawable != null) {
@@ -1637,8 +1719,8 @@ fun ShortcutEditPage(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        val isMiuixSelected = miuixVector != null && iconPackage.isBlank()
-                        val previewPadBg = if (isMiuixSelected && glyphPadEnabled) {
+                        val isVectorSelected = vectorIcon != null && iconPackage.isBlank()
+                        val previewPadBg = if (isVectorSelected && glyphPadEnabled) {
                             when (glyphPadMode) {
                                 HyperOpenConfig.GLYPH_PAD_MODE_SOLID -> Color(glyphPadColor)
                                 HyperOpenConfig.GLYPH_PAD_MODE_INVERTED -> Color(0x30FFFFFF)
@@ -1647,7 +1729,7 @@ fun ShortcutEditPage(
                         } else {
                             MiuixTheme.colorScheme.surfaceVariant
                         }
-                        val previewIconTint = if (isMiuixSelected && glyphPadEnabled) {
+                        val previewIconTint = if (isVectorSelected && glyphPadEnabled) {
                             if (glyphPadMode == HyperOpenConfig.GLYPH_PAD_MODE_INVERTED) Color(glyphPadColor)
                             else Color.White
                         } else {
@@ -1661,9 +1743,9 @@ fun ShortcutEditPage(
                                 .background(previewPadBg),
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (miuixVector != null) {
+                            if (vectorIcon != null) {
                                 Icon(
-                                    imageVector = miuixVector,
+                                    imageVector = vectorIcon,
                                     contentDescription = title,
                                     tint = previewIconTint,
                                     modifier = Modifier.size(if (glyphPadEnabled) 32.dp else 38.dp),
@@ -1746,8 +1828,24 @@ fun ShortcutEditPage(
                     onClick = { showAppPicker = true },
                 )
                 ArrowPreference(
+                    title = "选择 Remix Icon 快捷图标",
+                    summary = if (iconPackage.isBlank() && iconGlyph.isNotBlank() && RemixIconRegistry.isRemixIcon(iconGlyph)) {
+                        val meta = RemixIconRegistry.findMeta(iconGlyph)
+                        "当前选择：${meta?.desc ?: iconGlyph} (${meta?.rawName ?: iconGlyph})"
+                    } else "未选择（128款高频快捷精选图标）",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Tune,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = { showRemixIconPicker = true },
+                )
+                ArrowPreference(
                     title = "选择 Miuix 矢量图标",
-                    summary = if (iconPackage.isBlank() && iconGlyph.isNotBlank() && miuixVector != null) "当前选择：$iconGlyph" else "未选择",
+                    summary = if (iconPackage.isBlank() && iconGlyph.isNotBlank() && !RemixIconRegistry.isRemixIcon(iconGlyph) && vectorIcon != null) "当前选择：$iconGlyph" else "未选择",
                     startAction = {
                         Icon(
                             imageVector = MiuixIcons.Scan,
@@ -1796,9 +1894,9 @@ fun ShortcutEditPage(
             }
         }
 
-        // ── 仅当选择 Miuix 矢量图标时，展示独享的底垫与色彩配置 ──
-        if (miuixVector != null && iconPackage.isBlank()) {
-            item(key = "single_miuix_pad_title") { SmallTitle("Miuix 矢量图标底垫与色彩") }
+        // ── 仅当选择 Miuix 或 Remix 矢量图标时，展示独享的底垫与色彩配置 ──
+        if (vectorIcon != null && iconPackage.isBlank()) {
+            item(key = "single_miuix_pad_title") { SmallTitle("矢量图标底垫与色彩") }
             item(key = "single_miuix_pad_card") {
                 Card(
                     modifier = Modifier
@@ -2111,6 +2209,19 @@ fun ShortcutEditPage(
                 iconGlyph = glyphKey
                 iconPackage = ""
                 showMiuixIconPicker = false
+            },
+        )
+    }
+
+    // ── Remix Icon 图标选择弹窗 ──
+    if (showRemixIconPicker) {
+        RemixIconPickerDialog(
+            currentIconKey = iconGlyph,
+            onDismiss = { showRemixIconPicker = false },
+            onSelectIcon = { glyphKey ->
+                iconGlyph = glyphKey
+                iconPackage = ""
+                showRemixIconPicker = false
             },
         )
     }
@@ -3013,6 +3124,156 @@ fun MiuixIconPickerDialog(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    text = "取消",
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Remix Icon 矢量图标选择弹窗组件（128款高频锁屏精选 + 分类标签 + 实时搜索）
+// ─────────────────────────────────────────────────────────────────────
+
+@Composable
+fun RemixIconPickerDialog(
+    currentIconKey: String,
+    onDismiss: () -> Unit,
+    onSelectIcon: (String) -> Unit,
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("全部") }
+
+    val categories = remember {
+        listOf("全部", "核心高频", "系统控制", "支付卡证", "出行导航", "影音娱乐", "通讯工具")
+    }
+
+    val filteredIcons = remember(searchQuery, selectedCategory) {
+        RemixIconRegistry.ALL_ICONS.filter { item ->
+            val matchQuery = if (searchQuery.isBlank()) true else {
+                item.desc.contains(searchQuery, ignoreCase = true) ||
+                item.rawName.contains(searchQuery, ignoreCase = true)
+            }
+            val matchCat = when (selectedCategory) {
+                "核心高频" -> listOf("flashlight", "qr-scan", "qr-code", "camera", "mic", "calculator", "search", "sticky-note").any { item.rawName.startsWith(it) }
+                "系统控制" -> listOf("bluetooth", "wifi", "hotspot", "volume", "notification", "flight", "battery", "screenshot", "lock", "settings").any { item.rawName.startsWith(it) }
+                "支付卡证" -> listOf("wallet", "bank-card", "contactless", "shield", "coupon", "shopping", "exchange", "money").any { item.rawName.startsWith(it) }
+                "出行导航" -> listOf("bus", "subway", "map-pin", "navigation", "taxi", "riding", "car", "compass").any { item.rawName.startsWith(it) }
+                "影音娱乐" -> listOf("music", "disc", "play", "pause", "speed", "headphone", "video", "film", "image", "book", "gamepad", "radio").any { item.rawName.startsWith(it) }
+                "通讯工具" -> listOf("phone", "chat", "message", "mail", "alarm", "timer", "calendar", "translate", "earth", "share", "user", "heart", "star", "sparkling", "folder", "delete").any { item.rawName.startsWith(it) }
+                else -> true
+            }
+            matchQuery && matchCat
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                Text(
+                    text = "选择 Remix Icon 快捷图标",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "精选 128 款最高频锁屏动作与硬件开关图标，支持纯白与底垫交融渲染",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+
+                // 分类切换标签
+                TabRow(
+                    tabs = categories,
+                    selectedTabIndex = categories.indexOf(selectedCategory).coerceAtLeast(0),
+                    onTabSelected = { selectedCategory = categories[it] },
+                    colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "搜索图标名称或中文描述（如 扫一扫, 手电筒, 蓝牙...）",
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                )
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 340.dp)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(filteredIcons, key = { it.key }) { item ->
+                        val isSelected = currentIconKey == item.key || currentIconKey == item.rawName
+                        val vector = remember(item.key) {
+                            RemixIconRegistry.find(item.key)
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) MiuixTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                    else MiuixTheme.colorScheme.surfaceVariant,
+                                )
+                                .clickable {
+                                    onSelectIcon(item.key)
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            if (vector != null) {
+                                Icon(
+                                    imageVector = vector,
+                                    contentDescription = item.desc,
+                                    tint = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = item.desc,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (isSelected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = item.rawName,
+                                fontSize = 9.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
                     }
