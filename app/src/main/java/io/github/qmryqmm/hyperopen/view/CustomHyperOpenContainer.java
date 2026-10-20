@@ -50,6 +50,19 @@ public class CustomHyperOpenContainer extends FrameLayout {
 
     private Vibrator vibrator;
 
+    // 解锁时图标延迟展开任务：若 config.expandDelayMs > 0，等待指定毫秒后再展示面板与散开动画
+    private volatile boolean isDelayWaiting = false;
+    private final Runnable delayedExpandTask = new Runnable() {
+        @Override
+        public void run() {
+            isDelayWaiting = false;
+            if (getVisibility() == View.VISIBLE) {
+                setAlpha(1.0f);
+                playExpandAnimation();
+            }
+        }
+    };
+
     // 240Hz 触摸采样折叠（Coalescing）：每帧最多向主线程投递一次 onFingerMove，实现零 Runnable 分配
     private volatile float pendingTouchX;
     private volatile float pendingTouchY;
@@ -58,7 +71,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
         @Override
         public void run() {
             movePending.set(false);
-            if (getVisibility() == View.VISIBLE) {
+            if (getVisibility() == View.VISIBLE && !isDelayWaiting) {
                 onFingerMove(pendingTouchX, pendingTouchY);
             }
         }
@@ -101,8 +114,8 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 regionBackdrop.setStyle(resolvedStyle);
                 regionBackdrop.setBlurRadius(config.regionBlurRadius);
             }
-            // 胶囊背景开关与模糊热生效
-            applyHeaderPillBackground();
+            // 顶部提示参数（位置、文字大小、居中、模糊与背景）热生效
+            applyHeaderPillStyleAndLayout();
             // 气泡材质、模糊半径、留白比例与透明度热生效
             for (CircularBubbleView b : bubbles) {
                 b.setMaterialStyle(resolvedStyle);
@@ -124,15 +137,51 @@ public class CustomHyperOpenContainer extends FrameLayout {
         } catch (Throwable ignored) {}
     }
 
-    private void triggerHaptic() {
+    /**
+     * 统一执行自定义震动反馈（支持开关、强弱、波形模式与自定义时长）
+     */
+    public static void performConfiguredHaptic(Vibrator vibrator, HyperOpenConfig cfg) {
         if (vibrator == null || !vibrator.hasVibrator()) return;
+        if (cfg != null && !cfg.hapticEnabled) return;
+
+        int mode = cfg != null ? cfg.hapticMode : HyperOpenConfig.HAPTIC_MODE_CLICK;
+        int strength = cfg != null ? Math.max(1, Math.min(255, cfg.hapticStrength)) : 140;
+        int customDur = cfg != null ? Math.max(4, Math.min(80, cfg.hapticDurationMs)) : 12;
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(12, VibrationEffect.DEFAULT_AMPLITUDE));
+                VibrationEffect effect;
+                switch (mode) {
+                    case HyperOpenConfig.HAPTIC_MODE_TICK:
+                        effect = VibrationEffect.createOneShot(7, Math.max(1, (int) (strength * 0.75f)));
+                        break;
+                    case HyperOpenConfig.HAPTIC_MODE_HEAVY:
+                        effect = VibrationEffect.createOneShot(22, Math.min(255, (int) (strength * 1.25f)));
+                        break;
+                    case HyperOpenConfig.HAPTIC_MODE_DOUBLE:
+                        effect = VibrationEffect.createWaveform(
+                            new long[]{0, 9, 32, 11},
+                            new int[]{0, Math.max(1, (int) (strength * 0.8f)), 0, strength},
+                            -1
+                        );
+                        break;
+                    case HyperOpenConfig.HAPTIC_MODE_CUSTOM:
+                        effect = VibrationEffect.createOneShot(customDur, strength);
+                        break;
+                    case HyperOpenConfig.HAPTIC_MODE_CLICK:
+                    default:
+                        effect = VibrationEffect.createOneShot(12, strength);
+                        break;
+                }
+                vibrator.vibrate(effect);
             } else {
-                vibrator.vibrate(12);
+                vibrator.vibrate(customDur);
             }
         } catch (Throwable ignored) {}
+    }
+
+    private void triggerHaptic() {
+        performConfiguredHaptic(vibrator, config);
     }
 
     private void buildHeader() {
@@ -166,8 +215,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
             }
         });
 
-        applyHeaderPillBackground();
-
         headerTitle = new TextView(getContext());
         headerTitle.setText("滑动选择快捷方式");
         headerTitle.setTextColor(Color.WHITE);
@@ -185,17 +232,55 @@ public class CustomHyperOpenContainer extends FrameLayout {
         lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
         lp.topMargin = dpToPx(100);
         addView(headerPill, lp);
+
+        applyHeaderPillStyleAndLayout();
     }
 
     /**
-     * 按 showHeaderPillBg 开关铺设/移除顶部提示的胶囊玻璃背景。
+     * 统一应用顶部提示的显隐、位置高度、字号大小、是否水平居中及胶囊毛玻璃背景
+     */
+    private void applyHeaderPillStyleAndLayout() {
+        if (headerPill == null) return;
+        boolean showHeader = config == null || config.showHeaderPill;
+        headerPill.setVisibility(showHeader ? View.VISIBLE : View.GONE);
+
+        int titleSp = config != null ? Math.max(12, Math.min(26, config.headerTitleSize)) : 17;
+        int subtitleSp = config != null ? Math.max(9, Math.min(18, config.headerSubtitleSize)) : 11;
+        boolean centered = config == null || config.headerTextCentered;
+        int topMarginDp = config != null ? Math.max(20, Math.min(420, config.headerTopMargin)) : 100;
+
+        if (headerTitle != null) {
+            headerTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSp);
+            headerTitle.setGravity(centered ? Gravity.CENTER : Gravity.START);
+        }
+        if (headerSubtitle != null) {
+            headerSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSp);
+            headerSubtitle.setGravity(centered ? Gravity.CENTER : Gravity.START);
+        }
+        headerPill.setGravity(centered ? Gravity.CENTER : (Gravity.START | Gravity.CENTER_VERTICAL));
+
+        ViewGroup.LayoutParams rawLp = headerPill.getLayoutParams();
+        LayoutParams lp = (rawLp instanceof LayoutParams)
+            ? (LayoutParams) rawLp
+            : new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        lp.gravity = (centered ? Gravity.CENTER_HORIZONTAL : Gravity.START) | Gravity.TOP;
+        lp.topMargin = dpToPx(topMarginDp);
+        lp.leftMargin = centered ? 0 : dpToPx(24);
+        lp.rightMargin = centered ? 0 : dpToPx(24);
+        headerPill.setLayoutParams(lp);
+
+        applyHeaderPillBackground();
+    }
+
+    /**
+     * 按 showHeaderPillBg 开关与 headerBlurRadius 独立模糊半径铺设/移除顶部提示的胶囊玻璃背景。
      * 关闭时背景置 null 且 outline 置空，只保留标题/副标题纯文字悬浮。
      */
     private void applyHeaderPillBackground() {
         if (headerPill == null) return;
         boolean show = config == null || config.showHeaderPillBg;
         if (show) {
-            int blurDp = config != null ? config.regionBlurRadius : 25;
+            int blurDp = config != null ? config.headerBlurRadius : 25;
             int blurPx = blurDp > 0 ? dpToPx(blurDp) : 0;
             headerPill.setBackground(HyperOSMaterialFactory.createCompositeHeaderPillDrawable(headerPill, resolvedStyle, blurPx));
             headerPill.setClipToOutline(true);
@@ -218,10 +303,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
      */
     public void ensureHeaderPillIntact() {
         if (headerPill == null) return;
-        applyHeaderPillBackground();
-        if (headerPill.getVisibility() != View.VISIBLE) {
-            headerPill.setVisibility(View.VISIBLE);
-        }
+        applyHeaderPillStyleAndLayout();
         if (headerPill.getParent() == this) {
             headerPill.bringToFront();
         }
@@ -229,7 +311,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
     }
 
     /**
-     * 判断当前已构建的气泡集合是否与最新启用项完全一致，一致则直接复用 View 实例避免重复 inflación 与 GC
+     * 判断当前已构建的气泡集合是否与最新启用项完全一致，一致则直接复用 View 实例避免重复 inflation 与 GC
      */
     private boolean canReuseExistingBubbles(List<ShortcutItem> activeItems, int iconSizePx) {
         if (lastBuiltIconSizePx != iconSizePx || bubbles.size() != activeItems.size() || bubbles.isEmpty()) {
@@ -264,6 +346,8 @@ public class CustomHyperOpenContainer extends FrameLayout {
         this.fodCenterX = fodX;
         this.fodCenterY = fodY;
         this.currentSelectedBubble = null;
+        removeCallbacks(delayedExpandTask);
+        isDelayWaiting = false;
 
         // 重置顶部提示文字为初始状态
         if (headerTitle != null && headerSubtitle != null) {
@@ -364,8 +448,21 @@ public class CustomHyperOpenContainer extends FrameLayout {
             }
         }
 
-        // 播放散开弹射动画 (从指纹中心散开)
-        playExpandAnimation();
+        int delayMs = config != null ? Math.max(0, config.expandDelayMs) : 0;
+        if (delayMs > 0) {
+            // 延迟展开：等待期内隐藏容器与气泡，若用户在此期间提前松手则不展示快捷图标
+            isDelayWaiting = true;
+            setAlpha(0f);
+            for (int i = 0; i < bubbles.size(); i++) {
+                CircularBubbleView b = bubbles.get(i);
+                b.animate().cancel();
+                b.setAlpha(0f);
+            }
+            postDelayed(delayedExpandTask, delayMs);
+        } else {
+            setAlpha(1.0f);
+            playExpandAnimation();
+        }
     }
 
     private void playExpandAnimation() {
@@ -407,6 +504,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
     public void scheduleFingerMove(float rawX, float rawY) {
         this.pendingTouchX = rawX;
         this.pendingTouchY = rawY;
+        if (isDelayWaiting) return;
         if (Looper.myLooper() == Looper.getMainLooper()) {
             movePending.set(false);
             onFingerMove(rawX, rawY);
@@ -419,6 +517,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
      * 手指滑动时调用：计算实时鱼眼动力学与命中目标
      */
     public void onFingerMove(float touchX, float touchY) {
+        if (isDelayWaiting) return;
         float influenceRadiusPx = dpToPx(config.influenceRadius);
         float iconSizePx = dpToPx(config.iconSize);
         float hitDistanceThreshold = iconSizePx * 0.95f;
@@ -482,7 +581,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
      */
     public ShortcutItem consumeSelectedAndReset() {
         ShortcutItem selected = null;
-        if (currentSelectedBubble != null) {
+        if (!isDelayWaiting && currentSelectedBubble != null) {
             selected = currentSelectedBubble.item;
             triggerHaptic();
         }
@@ -501,8 +600,11 @@ public class CustomHyperOpenContainer extends FrameLayout {
     }
 
     public void resetBubbles() {
+        isDelayWaiting = false;
+        removeCallbacks(delayedExpandTask);
         movePending.set(false);
         removeCallbacks(coalescedMoveTask);
+        setAlpha(1.0f);
         for (int i = 0, n = bubbles.size(); i < n; i++) {
             CircularBubbleView b = bubbles.get(i);
             b.setSelectedState(false);

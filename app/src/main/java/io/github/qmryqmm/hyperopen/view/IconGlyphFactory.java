@@ -5,13 +5,17 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.util.Base64;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -26,23 +30,25 @@ import java.util.Map;
 /**
  * 统一图标解析工厂。
  * 解析优先级：
- * 1) item.iconPackage 手动指定包名 → 提取该应用图标
- * 2) ACTION_APP → 目标应用图标
- * 3) ACTION_INTENT_URI → 解析 Intent 目标应用图标（package / component / resolveActivity 三级）
- * 4) item.iconGlyph 手动指定内置符号 key
- * 5) 根据 id/title/subtitle 关键词匹配内置符号
- * 6) 兜底星芒符号
+ * 1) item.iconGlyph 或 item.iconPackage 为 base64: 前缀的本地上传图片 → 解码并按裁切方案处理
+ * 2) item.iconGlyph 手动指定内置符号 / Miuix 矢量图标 key
+ * 3) item.iconPackage 手动指定包名 → 提取该应用图标
+ * 4) ACTION_APP → 目标应用图标
+ * 5) ACTION_INTENT_URI → 解析 Intent 目标应用图标（package / component / resolveActivity 三级）
+ * 6) 根据 id/title/subtitle 关键词匹配内置符号
+ * 7) 兜底星芒符号
  * <p>
  * 全部内置符号为 24x24 网格手绘 Path（SF Symbols 细线风格），按 item.tintColor 着色。
  * 纯 Java Path 绘制，无反射、无隐藏 API，可同时在 SystemUI 进程与模块设置进程使用。
  */
 public final class IconGlyphFactory {
     private static final String TAG = "HyperOpen_IconGlyph";
+    public static final String CUSTOM_IMAGE_PREFIX = "base64:";
 
     private static final Map<String, Drawable> ICON_CACHE = new HashMap<>();
 
     /**
-     * 已裁切成圆形的图标缓存（key = 包名 + 裁切模式）。
+     * 已裁切成圆形的图标缓存（key = 包名/自定义标识 + 裁切模式）。
      * 裁切需要分配多张 192x192 位图并逐像素扫描，每次呼出面板对每个图标重做一遍
      * 会在 SystemUI 主线程上产生明显卡顿与 GC 压力。缓存的是 ConstantState，
      * 每次返回 newDrawable()：共享同一份像素，但 Drawable 实例互相独立。
@@ -50,11 +56,56 @@ public final class IconGlyphFactory {
     private static final Map<String, Drawable.ConstantState> PROCESSED_CACHE = new HashMap<>();
     /** Intent URI → 目标包名（避免每次重新 parseUri + resolveActivity 这类 PackageManager 跨进程调用） */
     private static final Map<String, String> INTENT_PKG_CACHE = new HashMap<>();
-    private static final String NO_PKG = "";
+
+    public static boolean isCustomImage(@Nullable String s) {
+        return s != null && s.startsWith(CUSTOM_IMAGE_PREFIX) && s.length() > CUSTOM_IMAGE_PREFIX.length();
+    }
+
+    @Nullable
+    public static Drawable decodeCustomImageDrawable(@Nullable Context ctx, @Nullable String spec) {
+        if (ctx == null || !isCustomImage(spec)) return null;
+        try {
+            String b64 = spec.substring(CUSTOM_IMAGE_PREFIX.length()).trim();
+            byte[] bytes = Base64.decode(b64, Base64.DEFAULT);
+            Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (bmp != null) {
+                return new BitmapDrawable(ctx.getResources(), bmp);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "解码自定义上传图片失败: " + t.getMessage());
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Drawable processedCustomImage(@Nullable Context ctx, @Nullable String spec, int cropMode) {
+        if (ctx == null || !isCustomImage(spec)) return null;
+        String key = "custom|" + spec.hashCode() + "|" + spec.length() + "|" + cropMode;
+        synchronized (PROCESSED_CACHE) {
+            Drawable.ConstantState cs = PROCESSED_CACHE.get(key);
+            if (cs != null) return cs.newDrawable();
+        }
+        Drawable raw = decodeCustomImageDrawable(ctx, spec);
+        if (raw == null) return null;
+        Drawable out = AppIconCropProcessor.process(raw, cropMode);
+        if (out == null) out = raw;
+        Drawable.ConstantState cs = out.getConstantState();
+        if (cs != null) {
+            synchronized (PROCESSED_CACHE) {
+                if (PROCESSED_CACHE.size() > 48) PROCESSED_CACHE.clear();
+                PROCESSED_CACHE.put(key, cs);
+            }
+            return cs.newDrawable();
+        }
+        return out;
+    }
 
     @Nullable
     private static Drawable processedAppIcon(@Nullable Context ctx, @Nullable String pkg, int cropMode) {
         if (ctx == null || pkg == null || pkg.isEmpty()) return null;
+        if (isCustomImage(pkg)) {
+            return processedCustomImage(ctx, pkg, cropMode);
+        }
         String key = pkg + "|" + cropMode;
         synchronized (PROCESSED_CACHE) {
             Drawable.ConstantState cs = PROCESSED_CACHE.get(key);
@@ -119,7 +170,21 @@ public final class IconGlyphFactory {
     public static Drawable resolve(@Nullable Context ctx, @Nullable ShortcutItem item, @Nullable HyperOpenConfig config) {
         if (ctx == null || item == null) return createGlyph("sparkle", 0xFFFFFFFF);
 
-        // 1) 优先级最高：手动指定的自定义 Miuix 矢量图标 / 内置符号
+        int cropMode = item.appIconCropMode > 0
+            ? item.appIconCropMode
+            : (config != null ? config.appIconCropMode : HyperOpenConfig.CROP_ADAPTIVE_EXPAND);
+
+        // 0) 优先级最高：本地上传的自定义图片（存储在 iconPackage 或 iconGlyph 中，以 base64: 开头）
+        if (isCustomImage(item.iconPackage)) {
+            Drawable d = processedCustomImage(ctx, item.iconPackage, cropMode);
+            if (d != null) return d;
+        }
+        if (isCustomImage(item.iconGlyph)) {
+            Drawable d = processedCustomImage(ctx, item.iconGlyph, cropMode);
+            if (d != null) return d;
+        }
+
+        // 1) 手动指定的自定义 Miuix 矢量图标 / 内置符号
         if (notBlank(item.iconGlyph)) {
             boolean padEnabled = item.glyphPadEnabled;
             int padColor = item.glyphPadColor;
@@ -127,10 +192,6 @@ public final class IconGlyphFactory {
             Drawable d = resolveMiuixIcon(item.iconGlyph.trim(), item.tintColor, padEnabled, padColor, padMode);
             if (d != null) return d;
         }
-
-        int cropMode = item.appIconCropMode > 0
-            ? item.appIconCropMode
-            : (config != null ? config.appIconCropMode : HyperOpenConfig.CROP_ADAPTIVE_EXPAND);
 
         // 2) 优先级次之：手动指定应用包名图标
         if (notBlank(item.iconPackage)) {
@@ -163,7 +224,7 @@ public final class IconGlyphFactory {
     }
 
     /**
-     * 解析当前快捷方式所对应的原始应用图标（若该快捷方式当前使用的是应用图标则返回非空 Drawable，否则返回 null）
+     * 解析当前快捷方式所对应的原始应用图标或本地上传图片（若使用的是位图/应用图标则返回非空 Drawable，否则返回 null）
      */
     @Nullable
     public static Drawable resolveRawAppIcon(
@@ -174,6 +235,12 @@ public final class IconGlyphFactory {
         @Nullable String actionPayload
     ) {
         if (ctx == null) return null;
+        if (isCustomImage(iconPackage)) {
+            return decodeCustomImageDrawable(ctx, iconPackage);
+        }
+        if (isCustomImage(iconGlyph)) {
+            return decodeCustomImageDrawable(ctx, iconGlyph);
+        }
         if (notBlank(iconGlyph)) {
             return null;
         }
@@ -223,6 +290,9 @@ public final class IconGlyphFactory {
     @Nullable
     public static Drawable appIcon(@Nullable Context ctx, @Nullable String pkg) {
         if (ctx == null || pkg == null || pkg.isEmpty()) return null;
+        if (isCustomImage(pkg)) {
+            return decodeCustomImageDrawable(ctx, pkg);
+        }
         synchronized (ICON_CACHE) {
             Drawable hit = ICON_CACHE.get(pkg);
             if (hit != null) return hit;

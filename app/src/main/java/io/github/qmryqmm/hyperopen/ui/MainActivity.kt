@@ -8,6 +8,12 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -40,6 +46,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -181,13 +188,25 @@ fun HyperOpenApp(
     var offsetY by remember { mutableFloatStateOf(initialConfig.offsetY.toFloat()) }
     var regionDiameter by remember { mutableFloatStateOf(initialConfig.regionDiameter.toFloat()) }
     var showRegionBg by remember { mutableStateOf(initialConfig.showRegionBg) }
+    var showHeaderPill by remember { mutableStateOf(initialConfig.showHeaderPill) }
     var showHeaderPillBg by remember { mutableStateOf(initialConfig.showHeaderPillBg) }
+    var headerTopMargin by remember { mutableFloatStateOf(initialConfig.headerTopMargin.toFloat()) }
+    var headerTitleSize by remember { mutableFloatStateOf(initialConfig.headerTitleSize.toFloat()) }
+    var headerSubtitleSize by remember { mutableFloatStateOf(initialConfig.headerSubtitleSize.toFloat()) }
+    var headerBlurRadius by remember { mutableFloatStateOf(initialConfig.headerBlurRadius.toFloat()) }
+    var headerTextCentered by remember { mutableStateOf(initialConfig.headerTextCentered) }
     var iconSize by remember { mutableFloatStateOf(initialConfig.iconSize.toFloat()) }
     var maxScale by remember { mutableFloatStateOf(initialConfig.maxScale) }
     var influenceRadius by remember { mutableFloatStateOf(initialConfig.influenceRadius.toFloat()) }
     var iconAlpha by remember { mutableFloatStateOf(initialConfig.iconAlpha) }
     var fisheyeZoomAlpha by remember { mutableFloatStateOf(initialConfig.fisheyeZoomAlpha) }
     var fullscreenBlurMaskAlpha by remember { mutableFloatStateOf(initialConfig.fullscreenBlurMaskAlpha) }
+    var fullscreenDimAlpha by remember { mutableFloatStateOf(initialConfig.fullscreenDimAlpha) }
+    var expandDelayMs by remember { mutableFloatStateOf(initialConfig.expandDelayMs.toFloat()) }
+    var hapticEnabled by remember { mutableStateOf(initialConfig.hapticEnabled) }
+    var hapticStrength by remember { mutableFloatStateOf(initialConfig.hapticStrength.toFloat()) }
+    var hapticDurationMs by remember { mutableFloatStateOf(initialConfig.hapticDurationMs.toFloat()) }
+    var hapticMode by remember { mutableIntStateOf(initialConfig.hapticMode) }
     var regionBlurRadius by remember { mutableFloatStateOf(initialConfig.regionBlurRadius.toFloat()) }
     var iconSpacingOffset by remember { mutableFloatStateOf(initialConfig.iconSpacingOffset.toFloat()) }
     var bubblePaddingPercent by remember { mutableFloatStateOf(initialConfig.bubblePaddingPercent.toFloat()) }
@@ -206,12 +225,33 @@ fun HyperOpenApp(
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
 
-    // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页
+    // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页, 3=整体预览页
     var subPage by remember { mutableStateOf(0) }
     var editingItem by remember { mutableStateOf<ShortcutItem?>(null) }
     var isNewShortcut by remember { mutableStateOf(false) }
     var requestEditBackTrigger by remember { mutableIntStateOf(0) }
     var showNewShortcutPresetDialog by remember { mutableStateOf(false) }
+
+    // 预览界面进入全屏沉浸模式，与真实锁屏 GxzwWindowFrameLayout 1:1 物理屏幕坐标对齐
+    DisposableEffect(activity, subPage) {
+        val window = activity?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            if (subPage == 3) {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            val w = activity?.window
+            if (w != null) {
+                WindowCompat.getInsetsController(w, w.decorView).show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     fun persist() {
         val c = HyperOpenConfig.loadFromApp(ctx)
@@ -219,13 +259,25 @@ fun HyperOpenApp(
         c.offsetY = offsetY.toInt()
         c.regionDiameter = regionDiameter.toInt()
         c.showRegionBg = showRegionBg
+        c.showHeaderPill = showHeaderPill
         c.showHeaderPillBg = showHeaderPillBg
+        c.headerTopMargin = headerTopMargin.toInt()
+        c.headerTitleSize = headerTitleSize.toInt()
+        c.headerSubtitleSize = headerSubtitleSize.toInt()
+        c.headerBlurRadius = headerBlurRadius.toInt()
+        c.headerTextCentered = headerTextCentered
         c.iconSize = iconSize.toInt()
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
         c.iconAlpha = iconAlpha
         c.fisheyeZoomAlpha = fisheyeZoomAlpha
         c.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
+        c.fullscreenDimAlpha = fullscreenDimAlpha
+        c.expandDelayMs = expandDelayMs.toInt()
+        c.hapticEnabled = hapticEnabled
+        c.hapticStrength = hapticStrength.toInt()
+        c.hapticDurationMs = hapticDurationMs.toInt()
+        c.hapticMode = hapticMode
         c.regionBlurRadius = regionBlurRadius.toInt()
         c.iconSpacingOffset = iconSpacingOffset.toInt()
         c.bubblePaddingPercent = bubblePaddingPercent.toInt()
@@ -390,13 +442,25 @@ fun HyperOpenApp(
                             this.offsetY = offsetY.toInt()
                             this.regionDiameter = regionDiameter.toInt()
                             this.showRegionBg = showRegionBg
+                            this.showHeaderPill = showHeaderPill
                             this.showHeaderPillBg = showHeaderPillBg
+                            this.headerTopMargin = headerTopMargin.toInt()
+                            this.headerTitleSize = headerTitleSize.toInt()
+                            this.headerSubtitleSize = headerSubtitleSize.toInt()
+                            this.headerBlurRadius = headerBlurRadius.toInt()
+                            this.headerTextCentered = headerTextCentered
                             this.iconSize = iconSize.toInt()
                             this.maxScale = maxScale
                             this.influenceRadius = influenceRadius.toInt()
                             this.iconAlpha = iconAlpha
                             this.fisheyeZoomAlpha = fisheyeZoomAlpha
                             this.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
+                            this.fullscreenDimAlpha = fullscreenDimAlpha
+                            this.expandDelayMs = expandDelayMs.toInt()
+                            this.hapticEnabled = hapticEnabled
+                            this.hapticStrength = hapticStrength.toInt()
+                            this.hapticDurationMs = hapticDurationMs.toInt()
+                            this.hapticMode = hapticMode
                             this.regionBlurRadius = regionBlurRadius.toInt()
                             this.iconSpacingOffset = iconSpacingOffset.toInt()
                             this.bubblePaddingPercent = bubblePaddingPercent.toInt()
@@ -481,7 +545,7 @@ fun HyperOpenApp(
                                     }
                                 }
 
-                                // 2. 全屏毛玻璃遮罩层 (与全屏遮罩滑块实时独立联动，关闭时全屏壁纸 100% 原始清晰)
+                                // 2. 全屏毛玻璃遮罩层与独立黑色压暗层 (与全屏遮罩/压暗滑块实时联动，与真实锁屏 GxzwWindowFrameLayout 1:1 对齐)
                                 if (currentConfig.fullscreenBlurMaskAlpha > 0.001f) {
                                     Box(
                                         modifier = Modifier
@@ -493,12 +557,18 @@ fun HyperOpenApp(
                                                 colors = BlurColors(
                                                     blendColors = listOf(
                                                         BlendColorEntry(
-                                                            color = Color.Black.copy(alpha = 0.55f * currentConfig.fullscreenBlurMaskAlpha),
+                                                            color = Color.Black.copy(alpha = currentConfig.fullscreenDimAlpha.coerceIn(0f, 1f)),
                                                             mode = BlurBlendMode.SrcOver
                                                         )
                                                     )
                                                 )
                                             )
+                                    )
+                                } else if (currentConfig.fullscreenDimAlpha > 0.001f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = currentConfig.fullscreenDimAlpha.coerceIn(0f, 1f)))
                                     )
                                 }
 
@@ -533,45 +603,43 @@ fun HyperOpenApp(
                                 }
                             }
 
-                            // 4. 顶部提示胶囊与左上角返回按钮的统一毛玻璃底衬
-                            if (currentConfig.regionBlurRadius > 0) {
-                                if (currentConfig.showHeaderPillBg && blurScene.headerWidthPx > 0f && blurScene.headerHeightPx > 0f) {
-                                    Box(
-                                        modifier = Modifier
-                                            .offset(
-                                                x = with(density) { blurScene.headerLeftPx.toDp() },
-                                                y = with(density) { blurScene.headerTopPx.toDp() }
-                                            )
-                                            .size(
-                                                width = with(density) { blurScene.headerWidthPx.toDp() },
-                                                height = with(density) { blurScene.headerHeightPx.toDp() }
-                                            )
-                                            .textureBlur(
-                                                backdrop = bubbleBackdrop,
-                                                shape = RoundedCornerShape(percent = 50),
-                                                blurRadius = currentConfig.regionBlurRadius.toFloat(),
-                                                colors = constantUnifiedBlurColors
-                                            )
-                                    )
-                                }
+                            // 4. 顶部提示胶囊与左上角返回按钮的毛玻璃底衬
+                            if (currentConfig.showHeaderPill && currentConfig.showHeaderPillBg && currentConfig.headerBlurRadius > 0 && blurScene.headerWidthPx > 0f && blurScene.headerHeightPx > 0f) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(
+                                            x = with(density) { blurScene.headerLeftPx.toDp() },
+                                            y = with(density) { blurScene.headerTopPx.toDp() }
+                                        )
+                                        .size(
+                                            width = with(density) { blurScene.headerWidthPx.toDp() },
+                                            height = with(density) { blurScene.headerHeightPx.toDp() }
+                                        )
+                                        .textureBlur(
+                                            backdrop = bubbleBackdrop,
+                                            shape = RoundedCornerShape(percent = 50),
+                                            blurRadius = currentConfig.headerBlurRadius.toFloat(),
+                                            colors = constantUnifiedBlurColors
+                                        )
+                                )
+                            }
 
-                                if (blurScene.backBtnSizePx > 0f) {
-                                    val backSizeDp = with(density) { blurScene.backBtnSizePx.toDp() }
-                                    Box(
-                                        modifier = Modifier
-                                            .offset(
-                                                x = with(density) { blurScene.backBtnLeftPx.toDp() },
-                                                y = with(density) { blurScene.backBtnTopPx.toDp() }
-                                            )
-                                            .size(backSizeDp)
-                                            .textureBlur(
-                                                backdrop = bubbleBackdrop,
-                                                shape = CircleShape,
-                                                blurRadius = currentConfig.regionBlurRadius.toFloat(),
-                                                colors = constantUnifiedBlurColors
-                                            )
-                                    )
-                                }
+                            if (currentConfig.regionBlurRadius > 0 && blurScene.backBtnSizePx > 0f) {
+                                val backSizeDp = with(density) { blurScene.backBtnSizePx.toDp() }
+                                Box(
+                                    modifier = Modifier
+                                        .offset(
+                                            x = with(density) { blurScene.backBtnLeftPx.toDp() },
+                                            y = with(density) { blurScene.backBtnTopPx.toDp() }
+                                        )
+                                        .size(backSizeDp)
+                                        .textureBlur(
+                                            backdrop = bubbleBackdrop,
+                                            shape = CircleShape,
+                                            blurRadius = currentConfig.regionBlurRadius.toFloat(),
+                                            colors = constantUnifiedBlurColors
+                                        )
+                                )
                             }
 
                             // 5. 图标气泡留白区域的独立毛玻璃底衬 (固定 key 复用 GPU 模糊纹理，不随手指滑动重建 Shader，彻底消除轻微闪烁；且底色恒定与真实锁屏 1:1 一致)
@@ -645,8 +713,20 @@ fun HyperOpenApp(
                                     onRegionDiameter = { regionDiameter = it; persist() },
                                     showRegionBg = showRegionBg,
                                     onShowRegionBg = { showRegionBg = it; persist() },
+                                    showHeaderPill = showHeaderPill,
+                                    onShowHeaderPill = { showHeaderPill = it; persist() },
                                     showHeaderPillBg = showHeaderPillBg,
                                     onShowHeaderPillBg = { showHeaderPillBg = it; persist() },
+                                    headerTopMargin = headerTopMargin,
+                                    onHeaderTopMargin = { headerTopMargin = it; persist() },
+                                    headerTitleSize = headerTitleSize,
+                                    onHeaderTitleSize = { headerTitleSize = it; persist() },
+                                    headerSubtitleSize = headerSubtitleSize,
+                                    onHeaderSubtitleSize = { headerSubtitleSize = it; persist() },
+                                    headerBlurRadius = headerBlurRadius,
+                                    onHeaderBlurRadius = { headerBlurRadius = it; persist() },
+                                    headerTextCentered = headerTextCentered,
+                                    onHeaderTextCentered = { headerTextCentered = it; persist() },
                                     iconSize = iconSize,
                                     onIconSize = { iconSize = it; persist() },
                                     maxScale = maxScale,
@@ -659,6 +739,18 @@ fun HyperOpenApp(
                                     onFisheyeZoomAlpha = { fisheyeZoomAlpha = it; persist() },
                                     fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha,
                                     onFullscreenBlurMaskAlpha = { fullscreenBlurMaskAlpha = it; persist() },
+                                    fullscreenDimAlpha = fullscreenDimAlpha,
+                                    onFullscreenDimAlpha = { fullscreenDimAlpha = it; persist() },
+                                    expandDelayMs = expandDelayMs,
+                                    onExpandDelayMs = { expandDelayMs = it; persist() },
+                                    hapticEnabled = hapticEnabled,
+                                    onHapticEnabled = { hapticEnabled = it; persist() },
+                                    hapticStrength = hapticStrength,
+                                    onHapticStrength = { hapticStrength = it; persist() },
+                                    hapticDurationMs = hapticDurationMs,
+                                    onHapticDurationMs = { hapticDurationMs = it; persist() },
+                                    hapticMode = hapticMode,
+                                    onHapticMode = { hapticMode = it; persist() },
                                     regionBlurRadius = regionBlurRadius,
                                     onRegionBlurRadius = { regionBlurRadius = it; persist() },
                                     iconSpacingOffset = iconSpacingOffset,
@@ -823,13 +915,25 @@ fun ParamsPage(
     offsetY: Float, onOffsetY: (Float) -> Unit,
     regionDiameter: Float, onRegionDiameter: (Float) -> Unit,
     showRegionBg: Boolean, onShowRegionBg: (Boolean) -> Unit,
+    showHeaderPill: Boolean, onShowHeaderPill: (Boolean) -> Unit,
     showHeaderPillBg: Boolean, onShowHeaderPillBg: (Boolean) -> Unit,
+    headerTopMargin: Float, onHeaderTopMargin: (Float) -> Unit,
+    headerTitleSize: Float, onHeaderTitleSize: (Float) -> Unit,
+    headerSubtitleSize: Float, onHeaderSubtitleSize: (Float) -> Unit,
+    headerBlurRadius: Float, onHeaderBlurRadius: (Float) -> Unit,
+    headerTextCentered: Boolean, onHeaderTextCentered: (Boolean) -> Unit,
     iconSize: Float, onIconSize: (Float) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
     iconAlpha: Float, onIconAlpha: (Float) -> Unit,
     fisheyeZoomAlpha: Float, onFisheyeZoomAlpha: (Float) -> Unit,
     fullscreenBlurMaskAlpha: Float, onFullscreenBlurMaskAlpha: (Float) -> Unit,
+    fullscreenDimAlpha: Float, onFullscreenDimAlpha: (Float) -> Unit,
+    expandDelayMs: Float, onExpandDelayMs: (Float) -> Unit,
+    hapticEnabled: Boolean, onHapticEnabled: (Boolean) -> Unit,
+    hapticStrength: Float, onHapticStrength: (Float) -> Unit,
+    hapticDurationMs: Float, onHapticDurationMs: (Float) -> Unit,
+    hapticMode: Int, onHapticMode: (Int) -> Unit,
     regionBlurRadius: Float, onRegionBlurRadius: (Float) -> Unit,
     iconSpacingOffset: Float, onIconSpacingOffset: (Float) -> Unit,
     bubblePaddingPercent: Float, onBubblePaddingPercent: (Float) -> Unit,
@@ -837,7 +941,27 @@ fun ParamsPage(
     selectedIconScale: Float, onSelectedIconScale: (Float) -> Unit,
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
 ) {
+    val ctx = LocalContext.current
     val lazyListState = rememberLazyListState()
+
+    fun triggerSampleHaptic(
+        mode: Int = hapticMode,
+        strength: Int = hapticStrength.toInt(),
+        durationMs: Int = hapticDurationMs.toInt(),
+        enabled: Boolean = hapticEnabled,
+    ) {
+        try {
+            @Suppress("DEPRECATION")
+            val vibrator = ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            val sampleCfg = HyperOpenConfig().apply {
+                this.hapticEnabled = enabled
+                this.hapticMode = mode
+                this.hapticStrength = strength
+                this.hapticDurationMs = durationMs
+            }
+            io.github.qmryqmm.hyperopen.view.CustomHyperOpenContainer.performConfiguredHaptic(vibrator, sampleCfg)
+        } catch (_: Throwable) {}
+    }
 
     LazyColumn(
         state = lazyListState,
@@ -877,11 +1001,20 @@ fun ParamsPage(
                     onClick = { onMaterialStyle(HyperOpenConfig.MATERIAL_GAUSSIAN_BLUR) },
                 )
                 SliderPreference(
-                    title = "全屏模糊遮罩背景透明度",
+                    title = "全屏模糊遮罩程度",
+                    summary = "控制呼出面板时全屏背景高斯模糊强度",
                     valueText = "${(fullscreenBlurMaskAlpha * 100).toInt()} %",
                     value = fullscreenBlurMaskAlpha * 100f,
                     valueRange = 0f..100f,
                     onValueChange = { onFullscreenBlurMaskAlpha(it / 100f) },
+                )
+                SliderPreference(
+                    title = "全屏遮罩压暗程度",
+                    summary = "独立调节全屏背景黑色压暗遮罩深浅",
+                    valueText = "${(fullscreenDimAlpha * 100).toInt()} %",
+                    value = fullscreenDimAlpha * 100f,
+                    valueRange = 0f..100f,
+                    onValueChange = { onFullscreenDimAlpha(it / 100f) },
                 )
             }
         }
@@ -923,11 +1056,68 @@ fun ParamsPage(
                         onValueChange = onRegionBlurRadius,
                     )
                 }
+            }
+        }
+
+        // ── 顶部提示胶囊参数 ──
+        item(key = "header_pill_title") { SmallTitle("顶部提示胶囊参数") }
+        item(key = "header_pill_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
                 SwitchPreference(
-                    title = "显示顶部提示胶囊背景",
-                    checked = showHeaderPillBg,
-                    onCheckedChange = onShowHeaderPillBg,
+                    title = "显示顶部提示胶囊",
+                    summary = "展示当前选中的快捷方式标题与描述",
+                    checked = showHeaderPill,
+                    onCheckedChange = onShowHeaderPill,
                 )
+                if (showHeaderPill) {
+                    SwitchPreference(
+                        title = "顶部提示水平居中",
+                        summary = "关闭后顶部提示胶囊将靠左对齐展示",
+                        checked = headerTextCentered,
+                        onCheckedChange = onHeaderTextCentered,
+                    )
+                    SliderPreference(
+                        title = "顶部提示高低位置",
+                        summary = "调节顶部提示胶囊距离屏幕顶部的垂直高度",
+                        valueText = "${headerTopMargin.toInt()} dp",
+                        value = headerTopMargin,
+                        valueRange = 24f..360f,
+                        onValueChange = onHeaderTopMargin,
+                    )
+                    SliderPreference(
+                        title = "主标题文字大小",
+                        valueText = "${"%.1f".format(headerTitleSize)} sp",
+                        value = headerTitleSize,
+                        valueRange = 12f..28f,
+                        onValueChange = onHeaderTitleSize,
+                    )
+                    SliderPreference(
+                        title = "副标题文字大小",
+                        valueText = "${"%.1f".format(headerSubtitleSize)} sp",
+                        value = headerSubtitleSize,
+                        valueRange = 9f..20f,
+                        onValueChange = onHeaderSubtitleSize,
+                    )
+                    SwitchPreference(
+                        title = "显示顶部提示胶囊背景",
+                        checked = showHeaderPillBg,
+                        onCheckedChange = onShowHeaderPillBg,
+                    )
+                    if (showHeaderPillBg) {
+                        SliderPreference(
+                            title = "顶部提示背景模糊程度",
+                            summary = "独立调节顶部胶囊背景毛玻璃模糊半径",
+                            valueText = if (headerBlurRadius.toInt() == 0) "已关闭模糊" else "${headerBlurRadius.toInt()} dp",
+                            value = headerBlurRadius,
+                            valueRange = 0f..50f,
+                            onValueChange = onHeaderBlurRadius,
+                        )
+                    }
+                }
             }
         }
 
@@ -939,6 +1129,14 @@ fun ParamsPage(
                     .padding(horizontal = 12.dp)
                     .fillMaxWidth(),
             ) {
+                SliderPreference(
+                    title = "解锁时图标延迟显示时间",
+                    summary = "手指长按指纹后延迟指定时间再展开图标（快速解锁时不弹出面板）",
+                    valueText = if (expandDelayMs.toInt() <= 0) "立即显示 (0 ms)" else "${expandDelayMs.toInt()} ms",
+                    value = expandDelayMs,
+                    valueRange = 0f..1200f,
+                    onValueChange = onExpandDelayMs,
+                )
                 SliderPreference(
                     title = "图标基础尺寸",
                     valueText = "${iconSize.toInt()} dp",
@@ -1014,6 +1212,95 @@ fun ParamsPage(
                     checked = iconGlowEffect,
                     onCheckedChange = onIconGlowEffect,
                 )
+            }
+        }
+
+        // ── 震动与触觉反馈 ──
+        item(key = "haptic_title") { SmallTitle("震动与触觉反馈") }
+        item(key = "haptic_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                SwitchPreference(
+                    title = "启用触觉震动反馈",
+                    summary = "手指滑入或切换快捷方式图标时提供线性马达触觉反馈",
+                    checked = hapticEnabled,
+                    onCheckedChange = {
+                        onHapticEnabled(it)
+                        if (it) triggerSampleHaptic(enabled = true)
+                    },
+                )
+                if (hapticEnabled) {
+                    SliderPreference(
+                        title = "震动强度",
+                        summary = "调节马达脉冲振幅强弱（1 ~ 255）",
+                        valueText = "${((hapticStrength / 255f) * 100).toInt().coerceIn(1, 100)} % (${hapticStrength.toInt()})",
+                        value = hapticStrength,
+                        valueRange = 1f..255f,
+                        onValueChange = onHapticStrength,
+                    )
+                    RadioButtonPreference(
+                        title = "清脆短震 (Tick)",
+                        summary = "轻快短促的微动点按手感",
+                        selected = hapticMode == HyperOpenConfig.HAPTIC_MODE_TICK,
+                        onClick = {
+                            onHapticMode(HyperOpenConfig.HAPTIC_MODE_TICK)
+                            triggerSampleHaptic(mode = HyperOpenConfig.HAPTIC_MODE_TICK)
+                        },
+                    )
+                    RadioButtonPreference(
+                        title = "标准点按 (Click)",
+                        summary = "扎实均衡的系统级确认震感",
+                        selected = hapticMode == HyperOpenConfig.HAPTIC_MODE_CLICK,
+                        onClick = {
+                            onHapticMode(HyperOpenConfig.HAPTIC_MODE_CLICK)
+                            triggerSampleHaptic(mode = HyperOpenConfig.HAPTIC_MODE_CLICK)
+                        },
+                    )
+                    RadioButtonPreference(
+                        title = "浑厚重按 (Heavy)",
+                        summary = "深沉有力的重击触感反馈",
+                        selected = hapticMode == HyperOpenConfig.HAPTIC_MODE_HEAVY,
+                        onClick = {
+                            onHapticMode(HyperOpenConfig.HAPTIC_MODE_HEAVY)
+                            triggerSampleHaptic(mode = HyperOpenConfig.HAPTIC_MODE_HEAVY)
+                        },
+                    )
+                    RadioButtonPreference(
+                        title = "双脉冲震动 (Double)",
+                        summary = "连续两次轻快短脉冲反馈",
+                        selected = hapticMode == HyperOpenConfig.HAPTIC_MODE_DOUBLE,
+                        onClick = {
+                            onHapticMode(HyperOpenConfig.HAPTIC_MODE_DOUBLE)
+                            triggerSampleHaptic(mode = HyperOpenConfig.HAPTIC_MODE_DOUBLE)
+                        },
+                    )
+                    RadioButtonPreference(
+                        title = "自定义时长脉冲",
+                        summary = "自由设定单次震动脉冲持续毫秒数與振幅",
+                        selected = hapticMode == HyperOpenConfig.HAPTIC_MODE_CUSTOM,
+                        onClick = {
+                            onHapticMode(HyperOpenConfig.HAPTIC_MODE_CUSTOM)
+                            triggerSampleHaptic(mode = HyperOpenConfig.HAPTIC_MODE_CUSTOM)
+                        },
+                    )
+                    if (hapticMode == HyperOpenConfig.HAPTIC_MODE_CUSTOM) {
+                        SliderPreference(
+                            title = "自定义震动持续时长",
+                            valueText = "${hapticDurationMs.toInt()} ms",
+                            value = hapticDurationMs,
+                            valueRange = 4f..80f,
+                            onValueChange = onHapticDurationMs,
+                        )
+                    }
+                    ArrowPreference(
+                        title = "点击体验当前震动效果",
+                        summary = "立即触发一次当前配置的触觉反馈",
+                        onClick = { triggerSampleHaptic() },
+                    )
+                }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -1232,6 +1519,42 @@ fun ShortcutEditPage(
     var showMiuixIconPicker by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
 
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            try {
+                ctx.contentResolver.openInputStream(uri)?.use { stream ->
+                    val rawBmp = android.graphics.BitmapFactory.decodeStream(stream)
+                    if (rawBmp != null && rawBmp.width > 0 && rawBmp.height > 0) {
+                        val size = 192
+                        val srcW = rawBmp.width
+                        val srcH = rawBmp.height
+                        val minEdge = kotlin.math.min(srcW, srcH)
+                        val cropX = (srcW - minEdge) / 2
+                        val cropY = (srcH - minEdge) / 2
+                        val cropped = android.graphics.Bitmap.createBitmap(rawBmp, cropX, cropY, minEdge, minEdge)
+                        val scaled = if (minEdge != size) {
+                            android.graphics.Bitmap.createScaledBitmap(cropped, size, size, true)
+                        } else {
+                            cropped
+                        }
+                        val bos = java.io.ByteArrayOutputStream()
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+                        val b64 = android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP)
+                        iconPackage = "${IconGlyphFactory.CUSTOM_IMAGE_PREFIX}$b64"
+                        iconGlyph = ""
+                        Toast.makeText(ctx, "已成功导入本地自定义图标", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(ctx, "无法解析所选图片文件", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Throwable) {
+                Toast.makeText(ctx, "导入图片失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // 检查是否有未保存的修改
     val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled) {
         title != initialItem.title ||
@@ -1393,8 +1716,25 @@ fun ShortcutEditPage(
                     .fillMaxWidth(),
             ) {
                 ArrowPreference(
+                    title = "上传本地自定义图片",
+                    summary = if (IconGlyphFactory.isCustomImage(iconPackage)) "已使用本地上传的自定义图片" else "从相册或文件管理器选择本地图片作为图标",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Add,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = { imagePickerLauncher.launch("image/*") },
+                )
+                ArrowPreference(
                     title = "选择系统/应用图标",
-                    summary = if (iconPackage.isNotBlank()) "当前选择：$iconPackage" else "未选择（使用动作或默认图标）",
+                    summary = when {
+                        IconGlyphFactory.isCustomImage(iconPackage) -> "未选择（当前使用本地图片）"
+                        iconPackage.isNotBlank() -> "当前选择：$iconPackage"
+                        else -> "未选择（使用动作或默认图标）"
+                    },
                     startAction = {
                         Icon(
                             imageVector = MiuixIcons.Photos,

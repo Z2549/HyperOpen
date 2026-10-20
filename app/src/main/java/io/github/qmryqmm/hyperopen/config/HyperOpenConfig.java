@@ -49,6 +49,13 @@ public class HyperOpenConfig {
     public static final int PAGE_GESTURE_OFF = 0;
     public static final int PAGE_GESTURE_HORIZONTAL = 1;
 
+    /** 震动模式：0=清脆短震(TICK), 1=标准点按(CLICK), 2=浑厚反馈(HEAVY_CLICK), 3=双脉冲(DOUBLE_CLICK), 4=自定义时长脉冲(CUSTOM) */
+    public static final int HAPTIC_MODE_TICK = 0;
+    public static final int HAPTIC_MODE_CLICK = 1;
+    public static final int HAPTIC_MODE_HEAVY = 2;
+    public static final int HAPTIC_MODE_DOUBLE = 3;
+    public static final int HAPTIC_MODE_CUSTOM = 4;
+
     public int materialStyle = MATERIAL_GAUSSIAN_BLUR;
     /** 设置界面风格（仅 App 内生效）：UI_STYLE_MATERIAL / UI_STYLE_MIUIX */
     public int uiStyle = UI_STYLE_MATERIAL;
@@ -70,6 +77,15 @@ public class HyperOpenConfig {
     public int regionDiameter = 220;   // dp
     public boolean showRegionBg = false;
     public boolean showHeaderPillBg = false;
+
+    /** 顶部提示区域配置 */
+    public boolean showHeaderPill = true;          // 是否显示顶部提示区域
+    public int headerTopMargin = 100;              // 顶部提示垂直高度位置 (30 ~ 360 dp)
+    public int headerTitleSize = 17;               // 标题文字大小 (12 ~ 26 sp)
+    public int headerSubtitleSize = 11;            // 副标题文字大小 (9 ~ 18 sp)
+    public int headerBlurRadius = 25;              // 顶部提示胶囊背景独立模糊半径 (0 ~ 50 dp)
+    public boolean headerTextCentered = true;      // 顶部提示文字与胶囊是否水平居中
+
     public int iconSize = 60;          // dp
     public float maxScale = 1.40f;
     public int influenceRadius = 70;  // dp
@@ -78,8 +94,23 @@ public class HyperOpenConfig {
     public float iconAlpha = 1.0f;
     /** 鱼眼效果放大时的图标透明度 (0.0f ~ 1.0f，默认 1.0f) */
     public float fisheyeZoomAlpha = 1.0f;
-    /** 唤醒指纹快捷方式时全屏模糊遮罩背景透明度 (0.0f ~ 1.0f，默认 1.0f) */
+    /** 唤醒指纹快捷方式时全屏模糊遮罩模糊程度 (0.0f ~ 1.0f，默认 1.0f) */
     public float fullscreenBlurMaskAlpha = 1.0f;
+    /** 唤醒指纹快捷方式时全屏遮罩背景压暗程度 (0.0f ~ 1.0f，默认 0.45f) */
+    public float fullscreenDimAlpha = 0.45f;
+    /** 解锁长按唤出快捷方式时图标延迟显示时间 (0 ~ 1500 ms，默认 0 ms 即遵循系统长按阈值立即散开) */
+    public int expandDelayMs = 0;
+
+    /** 震动反馈配置 */
+    public boolean hapticEnabled = true;           // 震动总开关
+    public int hapticStrength = 140;               // 震动强度 (1 ~ 255，默认 140)
+    public int hapticDurationMs = 12;              // 自定义震动时长 (4 ~ 80 ms，默认 12 ms)
+    public int hapticMode = HAPTIC_MODE_CLICK;     // 震动模式/波形 (0~4)
+
+    /** 实机 FOD 中心坐标持久化（由 SystemUI 在真实展开时同步写入，供 App 预览 1:1 像素级对齐） */
+    public float lastRealFodX = 0f;
+    public float lastRealFodY = 0f;
+
     /** 图标的圆形视界区域背景高斯模糊半径 (0 ~ 50 dp，默认 25 dp，0 为关闭) */
     public int regionBlurRadius = 25;
 
@@ -208,6 +239,36 @@ public class HyperOpenConfig {
     }
 
     /**
+     * 由 SystemUI 在真实展开时异步上报实机 FOD 中心坐标，供 App 预览实现 1:1 绝对坐标对齐
+     */
+    public static void reportRealFodCenterAsync(final Context context, final float fodX, final float fodY) {
+        if (context == null || fodX <= 0f || fodY <= 0f) return;
+        HyperOpenConfig cached = sCached;
+        if (cached != null && Math.abs(cached.lastRealFodX - fodX) < 0.5f && Math.abs(cached.lastRealFodY - fodY) < 0.5f) {
+            return;
+        }
+        if (cached != null) {
+            cached.lastRealFodX = fodX;
+            cached.lastRealFodY = fodY;
+        }
+        final Context appCtx = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        IpcExecutor.runAsync(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    android.os.Bundle extras = new android.os.Bundle();
+                    extras.putFloat("fod_x", fodX);
+                    extras.putFloat("fod_y", fodY);
+                    appCtx.getContentResolver().call(
+                        android.net.Uri.parse("content://io.github.qmryqmm.hyperopen.provider"),
+                        "save_fod_center", null, extras
+                    );
+                } catch (Throwable ignored) {}
+            }
+        });
+    }
+
+    /**
      * SystemUI 优先通过 ContentProvider 查询跨进程配置，失败时回退 XSharedPreferences
      *
      * 注意：这是同步跨进程调用，耗时不可控（模块进程可能被冻结/未启动）。
@@ -228,12 +289,26 @@ public class HyperOpenConfig {
                     config.regionDiameter = bundle.getInt("region_diameter", 220);
                     config.showRegionBg = bundle.getBoolean("show_region_bg", false);
                     config.showHeaderPillBg = bundle.getBoolean("show_header_pill_bg", false);
+                    config.showHeaderPill = bundle.getBoolean("show_header_pill", true);
+                    config.headerTopMargin = bundle.getInt("header_top_margin", 100);
+                    config.headerTitleSize = bundle.getInt("header_title_size", 17);
+                    config.headerSubtitleSize = bundle.getInt("header_subtitle_size", 11);
+                    config.headerBlurRadius = bundle.getInt("header_blur_radius", 25);
+                    config.headerTextCentered = bundle.getBoolean("header_text_centered", true);
                     config.iconSize = bundle.getInt("icon_size", 60);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 70);
                     config.iconAlpha = bundle.getFloat("icon_alpha", 1.0f);
                     config.fisheyeZoomAlpha = bundle.getFloat("fisheye_zoom_alpha", 1.0f);
                     config.fullscreenBlurMaskAlpha = bundle.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+                    config.fullscreenDimAlpha = bundle.getFloat("fullscreen_dim_alpha", 0.45f);
+                    config.expandDelayMs = bundle.getInt("expand_delay_ms", 0);
+                    config.hapticEnabled = bundle.getBoolean("haptic_enabled", true);
+                    config.hapticStrength = bundle.getInt("haptic_strength", 140);
+                    config.hapticDurationMs = bundle.getInt("haptic_duration_ms", 12);
+                    config.hapticMode = bundle.getInt("haptic_mode", HAPTIC_MODE_CLICK);
+                    config.lastRealFodX = bundle.getFloat("last_real_fod_x", 0f);
+                    config.lastRealFodY = bundle.getFloat("last_real_fod_y", 0f);
                     config.regionBlurRadius = bundle.getInt("region_blur_radius", 25);
                     config.iconSpacingOffset = bundle.getInt("icon_spacing_offset", 5);
                     config.bubblePaddingPercent = bundle.getInt("bubble_padding_percent", 0);
@@ -274,12 +349,26 @@ public class HyperOpenConfig {
         config.regionDiameter = xPrefs.getInt("region_diameter", 220);
         config.showRegionBg = xPrefs.getBoolean("show_region_bg", false);
         config.showHeaderPillBg = xPrefs.getBoolean("show_header_pill_bg", false);
+        config.showHeaderPill = xPrefs.getBoolean("show_header_pill", true);
+        config.headerTopMargin = xPrefs.getInt("header_top_margin", 100);
+        config.headerTitleSize = xPrefs.getInt("header_title_size", 17);
+        config.headerSubtitleSize = xPrefs.getInt("header_subtitle_size", 11);
+        config.headerBlurRadius = xPrefs.getInt("header_blur_radius", 25);
+        config.headerTextCentered = xPrefs.getBoolean("header_text_centered", true);
         config.iconSize = xPrefs.getInt("icon_size", 60);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 70);
         config.iconAlpha = xPrefs.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = xPrefs.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = xPrefs.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+        config.fullscreenDimAlpha = xPrefs.getFloat("fullscreen_dim_alpha", 0.45f);
+        config.expandDelayMs = xPrefs.getInt("expand_delay_ms", 0);
+        config.hapticEnabled = xPrefs.getBoolean("haptic_enabled", true);
+        config.hapticStrength = xPrefs.getInt("haptic_strength", 140);
+        config.hapticDurationMs = xPrefs.getInt("haptic_duration_ms", 12);
+        config.hapticMode = xPrefs.getInt("haptic_mode", HAPTIC_MODE_CLICK);
+        config.lastRealFodX = xPrefs.getFloat("last_real_fod_x", 0f);
+        config.lastRealFodY = xPrefs.getFloat("last_real_fod_y", 0f);
         config.regionBlurRadius = xPrefs.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = xPrefs.getInt("icon_spacing_offset", 5);
         config.bubblePaddingPercent = xPrefs.getInt("bubble_padding_percent", 0);
@@ -315,12 +404,26 @@ public class HyperOpenConfig {
         config.regionDiameter = sp.getInt("region_diameter", 220);
         config.showRegionBg = sp.getBoolean("show_region_bg", false);
         config.showHeaderPillBg = sp.getBoolean("show_header_pill_bg", false);
+        config.showHeaderPill = sp.getBoolean("show_header_pill", true);
+        config.headerTopMargin = sp.getInt("header_top_margin", 100);
+        config.headerTitleSize = sp.getInt("header_title_size", 17);
+        config.headerSubtitleSize = sp.getInt("header_subtitle_size", 11);
+        config.headerBlurRadius = sp.getInt("header_blur_radius", 25);
+        config.headerTextCentered = sp.getBoolean("header_text_centered", true);
         config.iconSize = sp.getInt("icon_size", 60);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 70);
         config.iconAlpha = sp.getFloat("icon_alpha", 1.0f);
         config.fisheyeZoomAlpha = sp.getFloat("fisheye_zoom_alpha", 1.0f);
         config.fullscreenBlurMaskAlpha = sp.getFloat("fullscreen_blur_mask_alpha", 1.0f);
+        config.fullscreenDimAlpha = sp.getFloat("fullscreen_dim_alpha", 0.45f);
+        config.expandDelayMs = sp.getInt("expand_delay_ms", 0);
+        config.hapticEnabled = sp.getBoolean("haptic_enabled", true);
+        config.hapticStrength = sp.getInt("haptic_strength", 140);
+        config.hapticDurationMs = sp.getInt("haptic_duration_ms", 12);
+        config.hapticMode = sp.getInt("haptic_mode", HAPTIC_MODE_CLICK);
+        config.lastRealFodX = sp.getFloat("last_real_fod_x", 0f);
+        config.lastRealFodY = sp.getFloat("last_real_fod_y", 0f);
         config.regionBlurRadius = sp.getInt("region_blur_radius", 25);
         config.iconSpacingOffset = sp.getInt("icon_spacing_offset", 5);
         config.bubblePaddingPercent = sp.getInt("bubble_padding_percent", 0);
@@ -356,12 +459,24 @@ public class HyperOpenConfig {
             .putInt("region_diameter", regionDiameter)
             .putBoolean("show_region_bg", showRegionBg)
             .putBoolean("show_header_pill_bg", showHeaderPillBg)
+            .putBoolean("show_header_pill", showHeaderPill)
+            .putInt("header_top_margin", headerTopMargin)
+            .putInt("header_title_size", headerTitleSize)
+            .putInt("header_subtitle_size", headerSubtitleSize)
+            .putInt("header_blur_radius", headerBlurRadius)
+            .putBoolean("header_text_centered", headerTextCentered)
             .putInt("icon_size", iconSize)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
             .putFloat("icon_alpha", iconAlpha)
             .putFloat("fisheye_zoom_alpha", fisheyeZoomAlpha)
             .putFloat("fullscreen_blur_mask_alpha", fullscreenBlurMaskAlpha)
+            .putFloat("fullscreen_dim_alpha", fullscreenDimAlpha)
+            .putInt("expand_delay_ms", expandDelayMs)
+            .putBoolean("haptic_enabled", hapticEnabled)
+            .putInt("haptic_strength", hapticStrength)
+            .putInt("haptic_duration_ms", hapticDurationMs)
+            .putInt("haptic_mode", hapticMode)
             .putInt("region_blur_radius", regionBlurRadius)
             .putInt("icon_spacing_offset", iconSpacingOffset)
             .putInt("bubble_padding_percent", bubblePaddingPercent)

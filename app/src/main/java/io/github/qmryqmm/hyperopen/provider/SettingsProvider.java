@@ -20,6 +20,7 @@ public class SettingsProvider extends ContentProvider {
     public static final String AUTHORITY = "io.github.qmryqmm.hyperopen.provider";
 
     public static final String METHOD_GET_CONFIG = "get_config";
+    public static final String METHOD_SAVE_FOD_CENTER = "save_fod_center";
 
     /** 安全模式：启动闸门查询（SystemUI 每次启动时调用，并据此决定是否安装 Hook） */
     public static final String METHOD_SAFETY_CHECK = "safety_check";
@@ -88,6 +89,24 @@ public class SettingsProvider extends ContentProvider {
             }
         }
 
+        if (METHOD_SAVE_FOD_CENTER.equals(method)) {
+            Context ctx = getContext();
+            if (ctx != null && extras != null) {
+                try {
+                    float fx = extras.getFloat("fod_x", 0f);
+                    float fy = extras.getFloat("fod_y", 0f);
+                    if (fx > 0f && fy > 0f) {
+                        SharedPreferences sp = ctx.getSharedPreferences(HyperOpenConfig.PREF_NAME, Context.MODE_PRIVATE);
+                        sp.edit()
+                            .putFloat("last_real_fod_x", fx)
+                            .putFloat("last_real_fod_y", fy)
+                            .apply();
+                    }
+                } catch (Throwable ignored) {}
+            }
+            return new Bundle();
+        }
+
         if (METHOD_GET_CONFIG.equals(method)) {
             Context ctx = getContext();
             if (ctx != null) {
@@ -98,12 +117,26 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putInt("region_diameter", sp.getInt("region_diameter", 220));
                 bundle.putBoolean("show_region_bg", sp.getBoolean("show_region_bg", false));
                 bundle.putBoolean("show_header_pill_bg", sp.getBoolean("show_header_pill_bg", false));
+                bundle.putBoolean("show_header_pill", sp.getBoolean("show_header_pill", true));
+                bundle.putInt("header_top_margin", sp.getInt("header_top_margin", 100));
+                bundle.putInt("header_title_size", sp.getInt("header_title_size", 17));
+                bundle.putInt("header_subtitle_size", sp.getInt("header_subtitle_size", 11));
+                bundle.putInt("header_blur_radius", sp.getInt("header_blur_radius", 25));
+                bundle.putBoolean("header_text_centered", sp.getBoolean("header_text_centered", true));
                 bundle.putInt("icon_size", sp.getInt("icon_size", 60));
                 bundle.putFloat("max_scale", sp.getFloat("max_scale", 1.40f));
                 bundle.putInt("influence_radius", sp.getInt("influence_radius", 70));
                 bundle.putFloat("icon_alpha", sp.getFloat("icon_alpha", 1.0f));
                 bundle.putFloat("fisheye_zoom_alpha", sp.getFloat("fisheye_zoom_alpha", 1.0f));
                 bundle.putFloat("fullscreen_blur_mask_alpha", sp.getFloat("fullscreen_blur_mask_alpha", 1.0f));
+                bundle.putFloat("fullscreen_dim_alpha", sp.getFloat("fullscreen_dim_alpha", 0.45f));
+                bundle.putInt("expand_delay_ms", sp.getInt("expand_delay_ms", 0));
+                bundle.putBoolean("haptic_enabled", sp.getBoolean("haptic_enabled", true));
+                bundle.putInt("haptic_strength", sp.getInt("haptic_strength", 140));
+                bundle.putInt("haptic_duration_ms", sp.getInt("haptic_duration_ms", 12));
+                bundle.putInt("haptic_mode", sp.getInt("haptic_mode", HyperOpenConfig.HAPTIC_MODE_CLICK));
+                bundle.putFloat("last_real_fod_x", sp.getFloat("last_real_fod_x", 0f));
+                bundle.putFloat("last_real_fod_y", sp.getFloat("last_real_fod_y", 0f));
                 bundle.putInt("region_blur_radius", sp.getInt("region_blur_radius", 25));
                 bundle.putInt("icon_spacing_offset", sp.getInt("icon_spacing_offset", 5));
                 bundle.putInt("bubble_padding_percent", sp.getInt("bubble_padding_percent", 0));

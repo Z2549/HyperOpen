@@ -171,7 +171,7 @@ public class HyperOpenHook {
                         return;
                     }
 
-                    // 全屏高斯模糊与全屏遮罩独立渲染：只受 fullscreenBlurMaskAlpha 调控
+                    // 全屏高斯模糊与全屏压暗独立渲染：模糊受 fullscreenBlurMaskAlpha 调控，压暗受 fullscreenDimAlpha 调控
                     try {
                         Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
                         if (blurUtilsDelegate != null) {
@@ -179,33 +179,31 @@ public class HyperOpenHook {
                             if (blurUtils != null) {
                                 Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
                                 if (latestConfig.fullscreenBlurMaskAlpha <= 0.001f) {
-                                    // 用户关闭全屏模糊遮罩：彻底移除全屏模糊，确保背景完全清晰透亮
+                                    // 用户关闭全屏模糊：彻底移除全屏高斯模糊
                                     if (vri != null) {
                                         XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
                                     }
-                                    view.setBackground(null);
                                 } else {
-                                    // 用户开启全屏模糊遮罩：根据比例动态设置全屏模糊与系统暗色底盘
+                                    // 用户开启全屏模糊：根据比例动态设置全屏高斯模糊半径
                                     float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
                                     float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", blurRatio);
                                     if (vri != null) {
                                         XposedHelpers.callMethod(blurUtils, "applyBlur", vri, (int) blurRadius);
                                     }
-                                    try {
-                                        view.setBackgroundResource(0x7f080b49);
-                                        if (view.getBackground() != null) {
-                                            int maskAlpha = (int) (latestConfig.fullscreenBlurMaskAlpha * 255f);
-                                            view.getBackground().setAlpha(maskAlpha);
-                                        }
-                                    } catch (Throwable t) {
-                                        int maskAlpha = (int) (latestConfig.fullscreenBlurMaskAlpha * 0x33);
-                                        view.setBackgroundColor((maskAlpha << 24) | 0x000000);
-                                    }
                                 }
                             }
                         }
+
+                        // 全屏压暗背景（0% ~ 100% 独立控制，与预览界面 Color.Black.copy(alpha = fullscreenDimAlpha) 1:1 严格对齐）
+                        float dimRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenDimAlpha));
+                        if (dimRatio <= 0.001f) {
+                            view.setBackground(null);
+                        } else {
+                            int dimAlpha = Math.max(0, Math.min(255, Math.round(dimRatio * 255f)));
+                            view.setBackgroundColor(android.graphics.Color.argb(dimAlpha, 0, 0, 0));
+                        }
                     } catch (Throwable t) {
-                        Log.w(TAG, "设置全屏背景模糊失败", t);
+                        Log.w(TAG, "设置全屏背景模糊与压暗失败", t);
                     }
 
                     // 允许触摸穿透并更新 WindowManager 布局标记 (开启 FLAG_BLUR_BEHIND 赋能局部模糊)
@@ -305,6 +303,9 @@ public class HyperOpenHook {
                             fodY = displaySize.y * 0.795f;
                         }
                     }
+
+                    // 异步上报实机真实 FOD 中心坐标至模块配置，供 App 预览 1:1 绝对对齐
+                    HyperOpenConfig.reportRealFodCenterAsync(view.getContext(), fodX, fodY);
 
                     container.setVisibility(View.VISIBLE);
                     container.bringToFront();
@@ -446,6 +447,9 @@ public class HyperOpenHook {
         // 原生 removeQuickView() 在移除窗口时已经调用过 applyBlur(vri, 0)；
         // 仅当宿主仍附着在窗口上时才补充清零全屏模糊，避免冗余跨线程/渲染调用。
         if (view.isAttachedToWindow()) {
+            try {
+                view.setBackground(null);
+            } catch (Throwable ignored) {}
             try {
                 Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
                 if (blurUtilsDelegate != null) {

@@ -2,14 +2,16 @@ package io.github.qmryqmm.hyperopen.ui
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Point
 import android.graphics.PointF
 import android.os.Build
-import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -20,6 +22,7 @@ import io.github.qmryqmm.hyperopen.layout.CircularHoneycombPacking
 import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.view.CircularBubbleView
 import io.github.qmryqmm.hyperopen.view.CircularRegionBackdropView
+import io.github.qmryqmm.hyperopen.view.CustomHyperOpenContainer
 
 /**
  * 整体指纹快捷面板高保真预览与长按拖拽交互视图。
@@ -123,15 +126,8 @@ class HyperOpenPreviewView(
         } catch (_: Throwable) {}
     }
 
-    private fun triggerHaptic(duration: Long = 12) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(duration)
-            }
-        } catch (_: Throwable) {}
+    private fun triggerHaptic() {
+        CustomHyperOpenContainer.performConfiguredHaptic(vibrator, config)
     }
 
     private var lastLayoutW = 0
@@ -161,7 +157,7 @@ class HyperOpenPreviewView(
         // 4. 左上角小悬浮返回按钮
         buildFloatingBackButton()
 
-        // 5. 在首次测量前提前建立蜂窝气泡视图树，避免在 onSizeChanged (发生在 onMeasure 之后、onLayout 之中) 才首次 addView 导致子 View 未被测量而错位
+        // 5. 在首次测量前提前建立蜂窝气泡视图树
         setupLayout()
     }
 
@@ -239,24 +235,21 @@ class HyperOpenPreviewView(
 
         headerTitle = TextView(context).apply {
             text = "滑动选择快捷方式"
-            textSize = 15f
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTextColor(Color.WHITE)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            paint.isFakeBoldText = true
             gravity = Gravity.CENTER
         }
 
         headerSubtitle = TextView(context).apply {
             text = "长按图标编辑位置 · 松手直接打开"
-            textSize = 11.5f
-            setTextColor(Color.argb(190, 255, 255, 255))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(0xAAFFFFFF.toInt())
             gravity = Gravity.CENTER
         }
 
         headerPill.addView(headerTitle)
         headerPill.addView(headerSubtitle)
-
-        // 应用最新配置的胶囊背景与材质
-        applyHeaderPillBackground()
 
         // 编辑模式横幅
         editBanner = TextView(context).apply {
@@ -282,6 +275,45 @@ class HyperOpenPreviewView(
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         }
         addView(topHeaderContainer, topLp)
+
+        applyHeaderPillStyleAndLayout()
+    }
+
+    /**
+     * 1:1 对齐 CustomHyperOpenContainer：同步应用顶部提示显隐、高度位置、文字大小、水平居中和胶囊背景
+     */
+    private fun applyHeaderPillStyleAndLayout() {
+        if (!::topHeaderContainer.isInitialized || !::headerPill.isInitialized) return
+        val showHeader = config.showHeaderPill
+        headerPill.visibility = if (showHeader) View.VISIBLE else View.GONE
+
+        val titleSp = config.headerTitleSize.coerceIn(12, 26).toFloat()
+        val subtitleSp = config.headerSubtitleSize.coerceIn(9, 18).toFloat()
+        val centered = config.headerTextCentered
+        val topMarginDp = config.headerTopMargin.coerceIn(20, 420).toFloat()
+
+        headerTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, titleSp)
+        headerTitle.gravity = if (centered) Gravity.CENTER else Gravity.START
+        headerSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSp)
+        headerSubtitle.gravity = if (centered) Gravity.CENTER else Gravity.START
+
+        headerPill.gravity = if (centered) Gravity.CENTER else (Gravity.START or Gravity.CENTER_VERTICAL)
+        topHeaderContainer.gravity = if (centered) Gravity.CENTER_HORIZONTAL else Gravity.START
+
+        val pillLp = (headerPill.layoutParams as? LinearLayout.LayoutParams)
+            ?: LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        pillLp.gravity = if (centered) Gravity.CENTER_HORIZONTAL else Gravity.START
+        pillLp.leftMargin = if (centered) 0 else dpToPx(24f).toInt()
+        pillLp.rightMargin = if (centered) 0 else dpToPx(24f).toInt()
+        headerPill.layoutParams = pillLp
+
+        val topLp = (topHeaderContainer.layoutParams as? LayoutParams)
+            ?: LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        topLp.topMargin = dpToPx(topMarginDp).toInt()
+        topLp.gravity = Gravity.TOP or (if (centered) Gravity.CENTER_HORIZONTAL else Gravity.START)
+        topHeaderContainer.layoutParams = topLp
+
+        applyHeaderPillBackground()
     }
 
     /**
@@ -289,7 +321,7 @@ class HyperOpenPreviewView(
      */
     private fun applyHeaderPillBackground() {
         if (!::headerPill.isInitialized) return
-        val show = config.showHeaderPillBg
+        val show = config.showHeaderPill && config.showHeaderPillBg
         if (show) {
             headerPill.background = HyperOSMaterialFactory.createHeaderPillDrawable(resolvedStyle)
             headerPill.clipToOutline = true
@@ -317,7 +349,47 @@ class HyperOpenPreviewView(
         super.onDetachedFromWindow()
     }
 
+    /**
+     * 获取与真实锁屏 SystemUI (GxzwWindowFrameLayout 全屏物理窗口) 1:1 完全对齐的 FOD 指纹中心坐标：
+     * 1) 优先使用 SystemUI 真实展开时上报并持久化的 lastRealFodX / lastRealFodY；
+     * 2) 其次尝试读取系统属性 persist.vendor.sys.fp.fod.location.X_Y 与 size.width_height；
+     * 3) 再次尝试反射调用 MiuiGxzwUtils；
+     * 4) 最终使用 Display.getRealSize 真实物理屏幕高度 * 0.795f 兜底（绝不受 Activity 导航栏裁剪高度影响），
+     *    并按当前预览 View 在屏幕上的真实 window location 偏移换算为局部坐标。
+     */
     private fun calculateFodCoordinates(targetW: Float, targetH: Float): PointF {
+        val loc = IntArray(2)
+        try {
+            getLocationOnScreen(loc)
+        } catch (_: Throwable) {}
+        val viewOffsetX = loc[0].toFloat()
+        val viewOffsetY = loc[1].toFloat()
+
+        // 1) 优先读取 SystemUI 真实上报的精准 FOD 中心坐标
+        if (config.lastRealFodX > 0f && config.lastRealFodY > 0f) {
+            return PointF(config.lastRealFodX - viewOffsetX, config.lastRealFodY - viewOffsetY)
+        }
+
+        // 2) 尝试读取小米底层 FOD 硬件坐标系统属性 (与 MiuiGxzwUtils 数据源一致)
+        try {
+            val spClass = Class.forName("android.os.SystemProperties")
+            val getMethod = spClass.getMethod("get", String::class.java, String::class.java)
+            val locStr = (getMethod.invoke(null, "persist.vendor.sys.fp.fod.location.X_Y", "") as? String)?.trim().orEmpty()
+            val sizeStr = (getMethod.invoke(null, "persist.vendor.sys.fp.fod.size.width_height", "") as? String)?.trim().orEmpty()
+            if (locStr.contains(",") && sizeStr.contains(",")) {
+                val locParts = locStr.split(",")
+                val sizeParts = sizeStr.split(",")
+                val fx = locParts[0].trim().toFloat()
+                val fy = locParts[1].trim().toFloat()
+                val fw = sizeParts[0].trim().toFloat()
+                val fh = sizeParts[1].trim().toFloat()
+                if (fw > 0f && fh > 0f && fy > 0f) {
+                    return PointF(fx + fw / 2f - viewOffsetX, fy + fh / 2f - viewOffsetY)
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 3) 尝试反射读取 MiuiGxzwUtils
         try {
             val utilsClass = Class.forName("com.miui.keyguard.biometrics.fod.MiuiGxzwUtils")
             val caculateMethod = utilsClass.getMethod("caculateGxzwIconSize", Context::class.java)
@@ -327,12 +399,20 @@ class HyperOpenPreviewView(
             val iconW = utilsClass.getField("GXZW_ICON_WIDTH").getInt(null)
             val iconH = utilsClass.getField("GXZW_ICON_HEIGHT").getInt(null)
             if (iconW > 0 && iconH > 0 && iconY > 0) {
-                return PointF(iconX + iconW / 2.0f, iconY + iconH / 2.0f)
+                return PointF(iconX + iconW / 2.0f - viewOffsetX, iconY + iconH / 2.0f - viewOffsetY)
             }
         } catch (_: Throwable) {}
 
-        // 备用兜底逻辑（与锁屏 SystemUI 异常兜底完全统一：屏幕中心 X 与 0.795f 屏高 Y）
-        return PointF(targetW / 2.0f, targetH * 0.795f)
+        // 4) 真实物理屏幕尺寸兜底（使用 Display.getRealSize，与 HyperOpenHook.getDisplaySize 完全一致）
+        val realSize = Point()
+        try {
+            val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            @Suppress("DEPRECATION")
+            wm?.defaultDisplay?.getRealSize(realSize)
+        } catch (_: Throwable) {}
+        val realW = if (realSize.x > 0) realSize.x.toFloat() else targetW
+        val realH = if (realSize.y > 0) realSize.y.toFloat() else targetH
+        return PointF(realW / 2.0f - viewOffsetX, realH * 0.795f - viewOffsetY)
     }
 
     private fun refreshBackdropMask() {
@@ -368,7 +448,7 @@ class HyperOpenPreviewView(
             regionBackdrop.setStyle(resolvedStyle)
             regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
         }
-        applyHeaderPillBackground()
+        applyHeaderPillStyleAndLayout()
         refreshFloatingBackButtonBackground()
         if (needRebuild || bubbleViews.isEmpty()) {
             setupLayout()
@@ -418,8 +498,8 @@ class HyperOpenPreviewView(
         }
         regionBackdrop.layoutParams = rLp
 
-        // 确保顶部提示胶囊与悬浮返回按钮背景即时更新
-        applyHeaderPillBackground()
+        // 确保顶部提示胶囊与悬浮返回按钮样式即时更新
+        applyHeaderPillStyleAndLayout()
         refreshFloatingBackButtonBackground()
 
         // 筛选有效快捷项
@@ -465,8 +545,7 @@ class HyperOpenPreviewView(
             bubbleViews.add(bubble)
         }
 
-        // 立即同步执行 bubblesContainer 与内部所有气泡及 iconView 的 measure + layout，
-        // 彻底根除在 onSizeChanged (位于 onMeasure 之后) 期间添加子 View 导致 iconView 宽高为 0、图标向右下角错位的问题
+        // 立即同步执行 bubblesContainer 与内部所有气泡及 iconView 的 measure + layout
         val wSpec = MeasureSpec.makeMeasureSpec(targetW, MeasureSpec.EXACTLY)
         val hSpec = MeasureSpec.makeMeasureSpec(targetH, MeasureSpec.EXACTLY)
         bubblesContainer.measure(wSpec, hSpec)
@@ -485,31 +564,6 @@ class HyperOpenPreviewView(
         bubblesContainer.invalidate()
         notifyBlurSceneChanged()
         post { notifyBlurSceneChanged() }
-    }
-
-    private fun playExpandAnimation(fodX: Float, fodY: Float) {
-        for (i in 0 until bubbleViews.size) {
-            val b = bubbleViews[i]
-            val startX = fodX - b.targetX
-            val startY = fodY - b.targetY
-
-            b.translationX = startX
-            b.translationY = startY
-            b.scaleX = 0.1f
-            b.scaleY = 0.1f
-            b.alpha = 0f
-
-            b.animate()
-                .translationX(0f)
-                .translationY(0f)
-                .scaleX(1.0f)
-                .scaleY(1.0f)
-                .alpha(1.0f)
-                .setInterpolator(OvershootInterpolator(1.2f))
-                .setDuration(320)
-                .setStartDelay(i * 15L)
-                .start()
-        }
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -623,7 +677,7 @@ class HyperOpenPreviewView(
     fun enterEditMode(initialTarget: CircularBubbleView? = null) {
         if (isEditMode) return
         isEditMode = true
-        triggerHaptic(40)
+        triggerHaptic()
 
         editBanner.visibility = View.VISIBLE
         editBanner.alpha = 0f
@@ -650,7 +704,7 @@ class HyperOpenPreviewView(
     fun exitEditMode() {
         if (!isEditMode) return
         isEditMode = false
-        triggerHaptic(20)
+        triggerHaptic()
 
         editBanner.animate().alpha(0f).setDuration(150).withEndAction {
             editBanner.visibility = View.GONE
@@ -678,7 +732,7 @@ class HyperOpenPreviewView(
         bubble.bringToFront()
         bubble.applyScale(1.22f)
         notifyBlurSceneChanged()
-        triggerHaptic(25)
+        triggerHaptic()
     }
 
     private fun checkDragReorder(touchX: Float, touchY: Float) {
@@ -733,7 +787,7 @@ class HyperOpenPreviewView(
                 }
             }
             notifyBlurSceneChanged()
-            triggerHaptic(15)
+            triggerHaptic()
         }
     }
 
@@ -761,7 +815,7 @@ class HyperOpenPreviewView(
         }
         draggingBubble = null
         notifyBlurSceneChanged()
-        triggerHaptic(18)
+        triggerHaptic()
     }
 
     /**
@@ -804,7 +858,7 @@ class HyperOpenPreviewView(
                 headerTitle.text = closest.item.title
                 headerTitle.setTextColor(closest.item.tintColor)
                 headerSubtitle.text = closest.item.subtitle
-                triggerHaptic(12)
+                triggerHaptic()
             }
         } else {
             if (currentSelectedBubble != null) {
@@ -858,9 +912,9 @@ class HyperOpenPreviewView(
         } else 0f
         val headerTop = if (::topHeaderContainer.isInitialized && ::headerPill.isInitialized) {
             (topHeaderContainer.top + headerPill.top).toFloat()
-        } else dpToPx(100f)
-        val headerW = if (::headerPill.isInitialized) headerPill.width.toFloat() else 0f
-        val headerH = if (::headerPill.isInitialized) headerPill.height.toFloat() else 0f
+        } else dpToPx(config.headerTopMargin.toFloat())
+        val headerW = if (::headerPill.isInitialized && config.showHeaderPill) headerPill.width.toFloat() else 0f
+        val headerH = if (::headerPill.isInitialized && config.showHeaderPill) headerPill.height.toFloat() else 0f
 
         listener(
             PreviewBlurSceneState(
