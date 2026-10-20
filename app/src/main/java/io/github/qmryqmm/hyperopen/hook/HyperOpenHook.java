@@ -41,6 +41,9 @@ public class HyperOpenHook {
     /** 宿主 View 上的附加字段：attach 状态监听器（卸载时摘除） */
     private static final String FIELD_ATTACH_LISTENER = "hyperOpenAttachListener";
 
+    /** MiuiGxzwQuickOpenView$1 (mShowRunnable) 上的附加字段：标记「这是展开面板的 Runnable」 */
+    private static final String FIELD_SHOW_RUNNABLE = "hyperOpenShowRunnable";
+
     /** 本模块在展开时为窗口追加的 flag */
     private static final int OUR_WINDOW_FLAGS =
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
@@ -78,6 +81,17 @@ public class HyperOpenHook {
 
     /** 缓存 MiuiGxzwUtils Class 引用，避免每次展开反射查找 */
     private static volatile Class<?> cachedGxzwUtilsClass;
+
+    /**
+     * 缓存「系统快捷面板弹出 Runnable」(MiuiGxzwQuickOpenView$1, $r8$classId=0) 的 Class 引用。
+     *
+     * 系统机制（逆向自系统界面_17.03.260226.r.apk 的 MiuiGxzwManager#dismissGxzwView）：
+     *   指纹解锁成功后松手，若满足 fod_quick_open 开关等条件，会执行
+     *   {@code mHandler.postDelayed(mShowRunnable, 500L | 1000L)} 再唤出快捷面板。
+     *   本模块 Hook android.os.Handler#postDelayed，动态替换该 Runnable 的延迟，
+     *   从而实现「指纹解锁后进入快捷方式的等待时间」可调。
+     */
+    private static volatile Class<?> cachedShowRunnableClass;
 
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         final ClassLoader cl = lpparam.classLoader;
@@ -131,6 +145,9 @@ public class HyperOpenHook {
                     view.addView(container, lp);
                     XposedHelpers.setAdditionalInstanceField(view, "customContainer", container);
                     rememberHost(view);
+
+                    // 标记系统 mShowRunnable，供 Handler#postDelayed 拦截器精准识别展开任务
+                    markShowRunnable(view);
 
                     // 宿主窗口被移除（息屏、锁屏重建、指纹图层销毁等）时立刻复位，
                     // 绝不让 VISIBLE 容器 / 追加的窗口 flag 残留到下一次 attach。
@@ -412,6 +429,86 @@ public class HyperOpenHook {
             Log.i(TAG, "已成功安装 MiuiGxzwIconView$2.onPointerEvent 触摸拦截 Hook！");
         } catch (Throwable t) {
             Log.e(TAG, "Hook MiuiGxzwIconView$2 失败", t);
+        }
+
+        // 5. Hook android.os.Handler#postDelayed：
+        //    拦截系统在指纹解锁后调度 mShowRunnable 唤出快捷面板的延迟，替换为用户设定的等待阈值
+        try {
+            record(XposedHelpers.findAndHookMethod(
+                android.os.Handler.class, "postDelayed",
+                Runnable.class, long.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
+                        Runnable r = (Runnable) param.args[0];
+                        long delay = (Long) param.args[1];
+                        if (r == null || delay <= 0L) return;
+
+                        // 跳过 Android 内部类（如 Invalidation/Elastic 等系统低频延迟任务），
+                        // 只拦截 MiuiGxzwQuickOpenView$1 的展开 Runnable。
+                        Class<?> showRunnableClass = cachedShowRunnableClass;
+                        if (showRunnableClass == null) {
+                            try {
+                                showRunnableClass = XposedHelpers.findClass(
+                                    "com.miui.keyguard.biometrics.fod.MiuiGxzwQuickOpenView$1", cl
+                                );
+                                cachedShowRunnableClass = showRunnableClass;
+                            } catch (Throwable ignore) {
+                                return;
+                            }
+                        }
+                        if (!showRunnableClass.isInstance(r)) {
+                            return;
+                        }
+
+                        // 该内类被 R8 复用为多种 Runnable，只有 classId=0 的实例才是「展开面板」任务：
+                        // classId=1 是写入 fod_auth_fingerprint，classId=2 是设置 closeView 无障碍描述，
+                        // 两者都不能被替换延迟。故还须读取本模块注入到内类上的标记字段做精准判定。
+                        if (!isShowRunnableMarked(r)) {
+                            return;
+                        }
+
+                        HyperOpenConfig cfg = HyperOpenConfig.getCached();
+                        int userDelay = cfg != null ? Math.max(0, cfg.showDelayMs) : 500;
+                        if (userDelay == 500) {
+                            // 500ms = 系统默认：不干预，保持系统原生 delay（普通 500ms / 无障碍 1000ms）
+                            Log.i(TAG, "快捷面板展开：系统默认，不干预原生延迟 " + delay + "ms");
+                            return;
+                        }
+                        Log.i(TAG, "快捷面板展开：等待阈值 " + delay + "ms → " + userDelay + "ms");
+                        param.args[1] = (long) userDelay;
+                    }
+                }
+            ));
+            Log.i(TAG, "已成功安装 Handler#postDelayed 指纹快捷等待阈值拦截 Hook！");
+        } catch (Throwable t) {
+            Log.e(TAG, "Hook Handler#postDelayed 失败", t);
+        }
+    }
+
+    /**
+     * 在 MiuiGxzwQuickOpenView 构造时，给其 mShowRunnable（$r8$classId=0 的 MiuiGxzwQuickOpenView$1）
+     * 实例打上附加字段标记，供 postDelayed 拦截器精准识别。这样无需依赖被 R8 重排的字段布局，
+     * 且能从根本上区分同被 R8 复用的 classId=1 / classId=2 两个长得一模一样的 Runnable。
+     */
+    private static void markShowRunnable(FrameLayout quickOpenView) {
+        if (quickOpenView == null) return;
+        try {
+            Object runnable = XposedHelpers.getObjectField(quickOpenView, "mShowRunnable");
+            if (runnable instanceof Runnable) {
+                XposedHelpers.setAdditionalInstanceField(runnable, FIELD_SHOW_RUNNABLE, Boolean.TRUE);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "标记系统展开 Runnable 失败", t);
+        }
+    }
+
+    private static boolean isShowRunnableMarked(Runnable r) {
+        try {
+            Object mark = XposedHelpers.getAdditionalInstanceField(r, FIELD_SHOW_RUNNABLE);
+            return Boolean.TRUE.equals(mark);
+        } catch (Throwable t) {
+            return false;
         }
     }
 

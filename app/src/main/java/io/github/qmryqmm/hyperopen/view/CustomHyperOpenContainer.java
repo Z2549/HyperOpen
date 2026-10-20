@@ -50,19 +50,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
 
     private Vibrator vibrator;
 
-    // 解锁时图标延迟展开任务：若 config.expandDelayMs > 0，等待指定毫秒后再展示面板与散开动画
-    private volatile boolean isDelayWaiting = false;
-    private final Runnable delayedExpandTask = new Runnable() {
-        @Override
-        public void run() {
-            isDelayWaiting = false;
-            if (getVisibility() == View.VISIBLE) {
-                setAlpha(1.0f);
-                playExpandAnimation();
-            }
-        }
-    };
-
     // 240Hz 触摸采样折叠（Coalescing）：每帧最多向主线程投递一次 onFingerMove，实现零 Runnable 分配
     private volatile float pendingTouchX;
     private volatile float pendingTouchY;
@@ -71,7 +58,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
         @Override
         public void run() {
             movePending.set(false);
-            if (getVisibility() == View.VISIBLE && !isDelayWaiting) {
+            if (getVisibility() == View.VISIBLE) {
                 onFingerMove(pendingTouchX, pendingTouchY);
             }
         }
@@ -349,8 +336,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
         this.fodCenterX = fodX;
         this.fodCenterY = fodY;
         this.currentSelectedBubble = null;
-        removeCallbacks(delayedExpandTask);
-        isDelayWaiting = false;
 
         // 重置顶部提示文字为初始状态
         if (headerTitle != null && headerSubtitle != null) {
@@ -458,21 +443,8 @@ public class CustomHyperOpenContainer extends FrameLayout {
             }
         }
 
-        int delayMs = config != null ? Math.max(0, config.expandDelayMs) : 0;
-        if (delayMs > 0) {
-            // 延迟展开：等待期内隐藏容器与气泡，若用户在此期间提前松手则不展示快捷图标
-            isDelayWaiting = true;
-            setAlpha(0f);
-            for (int i = 0; i < bubbles.size(); i++) {
-                CircularBubbleView b = bubbles.get(i);
-                b.animate().cancel();
-                b.setAlpha(0f);
-            }
-            postDelayed(delayedExpandTask, delayMs);
-        } else {
-            setAlpha(1.0f);
-            playExpandAnimation();
-        }
+        setAlpha(1.0f);
+        playExpandAnimation();
     }
 
     private void playExpandAnimation() {
@@ -514,7 +486,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
     public void scheduleFingerMove(float rawX, float rawY) {
         this.pendingTouchX = rawX;
         this.pendingTouchY = rawY;
-        if (isDelayWaiting) return;
         if (Looper.myLooper() == Looper.getMainLooper()) {
             movePending.set(false);
             onFingerMove(rawX, rawY);
@@ -527,7 +498,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
      * 手指滑动时调用：计算实时鱼眼动力学与命中目标
      */
     public void onFingerMove(float touchX, float touchY) {
-        if (isDelayWaiting) return;
         float influenceRadiusPx = dpToPx(config.influenceRadius);
         float iconSizePx = dpToPx(config.iconSize);
         float hitDistanceThreshold = iconSizePx * 0.95f;
@@ -591,7 +561,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
      */
     public ShortcutItem consumeSelectedAndReset() {
         ShortcutItem selected = null;
-        if (!isDelayWaiting && currentSelectedBubble != null) {
+        if (currentSelectedBubble != null) {
             selected = currentSelectedBubble.item;
             triggerHaptic();
         }
@@ -610,8 +580,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
     }
 
     public void resetBubbles() {
-        isDelayWaiting = false;
-        removeCallbacks(delayedExpandTask);
         movePending.set(false);
         removeCallbacks(coalescedMoveTask);
         setAlpha(1.0f);

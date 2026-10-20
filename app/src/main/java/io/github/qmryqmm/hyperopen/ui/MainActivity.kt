@@ -207,7 +207,7 @@ fun HyperOpenApp(
     var headerDimAlpha by remember { mutableFloatStateOf(initialConfig.headerDimAlpha) }
     var regionDimAlpha by remember { mutableFloatStateOf(initialConfig.regionDimAlpha) }
     var bubbleDimAlpha by remember { mutableFloatStateOf(initialConfig.bubbleDimAlpha) }
-    var expandDelayMs by remember { mutableFloatStateOf(initialConfig.expandDelayMs.toFloat()) }
+    var showDelayMs by remember { mutableFloatStateOf(initialConfig.showDelayMs.toFloat()) }
     var hapticEnabled by remember { mutableStateOf(initialConfig.hapticEnabled) }
     var hapticStrength by remember { mutableFloatStateOf(initialConfig.hapticStrength.toFloat()) }
     var hapticDurationMs by remember { mutableFloatStateOf(initialConfig.hapticDurationMs.toFloat()) }
@@ -229,6 +229,7 @@ fun HyperOpenApp(
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
+    var showResetDefaultsDialog by remember { mutableStateOf(false) }
 
     // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页, 3=整体预览页
     var subPage by remember { mutableStateOf(0) }
@@ -281,7 +282,7 @@ fun HyperOpenApp(
         c.headerDimAlpha = headerDimAlpha
         c.regionDimAlpha = regionDimAlpha
         c.bubbleDimAlpha = bubbleDimAlpha
-        c.expandDelayMs = expandDelayMs.toInt()
+        c.showDelayMs = showDelayMs.toInt()
         c.hapticEnabled = hapticEnabled
         c.hapticStrength = hapticStrength.toInt()
         c.hapticDurationMs = hapticDurationMs.toInt()
@@ -302,6 +303,57 @@ fun HyperOpenApp(
         c.predictiveBack = predictiveBack
         c.shortcuts = ArrayList(shortcuts)
         c.save(ctx)
+    }
+
+    /**
+     * 恢复全部参数为出厂默认值（视觉 / 物理 / 震动 / 等待时间 / 快捷方式列表）。
+     * 以 HyperOpenConfig 字段初始值 + 默认快捷项为准，统一重置所有可编辑状态并持久化。
+     */
+    fun resetDefaults() {
+        val defaults = HyperOpenConfig()
+        materialStyle = defaults.materialStyle
+        offsetY = defaults.offsetY.toFloat()
+        regionDiameter = defaults.regionDiameter.toFloat()
+        showRegionBg = defaults.showRegionBg
+        showHeaderPill = defaults.showHeaderPill
+        showHeaderPillBg = defaults.showHeaderPillBg
+        headerTopMargin = defaults.headerTopMargin.toFloat()
+        headerTitleSize = defaults.headerTitleSize.toFloat()
+        headerSubtitleSize = defaults.headerSubtitleSize.toFloat()
+        headerBlurRadius = defaults.headerBlurRadius.toFloat()
+        headerTextCentered = defaults.headerTextCentered
+        iconSize = defaults.iconSize.toFloat()
+        maxScale = defaults.maxScale
+        influenceRadius = defaults.influenceRadius.toFloat()
+        iconAlpha = defaults.iconAlpha
+        fisheyeZoomAlpha = defaults.fisheyeZoomAlpha
+        fullscreenBlurMaskAlpha = defaults.fullscreenBlurMaskAlpha
+        fullscreenDimAlpha = defaults.fullscreenDimAlpha
+        headerDimAlpha = defaults.headerDimAlpha
+        regionDimAlpha = defaults.regionDimAlpha
+        bubbleDimAlpha = defaults.bubbleDimAlpha
+        showDelayMs = defaults.showDelayMs.toFloat()
+        hapticEnabled = defaults.hapticEnabled
+        hapticStrength = defaults.hapticStrength.toFloat()
+        hapticDurationMs = defaults.hapticDurationMs.toFloat()
+        hapticMode = defaults.hapticMode
+        regionBlurRadius = defaults.regionBlurRadius.toFloat()
+        iconSpacingOffset = defaults.iconSpacingOffset.toFloat()
+        bubblePaddingPercent = defaults.bubblePaddingPercent.toFloat()
+        bubbleBlurRadius = defaults.bubbleBlurRadius.toFloat()
+        selectedIconScale = defaults.selectedIconScale
+        glyphPadEnabled = defaults.glyphPadEnabled
+        glyphPadColor = defaults.glyphPadColor
+        glyphPadMode = defaults.glyphPadMode
+        iconGlowEffect = defaults.iconGlowEffect
+        themeMode = defaults.themeMode
+        monetColors = defaults.monetColors
+        barBlur = defaults.barBlur
+        floatingNavBar = defaults.floatingNavBar
+        predictiveBack = defaults.predictiveBack
+        shortcuts.clear()
+        shortcuts.addAll(HyperOpenConfig.getDefaultShortcuts())
+        persist()
     }
 
     // 拦截系统返回键与手势返回：在二级页时优先处理
@@ -467,7 +519,7 @@ fun HyperOpenApp(
                             this.headerDimAlpha = headerDimAlpha
                             this.regionDimAlpha = regionDimAlpha
                             this.bubbleDimAlpha = bubbleDimAlpha
-                            this.expandDelayMs = expandDelayMs.toInt()
+                            this.showDelayMs = showDelayMs.toInt()
                             this.hapticEnabled = hapticEnabled
                             this.hapticStrength = hapticStrength.toInt()
                             this.hapticDurationMs = hapticDurationMs.toInt()
@@ -760,8 +812,8 @@ fun HyperOpenApp(
                                     onRegionDimAlpha = { regionDimAlpha = it; persist() },
                                     bubbleDimAlpha = bubbleDimAlpha,
                                     onBubbleDimAlpha = { bubbleDimAlpha = it; persist() },
-                                    expandDelayMs = expandDelayMs,
-                                    onExpandDelayMs = { expandDelayMs = it; persist() },
+                                    showDelayMs = showDelayMs,
+                                    onShowDelayMs = { showDelayMs = it; persist() },
                                     hapticEnabled = hapticEnabled,
                                     onHapticEnabled = { hapticEnabled = it; persist() },
                                     hapticStrength = hapticStrength,
@@ -822,6 +874,7 @@ fun HyperOpenApp(
                                     safetyTick = safetyTick,
                                     onSafetyRefresh = { safetyTick++ },
                                     onOpenThemePage = { subPage = 1 },
+                                    onResetDefaults = { showResetDefaultsDialog = true },
                                 )
                             }
                         }
@@ -854,6 +907,60 @@ fun HyperOpenApp(
                     subPage = 2
                 },
             )
+        }
+
+        // ── 恢复默认参数二次确认弹窗（必须在 HyperOpenTheme 内，才能跟随深浅色） ──
+        if (showResetDefaultsDialog) {
+            Dialog(
+                onDismissRequest = { showResetDefaultsDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.86f)
+                        .padding(vertical = 16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            text = "恢复默认参数？",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "将重置全部外观、物理、震动与等待时间参数，并恢复默认快捷项目列表。此操作不可撤销，确定继续吗？",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            lineHeight = 20.sp,
+                        )
+                        Spacer(Modifier.height(22.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                text = "取消",
+                                onClick = { showResetDefaultsDialog = false },
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(
+                                text = "恢复默认",
+                                colors = ButtonDefaults.textButtonColorsPrimary(),
+                                onClick = {
+                                    showResetDefaultsDialog = false
+                                    resetDefaults()
+                                    Toast.makeText(ctx, "已恢复默认参数", Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -973,7 +1080,7 @@ fun ParamsPage(
     headerDimAlpha: Float, onHeaderDimAlpha: (Float) -> Unit,
     regionDimAlpha: Float, onRegionDimAlpha: (Float) -> Unit,
     bubbleDimAlpha: Float, onBubbleDimAlpha: (Float) -> Unit,
-    expandDelayMs: Float, onExpandDelayMs: (Float) -> Unit,
+    showDelayMs: Float, onShowDelayMs: (Float) -> Unit,
     hapticEnabled: Boolean, onHapticEnabled: (Boolean) -> Unit,
     hapticStrength: Float, onHapticStrength: (Float) -> Unit,
     hapticDurationMs: Float, onHapticDurationMs: (Float) -> Unit,
@@ -1043,7 +1150,7 @@ fun ParamsPage(
             ) {
                 ArrowPreference(
                     title = "液态玻璃",
-                    summary = "Liquid Glass（高动态次表面散射与水润折射）",
+                    summary = "Liquid Glass",
                     endActions = {
                         if (materialStyle == HyperOpenConfig.MATERIAL_SOFT_GLASS) {
                             Text("✓", color = MiuixTheme.colorScheme.primary, fontSize = 16.sp)
@@ -1053,7 +1160,7 @@ fun ParamsPage(
                 )
                 ArrowPreference(
                     title = "高斯模糊",
-                    summary = "Gaussian Blur（沉稳细腻深色哑光微晶磨砂）",
+                    summary = "Gaussian Blur",
                     endActions = {
                         if (materialStyle == HyperOpenConfig.MATERIAL_GAUSSIAN_BLUR) {
                             Text("✓", color = MiuixTheme.colorScheme.primary, fontSize = 16.sp)
@@ -1090,6 +1197,7 @@ fun ParamsPage(
             ) {
                 SliderPreference(
                     title = "整体垂直高度偏移",
+                    summary = "改变整体图标高度",
                     valueText = "${offsetY.toInt()} dp",
                     value = offsetY,
                     valueRange = 50f..450f,
@@ -1097,6 +1205,7 @@ fun ParamsPage(
                 )
                 SliderPreference(
                     title = "圆形视界直径",
+                    summary = "修改此项同时会影响最大图标显示数量",
                     valueText = "${regionDiameter.toInt()} dp",
                     value = regionDiameter,
                     valueRange = 150f..420f,
@@ -1207,12 +1316,16 @@ fun ParamsPage(
                     .fillMaxWidth(),
             ) {
                 SliderPreference(
-                    title = "解锁时图标延迟显示时间",
-                    summary = "手指长按指纹后延迟指定时间再展开图标（快速解锁时不弹出面板）",
-                    valueText = if (expandDelayMs.toInt() <= 0) "立即显示 (0 ms)" else "${expandDelayMs.toInt()} ms",
-                    value = expandDelayMs,
-                    valueRange = 0f..1200f,
-                    onValueChange = onExpandDelayMs,
+                    title = "解锁进入快捷方式等待时间",
+                    summary = "指纹解锁后按住传感器多久进入面板（500 ms 为系统默认，0 为立即弹出）",
+                    valueText = when {
+                        showDelayMs.toInt() <= 0 -> "立即弹出"
+                        showDelayMs.toInt() == 500 -> "系统默认"
+                        else -> "${showDelayMs.toInt()} ms"
+                    },
+                    value = showDelayMs,
+                    valueRange = 0f..2000f,
+                    onValueChange = onShowDelayMs,
                 )
                 SliderPreference(
                     title = "图标基础尺寸",
@@ -1828,9 +1941,9 @@ fun ShortcutEditPage(
                 ArrowPreference(
                     title = "选择系统/应用图标",
                     summary = when {
-                        IconGlyphFactory.isCustomImage(iconPackage) -> "未选择（当前使用本地图片）"
+                        IconGlyphFactory.isCustomImage(iconPackage) -> "未选择"
                         iconPackage.isNotBlank() -> "当前选择：$iconPackage"
-                        else -> "未选择（使用动作或默认图标）"
+                        else -> "未选择"
                     },
                     startAction = {
                         Icon(
@@ -1843,11 +1956,11 @@ fun ShortcutEditPage(
                     onClick = { showAppPicker = true },
                 )
                 ArrowPreference(
-                    title = "选择 Remix Icon 快捷图标",
+                    title = "选择 Remix Icon 快捷图标(推荐)",
                     summary = if (iconPackage.isBlank() && iconGlyph.isNotBlank() && RemixIconRegistry.isRemixIcon(iconGlyph)) {
                         val meta = RemixIconRegistry.findMeta(iconGlyph)
                         "当前选择：${meta?.desc ?: iconGlyph} (${meta?.rawName ?: iconGlyph})"
-                    } else "未选择（128款高频快捷精选图标）",
+                    } else "未选择",
                     startAction = {
                         Icon(
                             imageVector = MiuixIcons.Tune,
@@ -3061,7 +3174,7 @@ fun MiuixIconPickerDialog(
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "支持 125+ 完整官方矢量库，并可实时调节线条粗细",
+                    text = "支持 125+ 完整官方矢量库，并可调节线条粗细",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -3358,6 +3471,7 @@ fun SettingsPage(
     safetyTick: Int,
     onSafetyRefresh: () -> Unit,
     onOpenThemePage: () -> Unit,
+    onResetDefaults: () -> Unit,
 ) {
     val lazyListState = rememberLazyListState()
 
@@ -3419,6 +3533,30 @@ fun SettingsPage(
                         )
                     },
                     onClick = { restartSystemUi(ctx) },
+                )
+            }
+        }
+
+        // ── 恢复默认参数 ──
+        item(key = "reset_defaults_card") {
+            val ctx = LocalContext.current
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                ArrowPreference(
+                    title = "恢复默认参数",
+                    summary = "重置全部外观、物理、震动与快捷项目为出厂默认值",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Reset,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = onResetDefaults,
                 )
             }
         }

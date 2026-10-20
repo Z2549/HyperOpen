@@ -101,8 +101,8 @@ public class HyperOpenConfig {
     public float headerDimAlpha = 0f;   // 顶部提示胶囊背景压暗 (0.0 ~ 1.0)
     public float regionDimAlpha = 0f;   // 圆形视界背景压暗 (0.0 ~ 1.0)
     public float bubbleDimAlpha = 0f;   // 图标气泡留白区域压暗 (0.0 ~ 1.0)
-    /** 解锁长按唤出快捷方式时图标延迟显示时间 (0 ~ 1500 ms，默认 0 ms 即遵循系统长按阈值立即散开) */
-    public int expandDelayMs = 0;
+    /** 指纹解锁后进入快捷方式面板的等待阈值 (0 ~ 2000 ms，默认 500 = 系统默认不干预，0 = 立即弹出) */
+    public int showDelayMs = 500;
 
     /** 震动反馈配置 */
     public boolean hapticEnabled = true;           // 震动总开关
@@ -308,7 +308,7 @@ public class HyperOpenConfig {
                     config.headerDimAlpha = bundle.getFloat("header_dim_alpha", 0f);
                     config.regionDimAlpha = bundle.getFloat("region_dim_alpha", 0f);
                     config.bubbleDimAlpha = bundle.getFloat("bubble_dim_alpha", 0f);
-                    config.expandDelayMs = bundle.getInt("expand_delay_ms", 0);
+                    config.showDelayMs = bundle.getInt("show_delay_ms", 500);
                     config.hapticEnabled = bundle.getBoolean("haptic_enabled", true);
                     config.hapticStrength = bundle.getInt("haptic_strength", 140);
                     config.hapticDurationMs = bundle.getInt("haptic_duration_ms", 12);
@@ -371,7 +371,7 @@ public class HyperOpenConfig {
         config.headerDimAlpha = xPrefs.getFloat("header_dim_alpha", 0f);
         config.regionDimAlpha = xPrefs.getFloat("region_dim_alpha", 0f);
         config.bubbleDimAlpha = xPrefs.getFloat("bubble_dim_alpha", 0f);
-        config.expandDelayMs = xPrefs.getInt("expand_delay_ms", 0);
+        config.showDelayMs = xPrefs.getInt("show_delay_ms", 500);
         config.hapticEnabled = xPrefs.getBoolean("haptic_enabled", true);
         config.hapticStrength = xPrefs.getInt("haptic_strength", 140);
         config.hapticDurationMs = xPrefs.getInt("haptic_duration_ms", 12);
@@ -429,7 +429,7 @@ public class HyperOpenConfig {
         config.headerDimAlpha = sp.getFloat("header_dim_alpha", 0f);
         config.regionDimAlpha = sp.getFloat("region_dim_alpha", 0f);
         config.bubbleDimAlpha = sp.getFloat("bubble_dim_alpha", 0f);
-        config.expandDelayMs = sp.getInt("expand_delay_ms", 0);
+        config.showDelayMs = sp.getInt("show_delay_ms", 500);
         config.hapticEnabled = sp.getBoolean("haptic_enabled", true);
         config.hapticStrength = sp.getInt("haptic_strength", 140);
         config.hapticDurationMs = sp.getInt("haptic_duration_ms", 12);
@@ -487,7 +487,7 @@ public class HyperOpenConfig {
             .putFloat("header_dim_alpha", headerDimAlpha)
             .putFloat("region_dim_alpha", regionDimAlpha)
             .putFloat("bubble_dim_alpha", bubbleDimAlpha)
-            .putInt("expand_delay_ms", expandDelayMs)
+            .putInt("show_delay_ms", showDelayMs)
             .putBoolean("haptic_enabled", hapticEnabled)
             .putInt("haptic_strength", hapticStrength)
             .putInt("haptic_duration_ms", hapticDurationMs)
@@ -558,83 +558,83 @@ public class HyperOpenConfig {
     public static List<ShortcutItem> getDefaultShortcuts() {
         List<ShortcutItem> items = new ArrayList<>();
 
-        // 1. 微信扫一扫 (智能助理标准入口，配 Miuix 扫一扫矢量图标 + 微信绿微透底垫)
+        // 1. 微信扫一扫 (智能助理标准入口，配 Remix 扫一扫矢量图标 + 微信绿微透底垫)
         items.add(new ShortcutItem(
             "wx_scan", "微信扫一扫", "直接唤起扫码镜头",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.scanner.ui.BaseScanUI;end",
-            "", "Scan:Regular",
+            "", "remix:qr-scan-2-line",
             0xFF07C160, true,
             true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 2. 微信付款码 (智能助理官方付款码入口，配 Miuix 银行卡矢量图标 + 微信绿微透底垫)
+        // 2. 微信付款码 (智能助理官方付款码入口，配 Remix 银行卡矢量图标 + 微信绿微透底垫)
         items.add(new ShortcutItem(
             "wx_pay", "微信付款码", "出示收银台向商家付款",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;launchFlags=0x10000000;component=com.tencent.mm/com.tencent.mm.plugin.offline.ui.WalletOfflineCoinPurseUI;i.key_entry_scene=2;end",
-            "", "BankCards:Regular",
+            "", "remix:qr-code-line",
             0xFF07C160, true,
             true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 3. 微信收款码 (智能助理官方面对面二维码收款入口，配 Miuix 二维码矢量图标 + 微信绿微透底垫)
+        // 3. 微信收款码 (智能助理官方面对面二维码收款入口，配 Remix 付款码矢量图标 + 微信绿微透底垫)
         items.add(new ShortcutItem(
             "wx_receive", "微信收款码", "面对面二维码收款",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.collect.ui.CollectMainUI;end",
-            "", "QrCode:Regular",
+            "", "remix:money-cny-circle-line",
             0xFF07C160, true,
             true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 4. 支付宝扫一扫 (官方扫码协议，配 Miuix 扫一扫图标 + 支付宝蓝微透底垫)
+        // 4. 支付宝扫一扫 (官方扫码协议，配 Remix 扫一扫图标 + 支付宝蓝微透底垫)
         items.add(new ShortcutItem(
                 "alipay_scan", "支付宝扫一扫", "扫码识别或骑行单车",
                 ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=10000007#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
-                "", "Scan:Regular",
+                "", "remix:qr-scan-2-line",
                 0xFF1677FF, true,
                 true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 5. 支付宝付款码 (智能助理官方 Scheme，配 Miuix 银行卡/支付矢量图标 + 支付宝蓝微透底垫)
+        // 5. 支付宝付款码 (智能助理官方 Scheme，配 Remix 银行卡矢量图标 + 支付宝蓝微透底垫)
         items.add(new ShortcutItem(
             "alipay_pay", "支付宝付款码", "出示收银台付款",
             ShortcutItem.ACTION_INTENT_URI, "alipays://platformapi/startapp?appId=20000056&chInfo=ch_xiaomiLeft",
-            "", "BankCards:Regular",
+            "", "remix:remix:qr-code-fill",
             0xFF1677FF, true,
             true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 6. 支付宝收款码 (智能助理官方收钱码协议，配 Miuix 二维码图标 + 支付宝蓝微透底垫)
+        // 6. 支付宝收款码 (智能助理官方收钱码协议，配 Remix 人民币矢量图标 + 支付宝蓝微透底垫)
         items.add(new ShortcutItem(
             "alipay_receive", "支付宝收款码", "面对面二维码收钱",
             ShortcutItem.ACTION_INTENT_URI, "alipays://platformapi/startapp?appId=20000123&chInfo=ch_xiaomi_left&sceneCode=KF_CHANGSHANG&shareUserId=2088831085791813&partnerId=ch_xiaomi_left&pikshemo=YES",
-            "", "QrCode:Regular",
+            "", "remix:money-cny-circle-fill",
             0xFF1677FF, true,
             true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 7. 乘车码 (交通乘车码统一入口，配 Miuix 二维码矢量图标 + 银联绿底垫)
+        // 7. 乘车码 (交通乘车码统一入口，配 Remix 地铁矢量图标 + 银联绿底垫)
         items.add(new ShortcutItem(
                 "bus_code", "乘车码", "地铁公交一卡通刷码",
                 ShortcutItem.ACTION_INTENT_URI, "intent://platformapi/startapp?appId=200011235#Intent;scheme=alipays;package=com.eg.android.AlipayGphone;end",
-                "", "QrCode:Regular",
+                "", "remix:subway-fill",
                 0xFF52C41A, true,
                 true, 0xFF52C41A, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 8. 手电筒 (系统底层 Camera Torch，配 Miuix 手电筒图标 + 暖阳橙微透底垫)
+        // 8. 手电筒 (系统底层 Camera Torch，配 Remix 手电筒矢量图标 + 暖阳橙微透底垫)
         items.add(new ShortcutItem(
             "flashlight", "手电筒", "开关后置 LED 强光",
             ShortcutItem.ACTION_FLASHLIGHT, "",
-            "", "Flashlight:Regular",
+            "", "remix:flashlight-fill",
             0xFFFAAD14, true,
             true, 0xFFFAAD14, GLYPH_PAD_MODE_TRANSLUCENT
         ));
 
-        // 9. 街拍相机 (系统原生相机标准 Action，配 Miuix 相机图标 + 活力红底垫)
+        // 9. 街拍相机 (系统原生相机标准 Action，配 Remix 相机矢量图标 + 活力红底垫)
         items.add(new ShortcutItem(
             "camera", "街拍相机", "秒级开启抓拍",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=android.media.action.STILL_IMAGE_CAMERA;end",
-            "", "Camera:Regular",
+            "", "remix:camera-fill",
             0xFFFF4D4F, true,
             true, 0xFFFF4D4F, GLYPH_PAD_MODE_TRANSLUCENT
         ));
