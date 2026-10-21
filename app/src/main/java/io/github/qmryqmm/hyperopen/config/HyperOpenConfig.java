@@ -598,7 +598,7 @@ public class HyperOpenConfig {
         items.add(new ShortcutItem(
             "alipay_pay", "支付宝付款码", "出示收银台付款",
             ShortcutItem.ACTION_INTENT_URI, "alipays://platformapi/startapp?appId=20000056&chInfo=ch_xiaomiLeft",
-            "", "remix:remix:qr-code-fill",
+            "", "remix:qr-code-fill",
             0xFF1677FF, true,
             true, 0xFF1677FF, GLYPH_PAD_MODE_TRANSLUCENT
         ));

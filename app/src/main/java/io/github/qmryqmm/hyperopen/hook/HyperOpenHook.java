@@ -17,7 +17,9 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import java.lang.ref.WeakReference;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -92,6 +94,15 @@ public class HyperOpenHook {
      *   从而实现「指纹解锁后进入快捷方式的等待时间」可调。
      */
     private static volatile Class<?> cachedShowRunnableClass;
+
+    /**
+     * 缓存 BlurUtils#applyBlur 的跨版本兼容解析结果。
+     * 该方法签名随系统界面版本变化（2 参/3 参），见 {@link #applyBlurCompat}。
+     */
+    private static volatile Method cachedApplyBlurMethod;
+
+    /** 缓存宿主 SystemUI 的 versionName，仅用于跨版本兼容诊断日志 */
+    private static volatile String cachedHostVersionName;
 
     public static void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         final ClassLoader cl = lpparam.classLoader;
@@ -189,6 +200,8 @@ public class HyperOpenHook {
                     }
 
                     // 全屏高斯模糊与全屏压暗独立渲染：模糊受 fullscreenBlurMaskAlpha 调控，压暗受 fullscreenDimAlpha 调控
+                    // 两者分别容错：applyBlur 签名随系统界面版本变化（见 applyBlurCompat），
+                    // 绝不能因模糊解析/调用失败而连带丢掉全屏压暗。
                     try {
                         Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
                         if (blurUtilsDelegate != null) {
@@ -198,20 +211,24 @@ public class HyperOpenHook {
                                 if (latestConfig.fullscreenBlurMaskAlpha <= 0.001f) {
                                     // 用户关闭全屏模糊：彻底移除全屏高斯模糊
                                     if (vri != null) {
-                                        XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
+                                        applyBlurCompat(blurUtils, vri, 0);
                                     }
                                 } else {
                                     // 用户开启全屏模糊：根据比例动态设置全屏高斯模糊半径
                                     float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
                                     float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", blurRatio);
                                     if (vri != null) {
-                                        XposedHelpers.callMethod(blurUtils, "applyBlur", vri, (int) blurRadius);
+                                        applyBlurCompat(blurUtils, vri, (int) blurRadius);
                                     }
                                 }
                             }
                         }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "设置全屏背景模糊失败(SystemUI " + hostVersionName(view.getContext()) + ")", t);
+                    }
 
-                        // 全屏压暗背景（0% ~ 100% 独立控制，与预览界面 Color.Black.copy(alpha = fullscreenDimAlpha) 1:1 严格对齐）
+                    // 全屏压暗背景（0% ~ 100% 独立控制，与预览界面 Color.Black.copy(alpha = fullscreenDimAlpha) 1:1 严格对齐）
+                    try {
                         float dimRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenDimAlpha));
                         if (dimRatio <= 0.001f) {
                             view.setBackground(null);
@@ -220,7 +237,7 @@ public class HyperOpenHook {
                             view.setBackgroundColor(android.graphics.Color.argb(dimAlpha, 0, 0, 0));
                         }
                     } catch (Throwable t) {
-                        Log.w(TAG, "设置全屏背景模糊与压暗失败", t);
+                        Log.w(TAG, "设置全屏压暗背景失败(SystemUI " + hostVersionName(view.getContext()) + ")", t);
                     }
 
                     // 允许触摸穿透并更新 WindowManager 布局标记 (开启 FLAG_BLUR_BEHIND 赋能局部模糊)
@@ -513,6 +530,77 @@ public class HyperOpenHook {
     }
 
     // ──────────────────────────────────────────────────────────────
+    // 跨版本兼容层：BlurUtils#applyBlur 签名适配
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * 跨版本兼容调用 {@code BlurUtils#applyBlur}。
+     *
+     * 该方法签名随系统界面版本变化（三份系统界面 APK 反编译核对）：
+     * <ul>
+     *   <li>17.03.x（17.03.260226.r 等新版）：{@code applyBlur(ViewRootImpl, int)} —— 2 参；</li>
+     *   <li>20250121.x 及更早旧版：{@code applyBlur(ViewRootImpl, int, boolean)} —— 3 参，
+     *       第 3 参直通 {@code SyncRtSurfaceTransactionApplier$SurfaceParams$Builder#withOpaque(Z)}，
+     *       旧版原生调用惯例恒传 false。</li>
+     * </ul>
+     *
+     * 按「方法名 + 参数个数」探测并缓存解析结果，不依赖版本号硬编码判断，对未来新版本同样健壮；
+     * 旧版 3 参签名自动补 {@code withOpaque(false)}，与原生行为严格对齐。
+     * 解析/调用失败向上抛，由各调用点既有的 try/catch 记录，不改变原有容错语义。
+     */
+    private static void applyBlurCompat(Object blurUtils, Object vri, int radius) throws Throwable {
+        Method m = cachedApplyBlurMethod;
+        if (m == null) {
+            m = resolveApplyBlur(blurUtils.getClass());
+            cachedApplyBlurMethod = m;
+        }
+        try {
+            if (m.getParameterTypes().length == 3) {
+                // 旧版签名：第 3 参 withOpaque 恒传 false，对齐原生调用惯例
+                m.invoke(blurUtils, vri, radius, Boolean.FALSE);
+            } else {
+                m.invoke(blurUtils, vri, radius);
+            }
+        } catch (InvocationTargetException e) {
+            // 还原目标方法自身抛出的异常，保持与旧实现 callMethod 一致的异常语义
+            throw e.getCause() != null ? e.getCause() : e;
+        }
+    }
+
+    /** 解析 BlurUtils#applyBlur：优先新版 2 参签名，其次旧版 3 参签名；均不存在则抛 NoSuchMethodException。 */
+    private static Method resolveApplyBlur(Class<?> blurUtilsClass) throws NoSuchMethodException {
+        Method twoArg = null;
+        Method threeArg = null;
+        for (Method m : blurUtilsClass.getMethods()) {
+            if (!"applyBlur".equals(m.getName())) continue;
+            Class<?>[] params = m.getParameterTypes();
+            if (params.length == 2) twoArg = m;
+            else if (params.length == 3) threeArg = m;
+        }
+        Method resolved = twoArg != null ? twoArg : threeArg;
+        if (resolved == null) {
+            throw new NoSuchMethodException("BlurUtils#applyBlur(ViewRootImpl,int[,boolean]) 不存在");
+        }
+        resolved.setAccessible(true);
+        Log.i(TAG, "applyBlur 兼容签名已解析: " + resolved
+            + (resolved.getParameterTypes().length == 3 ? "（旧版 3 参，自动补 withOpaque=false）" : "（新版 2 参）"));
+        return resolved;
+    }
+
+    /** 宿主 SystemUI 的 versionName（仅用于跨版本兼容诊断日志；取不到时返回 unknown）。 */
+    private static String hostVersionName(Context context) {
+        String v = cachedHostVersionName;
+        if (v != null) return v;
+        try {
+            v = context.getPackageManager().getPackageInfo("com.android.systemui", 0).versionName;
+        } catch (Throwable ignored) {
+            v = "unknown";
+        }
+        cachedHostVersionName = v;
+        return v;
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // 状态复位：dismiss / 息屏 / 窗口移除 统一走这里
     // ──────────────────────────────────────────────────────────────
 
@@ -554,7 +642,7 @@ public class HyperOpenHook {
                     if (blurUtils != null) {
                         Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
                         if (vri != null) {
-                            XposedHelpers.callMethod(blurUtils, "applyBlur", vri, 0);
+                            applyBlurCompat(blurUtils, vri, 0);
                         }
                     }
                 }
