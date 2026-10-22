@@ -17,6 +17,7 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
@@ -100,6 +101,12 @@ public class HyperOpenHook {
      * 该方法签名随系统界面版本变化（2 参/3 参），见 {@link #applyBlurCompat}。
      */
     private static volatile Method cachedApplyBlurMethod;
+
+    /** dismiss 签名解析缓存（跨版本：dismiss(I)V / dismiss()V），见 {@link #dismissCompat}。 */
+    private static volatile Method cachedDismissMethod;
+
+    /** BlurUtils 实例缓存（跨版本取链解析成功后写入），见 {@link #resolveBlurUtils}。 */
+    private static volatile Object cachedBlurUtilsInstance;
 
     /** 缓存宿主 SystemUI 的 versionName，仅用于跨版本兼容诊断日志 */
     private static volatile String cachedHostVersionName;
@@ -203,23 +210,20 @@ public class HyperOpenHook {
                     // 两者分别容错：applyBlur 签名随系统界面版本变化（见 applyBlurCompat），
                     // 绝不能因模糊解析/调用失败而连带丢掉全屏压暗。
                     try {
-                        Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
-                        if (blurUtilsDelegate != null) {
-                            Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
-                            if (blurUtils != null) {
-                                Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
-                                if (latestConfig.fullscreenBlurMaskAlpha <= 0.001f) {
-                                    // 用户关闭全屏模糊：彻底移除全屏高斯模糊
-                                    if (vri != null) {
-                                        applyBlurCompat(blurUtils, vri, 0);
-                                    }
-                                } else {
-                                    // 用户开启全屏模糊：根据比例动态设置全屏高斯模糊半径
-                                    float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
-                                    float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", blurRatio);
-                                    if (vri != null) {
-                                        applyBlurCompat(blurUtils, vri, (int) blurRadius);
-                                    }
+                        Object blurUtils = resolveBlurUtils(view);
+                        if (blurUtils != null) {
+                            Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                            if (latestConfig.fullscreenBlurMaskAlpha <= 0.001f) {
+                                // 用户关闭全屏模糊：彻底移除全屏高斯模糊
+                                if (vri != null) {
+                                    applyBlurCompat(blurUtils, vri, 0);
+                                }
+                            } else {
+                                // 用户开启全屏模糊：根据比例动态设置全屏高斯模糊半径
+                                float blurRatio = Math.max(0.0f, Math.min(1.0f, latestConfig.fullscreenBlurMaskAlpha));
+                                float blurRadius = (float) XposedHelpers.callMethod(blurUtils, "blurRadiusOfRatio", blurRatio);
+                                if (vri != null) {
+                                    applyBlurCompat(blurUtils, vri, (int) blurRadius);
                                 }
                             }
                         }
@@ -348,14 +352,22 @@ public class HyperOpenHook {
                 }
             }));
 
-            // 3. Hook dismiss(int)：退出并复位自定义容器
-            record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "dismiss", int.class, new XC_MethodHook() {
+            // 3. Hook dismiss：退出并复位自定义容器。
+            // 跨版本签名：17.03.x / 20250121.x 为 dismiss(I)V；20240808.0 / 20230316.0 为无参 dismiss()V。
+            // 先装带参签名，NoSuchMethodError 时降级装无参签名，after 语义一致。
+            XC_MethodHook dismissResetHook = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     if (!active) return;
                     resetHostState((FrameLayout) param.thisObject, "dismiss");
                 }
-            }));
+            };
+            try {
+                record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "dismiss", int.class, dismissResetHook));
+            } catch (NoSuchMethodError e) {
+                Log.i(TAG, "未找到 dismiss(I)V，降级安装无参 dismiss()V（20240808.0 / 20230316.0）");
+                record(XposedHelpers.findAndHookMethod(quickOpenViewClass, "dismiss", dismissResetHook));
+            }
 
             Log.i(TAG, "已成功安装 MiuiGxzwQuickOpenView 核心生命周期接管 Hook！");
 
@@ -421,7 +433,7 @@ public class HyperOpenHook {
                                     // 优先在主线程立刻关闭并移除悬浮面板窗口，随后在后台 IPC 线程异步发起应用启动：
                                     // 即使 system_server 因其他模块阻塞 startActivity，也绝不卡住 SystemUI 手势收尾与窗口销毁
                                     try {
-                                        XposedHelpers.callMethod(quickOpenView, "dismiss", 0);
+                                        dismissCompat(quickOpenView);
                                     } catch (Throwable t) {
                                         Log.e(TAG, "调用 dismiss 异常", t);
                                     }
@@ -601,6 +613,122 @@ public class HyperOpenHook {
     }
 
     // ──────────────────────────────────────────────────────────────
+    // 跨版本兼容层：dismiss 双签名 + BlurUtils 取链（20240808.0 / 20230316.0 适配）
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * 调用宿主 dismiss：新版 {@code dismiss(I)V} 优先，无参 {@code dismiss()}V 降级。
+     * 20240808.0 / 20230316.0 只有无参版本；带参调用会抛 NoSuchMethodError，此处捕获后重试无参。
+     * 解析结果缓存到 {@link #cachedDismissMethod}，失败不缓存，交由调用点容错。
+     */
+    private static void dismissCompat(Object host) throws Throwable {
+        Method m = cachedDismissMethod;
+        if (m == null) {
+            m = resolveDismiss(host.getClass());
+            cachedDismissMethod = m;
+        }
+        try {
+            if (m.getParameterTypes().length == 1) {
+                m.invoke(host, 0);
+            } else {
+                m.invoke(host);
+            }
+        } catch (InvocationTargetException e) {
+            throw e.getCause() != null ? e.getCause() : e;
+        }
+    }
+
+    /** 解析 dismiss：优先 dismiss(I)V，其次 dismiss()V；均不存在则抛 NoSuchMethodException。 */
+    private static Method resolveDismiss(Class<?> hostClass) throws NoSuchMethodException {
+        Method withInt = null;
+        Method noArg = null;
+        for (Method m : hostClass.getMethods()) {
+            if (!"dismiss".equals(m.getName())) continue;
+            Class<?>[] params = m.getParameterTypes();
+            if (params.length == 1 && params[0] == int.class) withInt = m;
+            else if (params.length == 0) noArg = m;
+        }
+        Method resolved = withInt != null ? withInt : noArg;
+        if (resolved == null) {
+            throw new NoSuchMethodException("MiuiGxzwQuickOpenView#dismiss(I)V / dismiss()V 不存在");
+        }
+        resolved.setAccessible(true);
+        Log.i(TAG, "dismiss 兼容签名已解析: " + resolved);
+        return resolved;
+    }
+
+    /**
+     * 跨版本解析宿主的 BlurUtils 实例。三代取链殊途同归，终点都是
+     * {@code com.android.systemui.statusbar.BlurUtils} 单例：
+     * <ul>
+     *   <li>HyperOS 族（17.03.x / 20250121.x / 20250121.0.8）：
+     *       {@code mBlurUtils(BlurUtilsDelegate) → blurUtils(BlurUtils)} 直达；</li>
+     *   <li>20240808.0：{@code mBlurUtils(CommonStub$registerBlur$1) → $sysUIProvider(SysUIProvider)}
+     *       → {@code mBlurUtils(dagger.Lazy) → get()}；</li>
+     *   <li>20230316.0：{@code mBlurUtils(MiuiStub$6) → this$0(MiuiStub) → mSysUIProvider(SysUIProvider)}
+     *       → {@code mBlurUtils(dagger.Lazy) → get()}。</li>
+     * </ul>
+     * SysUIProvider 字段名两代不同（$sysUIProvider / mSysUIProvider），按字段类型
+     * {@code miui.stub.MiuiStub$SysUIProvider} 查找而非按名字；直查失败再走 this$0 一跳。
+     * 解析成功的实例缓存；失败返回 null（BlurUtils 为进程单例，缓存安全）。
+     */
+    private static Object resolveBlurUtils(Object view) {
+        Object cached = cachedBlurUtilsInstance;
+        if (cached != null) return cached;
+        try {
+            Object holder = XposedHelpers.getObjectField(view, "mBlurUtils");
+            if (holder == null) return null;
+
+            // 1) HyperOS 直达：holder.blurUtils
+            Object direct = tryGetField(holder, "blurUtils");
+            if (direct != null) {
+                cachedBlurUtilsInstance = direct;
+                Log.i(TAG, "BlurUtils 取链已解析(HyperOS 直达): " + direct.getClass().getName());
+                return direct;
+            }
+
+            // 2) MIUI stub 链：holder[.this$0] → SysUIProvider → mBlurUtils(Lazy).get()
+            Object result = tryResolveViaSysUIProvider(holder);
+            if (result == null) {
+                Object outer = tryGetField(holder, "this$0");
+                if (outer != null) result = tryResolveViaSysUIProvider(outer);
+            }
+            if (result != null) {
+                cachedBlurUtilsInstance = result;
+                Log.i(TAG, "BlurUtils 取链已解析(MIUI stub 链): " + result.getClass().getName());
+            }
+            return result;
+        } catch (Throwable t) {
+            Log.w(TAG, "解析 BlurUtils 取链失败", t);
+            return null;
+        }
+    }
+
+    /** 在给定对象上按类型找 MiuiStub$SysUIProvider 字段，再取 mBlurUtils(Lazy).get()。 */
+    private static Object tryResolveViaSysUIProvider(Object holder) {
+        try {
+            for (Field f : holder.getClass().getDeclaredFields()) {
+                if (!"miui.stub.MiuiStub$SysUIProvider".equals(f.getType().getName())) continue;
+                f.setAccessible(true);
+                Object provider = f.get(holder);
+                if (provider == null) return null;
+                Object lazy = tryGetField(provider, "mBlurUtils");
+                if (lazy == null) return null;
+                return XposedHelpers.callMethod(lazy, "get");
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static Object tryGetField(Object obj, String name) {
+        try {
+            return XposedHelpers.getObjectField(obj, name);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // 状态复位：dismiss / 息屏 / 窗口移除 统一走这里
     // ──────────────────────────────────────────────────────────────
 
@@ -636,14 +764,11 @@ public class HyperOpenHook {
                 view.setBackground(null);
             } catch (Throwable ignored) {}
             try {
-                Object blurUtilsDelegate = XposedHelpers.getObjectField(view, "mBlurUtils");
-                if (blurUtilsDelegate != null) {
-                    Object blurUtils = XposedHelpers.getObjectField(blurUtilsDelegate, "blurUtils");
-                    if (blurUtils != null) {
-                        Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
-                        if (vri != null) {
-                            applyBlurCompat(blurUtils, vri, 0);
-                        }
+                Object blurUtils = resolveBlurUtils(view);
+                if (blurUtils != null) {
+                    Object vri = XposedHelpers.callMethod(view, "getViewRootImpl");
+                    if (vri != null) {
+                        applyBlurCompat(blurUtils, vri, 0);
                     }
                 }
             } catch (Throwable ignored) {}
@@ -718,7 +843,7 @@ public class HyperOpenHook {
                 CustomHyperOpenContainer c = getContainer(host);
                 if (c != null && c.getVisibility() == View.VISIBLE) {
                     try {
-                        XposedHelpers.callMethod(host, "dismiss", 0);
+                        dismissCompat(host);
                     } catch (Throwable t) {
                         Log.w(TAG, "息屏时调用原生 dismiss 失败", t);
                     }

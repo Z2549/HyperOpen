@@ -1,10 +1,12 @@
 package io.github.qmryqmm.hyperopen.model;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.hardware.camera2.CameraManager;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -22,6 +24,7 @@ public class ShortcutItem {
 
     public static final String ACTION_APP = "APP";
     public static final String ACTION_INTENT_URI = "INTENT_URI";
+    public static final String ACTION_ACTIVITY = "ACTIVITY";
     public static final String ACTION_BROADCAST = "BROADCAST";
     public static final String ACTION_FLASHLIGHT = "FLASHLIGHT";
     public static final String ACTION_SHELL = "SHELL";
@@ -29,6 +32,13 @@ public class ShortcutItem {
     public static final String ACTION_MUTE = "MUTE";
     public static final String ACTION_DND = "DND";
     public static final String ACTION_CAMERA = "CAMERA";
+
+    /**
+     * INTENT_URI 内嵌的目标用户标记（URI 写法：i.hyperopen_user=999）。
+     * Intent URI 规范没有 user 字段，跨用户（如 999 = MIUI/HyperOS 应用双开 XSpace/分身）
+     * 只能在发起侧指定；分发时该标记会被剥离，不会传给目标 Activity。
+     */
+    public static final String EXTRA_TARGET_USER = "hyperopen_user";
 
     public String id;
     public String title;
@@ -51,6 +61,10 @@ public class ShortcutItem {
     /** 排版模式下的用户自定义偏移量（dp），用于关闭自动吸附时的自由摆放 */
     public float customOffsetX = 0f;
     public float customOffsetY = 0f;
+    /** 启动目标 Android 用户 ID：0 = 本机主空间，999 = MIUI/HyperOS 应用双开（XSpace 分身） */
+    public int userId = 0;
+    /** SHELL 动作是否以 root（su）权限执行；false = 普通 shell（sh）身份 */
+    public boolean shellUseRoot = false;
 
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
         this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled, false, 0xFF2A82E4, 1, 2, 0f, 0f);
@@ -112,6 +126,8 @@ public class ShortcutItem {
             json.put("appIconCropMode", appIconCropMode);
             json.put("customOffsetX", (double) customOffsetX);
             json.put("customOffsetY", (double) customOffsetY);
+            json.put("userId", userId);
+            json.put("shellUseRoot", shellUseRoot);
         } catch (JSONException e) {
             Log.e(TAG, "Error serializing ShortcutItem to JSON", e);
         }
@@ -119,7 +135,7 @@ public class ShortcutItem {
     }
 
     public static ShortcutItem fromJson(JSONObject json) {
-        return new ShortcutItem(
+        ShortcutItem item = new ShortcutItem(
             json.optString("id", ""),
             json.optString("title", "未命名"),
             json.optString("subtitle", ""),
@@ -136,15 +152,21 @@ public class ShortcutItem {
             (float) json.optDouble("customOffsetX", 0.0),
             (float) json.optDouble("customOffsetY", 0.0)
         );
+        item.userId = json.optInt("userId", 0);
+        item.shellUseRoot = json.optBoolean("shellUseRoot", false);
+        return item;
     }
 
     public ShortcutItem copy() {
-        return new ShortcutItem(
+        ShortcutItem item = new ShortcutItem(
             id, title, subtitle, actionType, actionPayload,
             iconPackage, iconGlyph, tintColor, enabled,
             glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode,
             customOffsetX, customOffsetY
         );
+        item.userId = userId;
+        item.shellUseRoot = shellUseRoot;
+        return item;
     }
 
     /**
@@ -173,6 +195,11 @@ public class ShortcutItem {
                 case ACTION_APP: {
                     Intent intent = context.getPackageManager().getLaunchIntentForPackage(actionPayload);
                     if (intent != null) {
+                        if (userId > 0) {
+                            // 编辑界面「启动用户」指定了跨用户（如 999 应用双开/分身）
+                            launchAsUser(context, intent, userId);
+                            break;
+                        }
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                         context.startActivity(intent);
                     } else {
@@ -181,18 +208,31 @@ public class ShortcutItem {
                     break;
                 }
                 case ACTION_INTENT_URI: {
+                    // 最终目标用户提到 try 外：失败兜底时要据此禁止回落主空间应用
+                    int targetUser = userId > 0 ? userId : -1;
                     try {
                         Intent intent = Intent.parseUri(actionPayload, Intent.URI_INTENT_SCHEME);
+                        // 剥离 URI 内嵌用户标记（i.hyperopen_user=N）并解析最终目标用户：
+                        // 编辑界面「启动用户」字段（userId>0）优先，其次 URI 内嵌标记
+                        int uriUser = extractTargetUser(intent);
+                        if (targetUser <= 0) targetUser = uriUser;
+                        if (targetUser > 0) {
+                            // 指定了目标用户（如 999 应用双开/分身），走跨用户启动
+                            launchAsUser(context, intent, targetUser);
+                            break;
+                        }
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
                     } catch (SecurityException se) {
                         Log.w(TAG, "直接拉起 Intent 被安全权限拦截，尝试通过 Root/Shell 兜底执行: " + actionPayload, se);
                         // 当从 MainActivity 运行且遇到非导出组件权限问题时，通过 su 执行 am start
-                        runRootAmStart(actionPayload);
+                        runRootAmStart(context, actionPayload);
                     } catch (Throwable t) {
                         Log.e(TAG, "启动 Intent 异常: " + actionPayload, t);
-                        // 尝试应用启动兜底
-                        if (actionPayload.contains("com.tencent.mm")) {
+                        // 指定了目标用户却失败时绝不回落主空间应用（否则表现为"开的是主微信"），只提示失败
+                        if (targetUser > 0) {
+                            showToast(context, "跨用户启动失败(用户 " + targetUser + "): " + t.getMessage());
+                        } else if (actionPayload.contains("com.tencent.mm")) {
                             Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.tencent.mm");
                             if (launch != null) {
                                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -206,6 +246,36 @@ public class ShortcutItem {
                             }
                         } else {
                             showToast(context, "启动失败: " + t.getMessage());
+                        }
+                    }
+                    break;
+                }
+                case ACTION_ACTIVITY: {
+                    // 结构化 Intent：组件 / Data URI / Extra / Action / NEW_TASK / Root 见 ActivityLaunchSpec JSON
+                    ActivityLaunchSpec spec = ActivityLaunchSpec.fromJson(actionPayload);
+                    if (spec.useRoot) {
+                        // Root 打开：只识别 目标组件 / 目标包名（am start -n，可与「启动用户」组合），其余参数忽略
+                        ComponentName cn = spec.resolveComponent();
+                        if (cn == null) {
+                            String pkg = spec.packageName == null ? "" : spec.packageName.trim();
+                            if (!pkg.isEmpty()) {
+                                Intent launch = context.getPackageManager().getLaunchIntentForPackage(pkg);
+                                if (launch != null) cn = launch.getComponent();
+                            }
+                        }
+                        if (cn == null) {
+                            showToast(context, "Root 打开失败：请填写目标组件（仅类名）与目标包名");
+                            break;
+                        }
+                        String cmd = "am start " + (userId > 0 ? "--user " + userId + " " : "")
+                                + "-n " + cn.flattenToString();
+                        runRootCommand(context, cmd);
+                    } else {
+                        Intent intent = spec.buildIntent();
+                        if (userId > 0) {
+                            launchAsUser(context, intent, userId);
+                        } else {
+                            context.startActivity(intent);
                         }
                     }
                     break;
@@ -236,7 +306,7 @@ public class ShortcutItem {
                     break;
                 }
                 case ACTION_SHELL: {
-                    runShellCommand(actionPayload);
+                    runShellCommand(context, actionPayload, shellUseRoot);
                     break;
                 }
                 default:
@@ -349,21 +419,160 @@ public class ShortcutItem {
         }
     }
 
-    private static void runRootAmStart(String payload) {
+    /**
+     * 以指定用户身份启动 Activity（如 userId=999 → MIUI/HyperOS 应用双开 XSpace/分身）。
+     * Intent URI 规范里没有 user 字段，用户只能在发起侧指定：
+     * 1) 系统上下文 createContextAsUser（需 INTERACT_ACROSS_USERS[_FULL]，SystemUI/系统签名可直连）
+     * 2) Root 兜底：su -c 'am start --user N "intent:..."'
+     */
+    private static void launchAsUser(Context context, Intent intent, int userId) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            // getUserHandleForUid(uid) 按 uid/PER_USER_RANGE(100000) 取用户 → userId*100000 即该用户的 UserHandle
+            android.os.UserHandle target =
+                    android.os.UserHandle.getUserHandleForUid(userId * 100000);
+            // 0) Context#startActivityAsUser（SDK 桩非公开）：SystemUI 等系统上下文
+            //    持有 INTERACT_ACROSS_USERS[_FULL] 时可直连，最快路径
+            try {
+                java.lang.reflect.Method m =
+                        Context.class.getMethod("startActivityAsUser", Intent.class, android.os.UserHandle.class);
+                m.invoke(context, intent, target);
+                return;
+            } catch (Throwable t) {
+                Log.w(TAG, "startActivityAsUser 启动 user " + userId + " 不可用，尝试 createContextAsUser", t);
+            }
+            // 1) Context#createContextAsUser（SDK 桩非公开）反射调用（API 30+ 运行时存在）
+            try {
+                java.lang.reflect.Method m =
+                        Context.class.getMethod("createContextAsUser", android.os.UserHandle.class, int.class);
+                Context userCtx = (Context) m.invoke(context, target, 0);
+                userCtx.startActivity(intent);
+                return;
+            } catch (Throwable t) {
+                Log.w(TAG, "createContextAsUser 启动 user " + userId + " 失败，改用 am start --user 兜底", t);
+            }
+        }
+        try {
+            String uri = intent.toUri(Intent.URI_INTENT_SCHEME);
+            runRootCommand(context, "am start --user " + userId + " " + quoteForSh(uri));
+        } catch (Throwable t) {
+            Log.e(TAG, "跨用户启动失败: user=" + userId + " intent=" + intent, t);
+            showToast(context, "启动失败(需跨用户权限或 Root): " + t.getMessage());
+        }
+    }
+
+    /** 从 Intent 中取出并剥离 hyperopen_user 标记（URI 写法：i.hyperopen_user=999），未指定返回 -1 */
+    private static int extractTargetUser(Intent intent) {
+        int user = intent.getIntExtra(EXTRA_TARGET_USER, -1);
+        if (user < 0) {
+            String s = intent.getStringExtra(EXTRA_TARGET_USER);
+            if (s != null) {
+                try {
+                    user = Integer.parseInt(s.trim());
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        if (user >= 0) {
+            intent.removeExtra(EXTRA_TARGET_USER);
+        }
+        return user;
+    }
+
+    /**
+     * 把 userId 同步写回 payload 的 i.hyperopen_user 标记（保持 payload 是合法 Intent URI）。
+     * 双保险：payload 自描述可携带；且 SystemUI 里跑的旧版模块代码（只认 URI 标记、不认 userId
+     * 字段）同样能按用户启动。userId > 0 写入/替换标记；userId <= 0 剥掉已有标记。
+     */
+    public static String syncUserMarker(String payload, int userId) {
+        if (payload == null) return null;
+        String p = payload.replaceAll(";[iS]\\." + EXTRA_TARGET_USER + "=[^;]*", "");
+        if (userId > 0) {
+            int endIdx = p.lastIndexOf(";end");
+            if (endIdx >= 0) {
+                p = p.substring(0, endIdx) + ";i." + EXTRA_TARGET_USER + "=" + userId + p.substring(endIdx);
+            }
+        }
+        return p;
+    }
+
+    /** 从 INTENT_URI payload 中读出内嵌用户标记（i.hyperopen_user=N），无标记或解析失败返回 -1 */
+    public static int extractUserFromPayload(String payload) {
+        if (payload == null || payload.isEmpty()) return -1;
+        try {
+            return extractTargetUser(Intent.parseUri(payload, Intent.URI_INTENT_SCHEME));
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** 用双引号包裹并转义，避免 Intent URI 中的分号被 sh 截断识别为命令分隔符 */
+    private static String quoteForSh(String s) {
+        return "\"" + s.replace("\"", "\\\"") + "\"";
+    }
+
+    private static void runRootAmStart(Context context, String payload) {
+        runRootCommand(context, "am start " + quoteForSh(payload));
+    }
+
+    /** root 命令统一入口：优先桥接到模块 App 进程执行（其 su 已获授权），失败退回本地 su */
+    private static void runRootCommand(Context context, String cmd) {
+        if (runRootViaBridge(context, cmd)) return;
+        runShellBinary("su", cmd);
+    }
+
+    /** Shell 动作执行入口（供 Provider 桥接回调）：useRoot=true 经 su 以 root 身份执行，false 以普通 sh 身份执行 */
+    public static void runShellCommand(String cmd, boolean useRoot) {
+        runShellBinary(useRoot ? "su" : "sh", cmd);
+    }
+
+    /** Shell 动作执行入口：root 命令桥接到模块 App 进程（SystemUI 内 su 常因锁屏无法弹 Magisk 授权而失败） */
+    private static void runShellCommand(Context context, String cmd, boolean useRoot) {
+        if (useRoot) {
+            runRootCommand(context, cmd);
+        } else {
+            runShellBinary("sh", cmd);
+        }
+    }
+
+    /**
+     * 把 root/shell 命令桥接给模块 App 进程执行（SettingsProvider 的 run_shell 方法）。
+     * 背景：指纹面板在 SystemUI 进程里执行，su 从系统进程请求 root 时 Magisk 无法弹授权/超时；
+     * 而模块 App 进程的 su 已获授权（编辑界面测试按钮即在该进程执行成功）。
+     * fire-and-forget：返回是否受理，不等待命令结果。
+     */
+    private static boolean runRootViaBridge(Context context, String cmd) {
+        try {
+            Bundle b = new Bundle();
+            b.putString("cmd", cmd);
+            b.putBoolean("useRoot", true);
+            b.putString("useRootStr", "true"); // 兼容 adb content call 等只支持字符串 extra 的入口
+            Bundle r = context.getContentResolver().call(
+                    Uri.parse("content://io.github.qmryqmm.hyperopen.provider"),
+                    "run_shell", null, b);
+            boolean accepted = r != null && r.getBoolean("accepted", false);
+            if (!accepted) {
+                Log.w(TAG, "run_shell 桥接未受理，退回本地执行: " + cmd);
+            }
+            return accepted;
+        } catch (Throwable t) {
+            Log.w(TAG, "run_shell 桥接失败，退回本地执行: " + cmd, t);
+            return false;
+        }
+    }
+
+    private static void runShellBinary(String shell, String cmd) {
         IpcExecutor.runAsync(() -> {
             DataOutputStream os = null;
             Process p = null;
             try {
-                p = Runtime.getRuntime().exec("su");
+                p = Runtime.getRuntime().exec(shell);
                 os = new DataOutputStream(p.getOutputStream());
-                // 使用双引号包裹 payload，避免 Intent URI 中的分号被 sh 截断识别为命令分隔符
-                String escaped = payload.replace("\"", "\\\"");
-                os.writeBytes("am start \"" + escaped + "\"\n");
+                os.writeBytes(cmd + "\n");
                 os.writeBytes("exit\n");
                 os.flush();
                 p.waitFor();
             } catch (Throwable t) {
-                Log.e(TAG, "Root am start 失败: " + payload, t);
+                Log.e(TAG, ("su".equals(shell) ? "Root" : "Shell") + " 命令执行失败: " + cmd, t);
             } finally {
                 if (os != null) {
                     try { os.close(); } catch (Throwable ignored) {}
@@ -371,21 +580,6 @@ public class ShortcutItem {
                 if (p != null) {
                     try { p.destroy(); } catch (Throwable ignored) {}
                 }
-            }
-        });
-    }
-
-    private static void runShellCommand(String cmd) {
-        IpcExecutor.runAsync(() -> {
-            try {
-                Process p = Runtime.getRuntime().exec("sh");
-                DataOutputStream os = new DataOutputStream(p.getOutputStream());
-                os.writeBytes(cmd + "\n");
-                os.writeBytes("exit\n");
-                os.flush();
-                p.waitFor();
-            } catch (Throwable t) {
-                Log.e(TAG, "Shell 脚本执行异常", t);
             }
         });
     }

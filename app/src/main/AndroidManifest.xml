@@ -52,10 +52,13 @@
         </activity>
 
         <!-- 跨进程配置共享 Provider (给 SystemUI 实时提供最新配置) -->
+        <!-- directBootAware：用户未解锁（Direct Boot 锁定期）时也必须可访问，
+             否则 SystemUI 开机启动时查不到安全模式状态，模块无法生效 -->
         <provider
             android:name=".provider.SettingsProvider"
             android:authorities="io.github.qmryqmm.hyperopen.provider"
             android:exported="true"
+            android:directBootAware="true"
             android:multiprocess="false" />
     </application>
 

@@ -18,7 +18,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig
 import io.github.qmryqmm.hyperopen.factory.HyperOSMaterialFactory
+import io.github.qmryqmm.hyperopen.layout.ArcFanPacking
 import io.github.qmryqmm.hyperopen.layout.CircularHoneycombPacking
+import io.github.qmryqmm.hyperopen.layout.HollowRingPacking
 import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.view.CircularBubbleView
 import io.github.qmryqmm.hyperopen.view.CircularRegionBackdropView
@@ -110,14 +112,40 @@ class HyperOpenPreviewView(
     private var pendingPressBubble: CircularBubbleView? = null
 
     // 排版模式下的图标吸附开关（右上角按钮切换）；关闭后松手的图标保持在放手位置，不自动吸附回蜂窝槽位
+    // 状态持久化到 SharedPreferences("hyperopen_ui_state")["snap_enabled"]，跨次进入排版界面记忆
     var snapEnabled: Boolean = true
         private set
     private var snapToggleButton: TextView? = null
     private val freePlacedBubbles = mutableSetOf<CircularBubbleView>()
 
+    // 会话布局快照：进入界面/保存后捕获，用于返回键退出时判断是否存在未保存的排版修改
+    private data class LayoutSig(val id: String, val offX: Float, val offY: Float)
+    private var sessionSnapshot: List<LayoutSig> = emptyList()
+    // 各快捷项进入会话时的原始偏移（item 与 MainActivity 列表共享对象，放弃修改时据此还原字段）
+    private var pristineOffsets: Map<String, FloatArray> = emptyMap()
+
     init {
+        snapEnabled = loadSnapEnabled()
         initVibrator()
         initViews()
+    }
+
+    private fun loadSnapEnabled(): Boolean {
+        return try {
+            context.getSharedPreferences("hyperopen_ui_state", Context.MODE_PRIVATE)
+                .getBoolean("snap_enabled", true)
+        } catch (_: Throwable) {
+            true
+        }
+    }
+
+    private fun persistSnapEnabled() {
+        try {
+            context.getSharedPreferences("hyperopen_ui_state", Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("snap_enabled", snapEnabled)
+                .apply()
+        } catch (_: Throwable) {}
     }
 
     private fun initVibrator() {
@@ -181,9 +209,8 @@ class HyperOpenPreviewView(
             isClickable = true
             isFocusable = true
             setOnClickListener {
-                if (isEditMode) {
-                    exitEditMode()
-                }
+                // 返回出口统一交给外部（MainActivity）：有未保存排版修改时弹「是否保存」确认框，
+                // 否则直接退出排版界面。不在这里 exitEditMode/提交，防止未结算的让位动画中间值被写入。
                 onBackClick()
             }
         }
@@ -230,6 +257,7 @@ class HyperOpenPreviewView(
             visibility = View.GONE
             setOnClickListener {
                 snapEnabled = !snapEnabled
+                persistSnapEnabled()
                 text = snapToggleText()
                 triggerHaptic()
                 if (snapEnabled) {
@@ -436,10 +464,8 @@ class HyperOpenPreviewView(
 
     override fun onDetachedFromWindow() {
         removeCallbacks(longPressRunnable)
-        if (isEditMode && bubbleViews.isNotEmpty()) {
-            isEditMode = false
-            onOrderChanged(bubbleViews.map { it.item })
-        }
+        // 注意：detach 时不再自动提交排版（旧实现裸提交未结算的动画中间值，导致返回键退出后图标错位）；
+        // 是否保存由 MainActivity 的返回确认弹窗决定：commitLayoutChanges() / discardLayoutChanges()
         super.onDetachedFromWindow()
     }
 
@@ -533,6 +559,9 @@ class HyperOpenPreviewView(
             old.bubblePaddingPercent != newConfig.bubblePaddingPercent ||
             old.bubbleBlurRadius != newConfig.bubbleBlurRadius ||
             old.appIconCropMode != newConfig.appIconCropMode ||
+            old.maxIconCount != newConfig.maxIconCount ||
+            old.layoutStyle != newConfig.layoutStyle ||
+            old.ringCount != newConfig.ringCount ||
             old.shortcuts.size != newConfig.shortcuts.size
 
         this.config = newConfig
@@ -560,6 +589,15 @@ class HyperOpenPreviewView(
         val targetW = if (w > 0) w else resources.displayMetrics.widthPixels
         val targetH = if (h > 0) h else resources.displayMetrics.heightPixels
         if (targetW <= 0 || targetH <= 0) return
+
+        // 重建前暂存：若存在未保存的排版修改，先把当前视觉位置写回 item 字段并记住顺序，
+        // 避免视图重建把 tentative 的拖拽/自由摆放结果丢回旧状态
+        val hadUnsavedChanges = bubbleViews.isNotEmpty() && hasUnsavedLayoutChanges()
+        val prevOrderIds = bubbleViews.map { it.item.id }
+        if (hadUnsavedChanges) {
+            settleBubblePositionsImmediately()
+            flushOffsetsToItems()
+        }
 
         lastLayoutW = targetW
         lastLayoutH = targetH
@@ -604,17 +642,57 @@ class HyperOpenPreviewView(
         for (item in config.shortcuts) {
             if (item.enabled) activeShortcuts.add(item)
         }
+        // 按「图标数量」上限截取排序最前的 N 个启用项（0 = 显示全部）
+        if (config.maxIconCount > 0 && activeShortcuts.size > config.maxIconCount) {
+            val limited = activeShortcuts.take(config.maxIconCount)
+            activeShortcuts.clear()
+            activeShortcuts.addAll(limited)
+        }
+        // 重建时保持上一次的排版顺序（未保存的拖拽排序不因重建而丢失）
+        if (prevOrderIds.isNotEmpty() && prevOrderIds.size == activeShortcuts.size &&
+            prevOrderIds.toSet() == activeShortcuts.map { it.id }.toSet()
+        ) {
+            val orderMap = prevOrderIds.mapIndexed { idx, id -> id to idx }.toMap()
+            activeShortcuts.sortBy { orderMap[it.id] ?: Int.MAX_VALUE }
+        }
 
-        // 计算蜂窝坐标
+        // 计算布局坐标（图标紧凑程度对蜂窝、空心圆环与弧形扇面通用）
         val spacingOffsetPx = dpToPx(config.iconSpacingOffset.toFloat())
-        val points = CircularHoneycombPacking.calculatePoints(
-            activeShortcuts.size,
-            fodX,
-            regionCenterY,
-            regionRadiusPx,
-            iconSizePx,
-            spacingOffsetPx
-        )
+        val points = if (config.layoutStyle == HyperOpenConfig.LAYOUT_RING) {
+            // 空心同心圆环：中心留空，图标排布在 ringCount 圈同心环上
+            HollowRingPacking.calculatePoints(
+                activeShortcuts.size,
+                fodX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx,
+                config.ringCount
+            )
+        } else if (config.layoutStyle == HyperOpenConfig.LAYOUT_ARC) {
+            // 弧形扇面：图标沿 150° 弧带排布，单弧放不下自动转双弧
+            ArcFanPacking.calculatePoints(
+                activeShortcuts.size,
+                fodX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx
+            )
+        } else {
+            CircularHoneycombPacking.calculatePoints(
+                activeShortcuts.size,
+                fodX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx
+            )
+        }
+        // 布局容量不足时截断，保证快捷项与点集一一对应
+        if (activeShortcuts.size > points.size) {
+            activeShortcuts.subList(points.size, activeShortcuts.size).clear()
+        }
         gridPoints.addAll(points)
 
         // 实例化气泡（预览界面禁用底层窗口级 BackgroundBlur，由 Compose 的 textureBlur 渲染实时壁纸模糊，确保样式与真实锁屏 1:1 对齐且无双层叠加闪烁）
@@ -666,6 +744,13 @@ class HyperOpenPreviewView(
         }
 
         bubblesContainer.invalidate()
+        if (!hadUnsavedChanges) {
+            // 首次建立/无待保存修改时捕获会话快照与原始偏移（供返回键「是否保存」判断与「放弃」还原）
+            sessionSnapshot = captureLayoutSignature()
+            pristineOffsets = activeShortcuts.associate {
+                it.id to floatArrayOf(it.customOffsetX, it.customOffsetY)
+            }
+        }
         notifyBlurSceneChanged()
         post { notifyBlurSceneChanged() }
     }
@@ -822,6 +907,7 @@ class HyperOpenPreviewView(
         }
     }
 
+    /** 退出排版编辑模式（仅 UI 状态复位，不提交保存；保存走 commitLayoutChanges()，由返回键确认弹窗触发） */
     fun exitEditMode() {
         if (!isEditMode) return
         isEditMode = false
@@ -836,33 +922,6 @@ class HyperOpenPreviewView(
                 btn.visibility = View.GONE
             }.start()
         }
-        val density = resources.displayMetrics.density.coerceAtLeast(1f)
-        if (snapEnabled) {
-            // 开启吸附时：自由摆放的图标统一归位到蜂窝网格槽位，并清除自定义偏移
-            if (freePlacedBubbles.isNotEmpty()) {
-                snapAllBubblesToGrid(animated = true)
-            }
-            for (b in bubbleViews) {
-                b.item.customOffsetX = 0f
-                b.item.customOffsetY = 0f
-            }
-        } else {
-            // 关闭吸附时：保留所有气泡当前的自由摆放位置，计算相对于理论蜂窝槽位的 dp 偏移量并保存到 ShortcutItem
-            val iconSizePx = dpToPx(config.iconSize.toFloat())
-            for (i in 0 until bubbleViews.size) {
-                val b = bubbleViews[i]
-                val pt = if (i < gridPoints.size) gridPoints[i] else PointF(b.targetX, b.targetY)
-                val lp = b.layoutParams as LayoutParams
-                val curCenterX = lp.leftMargin + iconSizePx / 2f + b.translationX
-                val curCenterY = lp.topMargin + iconSizePx / 2f + b.translationY
-                val offXPx = curCenterX - pt.x
-                val offsetYPx = curCenterY - pt.y
-                b.targetX = curCenterX
-                b.targetY = curCenterY
-                b.item.customOffsetX = offXPx / density
-                b.item.customOffsetY = offsetYPx / density
-            }
-        }
 
         headerTitle.text = "滑动选择快捷方式"
         headerTitle.setTextColor(Color.WHITE)
@@ -873,10 +932,120 @@ class HyperOpenPreviewView(
             b.applyScale(1.0f)
         }
         notifyBlurSceneChanged()
+    }
 
-        // 同步通知外部回写最新排序列表
-        val newOrdered = bubbleViews.map { it.item }
-        onOrderChanged(newOrdered)
+    /**
+     * 立即结算所有进行中的让位/吸附动画：取消动画并把目标坐标写死进 LayoutParams。
+     * 防止提交排版时读到 .x()/.y() 动画的中间值（旧版返回键退出后图标错位的根因之一）。
+     */
+    private fun settleBubblePositionsImmediately() {
+        val iconSizePx = dpToPx(config.iconSize.toFloat())
+        for (b in bubbleViews) {
+            try {
+                b.animate().setListener(null).setUpdateListener(null).cancel()
+            } catch (_: Throwable) {}
+            val lp = b.layoutParams as? LayoutParams ?: continue
+            if (b.targetX != 0f || b.targetY != 0f) {
+                lp.leftMargin = (b.targetX - iconSizePx / 2f).toInt()
+                lp.topMargin = (b.targetY - iconSizePx / 2f).toInt()
+                b.layoutParams = lp
+            }
+            b.translationX = 0f
+            b.translationY = 0f
+        }
+    }
+
+    /** 把每项当前视觉位置相对蜂窝槽位的偏移写入 ShortcutItem（dp，setupLayout 可精确回环还原） */
+    private fun flushOffsetsToItems() {
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val iconSizePx = dpToPx(config.iconSize.toFloat())
+        for (i in 0 until bubbleViews.size) {
+            val b = bubbleViews[i]
+            val pt = if (i < gridPoints.size) gridPoints[i] else PointF(b.targetX, b.targetY)
+            val lp = b.layoutParams as? LayoutParams ?: continue
+            val curCenterX = lp.leftMargin + iconSizePx / 2f + b.translationX
+            val curCenterY = lp.topMargin + iconSizePx / 2f + b.translationY
+            b.item.customOffsetX = (curCenterX - pt.x) / density
+            b.item.customOffsetY = (curCenterY - pt.y) / density
+            b.targetX = curCenterX
+            b.targetY = curCenterY
+        }
+    }
+
+    /** 当前布局签名：每项 id + 相对蜂窝槽位的 dp 偏移（含 translation，所见即所得） */
+    private fun captureLayoutSignature(): List<LayoutSig> {
+        val density = resources.displayMetrics.density.coerceAtLeast(1f)
+        val iconSizePx = dpToPx(config.iconSize.toFloat())
+        return bubbleViews.mapIndexed { i, b ->
+            val pt = if (i < gridPoints.size) gridPoints[i] else PointF(b.targetX, b.targetY)
+            val lp = b.layoutParams as? LayoutParams
+            if (lp != null) {
+                LayoutSig(
+                    b.item.id,
+                    (lp.leftMargin + iconSizePx / 2f + b.translationX - pt.x) / density,
+                    (lp.topMargin + iconSizePx / 2f + b.translationY - pt.y) / density
+                )
+            } else {
+                LayoutSig(b.item.id, 0f, 0f)
+            }
+        }
+    }
+
+    /** 是否存在未保存的排版修改（顺序变化或偏移差 > 0.6dp；容差吸收 .toInt() 取整噪声） */
+    fun hasUnsavedLayoutChanges(): Boolean {
+        if (bubbleViews.isEmpty()) return false
+        val cur = captureLayoutSignature()
+        if (cur.size != sessionSnapshot.size) return true
+        for (i in cur.indices) {
+            val a = cur[i]
+            val b = sessionSnapshot[i]
+            if (a.id != b.id) return true
+            if (Math.abs(a.offX - b.offX) > 0.6f || Math.abs(a.offY - b.offY) > 0.6f) return true
+        }
+        return false
+    }
+
+    /**
+     * 提交排版（返回确认弹窗「保存并退出」）：结算动画 → 吸附归位 → 偏移写回 item → 回调 onOrderChanged。
+     * 与旧版 exitEditMode 的保存分支语义等价，但保证读到的都是最终位置而非动画中间值。
+     */
+    fun commitLayoutChanges() {
+        if (bubbleViews.isEmpty()) return
+        if (isDraggingActive && draggingBubble != null) {
+            finishDragging()
+        }
+        settleBubblePositionsImmediately()
+        if (snapEnabled && freePlacedBubbles.isNotEmpty()) {
+            // 开启吸附时自由摆放的图标归位到蜂窝槽位（lp 立即写槽位，translation 动画仅作视觉过渡）
+            snapAllBubblesToGrid(animated = true)
+        }
+        flushOffsetsToItems()
+        if (snapEnabled) {
+            for (b in bubbleViews) {
+                b.item.customOffsetX = 0f
+                b.item.customOffsetY = 0f
+            }
+        }
+        exitEditMode()
+        onOrderChanged(bubbleViews.map { it.item })
+        sessionSnapshot = captureLayoutSignature()
+        pristineOffsets = bubbleViews.associate {
+            it.item.id to floatArrayOf(it.item.customOffsetX, it.item.customOffsetY)
+        }
+    }
+
+    /** 放弃排版修改（返回确认弹窗「放弃」）：把 item 偏移字段还原为进入会话时的原始值（item 与外部列表共享对象，必须还原） */
+    fun discardLayoutChanges() {
+        if (isEditMode) {
+            isEditMode = false
+            editBanner.visibility = View.GONE
+            snapToggleButton?.visibility = View.GONE
+        }
+        for (b in bubbleViews) {
+            val p = pristineOffsets[b.item.id] ?: continue
+            b.item.customOffsetX = p[0]
+            b.item.customOffsetY = p[1]
+        }
     }
 
     private fun startDragging(bubble: CircularBubbleView, touchX: Float, touchY: Float) {

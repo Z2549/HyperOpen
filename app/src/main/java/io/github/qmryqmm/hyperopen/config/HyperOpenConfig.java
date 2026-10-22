@@ -87,6 +87,18 @@ public class HyperOpenConfig {
     public boolean headerTextCentered = true;      // 顶部提示文字与胶囊是否水平居中
 
     public int iconSize = 60;          // dp
+    /** 面板显示的快捷图标数量 (0 = 显示全部启用项，1 ~ 15 只显示排序最前的 N 个启用项) */
+    public int maxIconCount = 0;
+    /** 图标布局样式常量：蜂窝阵列（默认） */
+    public static final int LAYOUT_HONEYCOMB = 0;
+    /** 图标布局样式常量：空心同心圆环（中心留空，图标排布在同心环上） */
+    public static final int LAYOUT_RING = 1;
+    /** 图标布局样式常量：弧形扇面（150° 弧带排布，单弧放不下自动转双弧） */
+    public static final int LAYOUT_ARC = 2;
+    /** 图标布局样式 (LAYOUT_HONEYCOMB / LAYOUT_RING / LAYOUT_ARC，默认蜂窝) */
+    public int layoutStyle = LAYOUT_HONEYCOMB;
+    /** 空心同心圆环布局的同心环圈数 (1 ~ 4，默认 2，中心保持空心) */
+    public int ringCount = 2;
     public float maxScale = 1.40f;
     public int influenceRadius = 70;  // dp
 
@@ -299,6 +311,9 @@ public class HyperOpenConfig {
                     config.headerBlurRadius = bundle.getInt("header_blur_radius", 25);
                     config.headerTextCentered = bundle.getBoolean("header_text_centered", true);
                     config.iconSize = bundle.getInt("icon_size", 60);
+                    config.maxIconCount = bundle.getInt("max_icon_count", 0);
+                    config.layoutStyle = bundle.getInt("layout_style", LAYOUT_HONEYCOMB);
+                    config.ringCount = bundle.getInt("ring_count", 2);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
                     config.influenceRadius = bundle.getInt("influence_radius", 70);
                     config.iconAlpha = bundle.getFloat("icon_alpha", 1.0f);
@@ -343,7 +358,13 @@ public class HyperOpenConfig {
      */
     public static synchronized HyperOpenConfig loadFromXposed() {
         if (xPrefs == null) {
-            xPrefs = new XSharedPreferences(PACKAGE_NAME, PREF_NAME);
+            // prefs 已迁 DE：优先读 /data/user_de/0/<pkg>/shared_prefs/<name>.xml，
+            // 不存在时回退旧版 CE 路径（升级后未迁移的过渡场景）
+            java.io.File deFile = new java.io.File(
+                "/data/user_de/0/" + PACKAGE_NAME + "/shared_prefs/" + PREF_NAME + ".xml");
+            xPrefs = deFile.exists()
+                ? new XSharedPreferences(deFile)
+                : new XSharedPreferences(PACKAGE_NAME, PREF_NAME);
             xPrefs.makeWorldReadable();
         } else {
             xPrefs.reload();
@@ -362,6 +383,9 @@ public class HyperOpenConfig {
         config.headerBlurRadius = xPrefs.getInt("header_blur_radius", 25);
         config.headerTextCentered = xPrefs.getBoolean("header_text_centered", true);
         config.iconSize = xPrefs.getInt("icon_size", 60);
+        config.maxIconCount = xPrefs.getInt("max_icon_count", 0);
+        config.layoutStyle = xPrefs.getInt("layout_style", LAYOUT_HONEYCOMB);
+        config.ringCount = xPrefs.getInt("ring_count", 2);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
         config.influenceRadius = xPrefs.getInt("influence_radius", 70);
         config.iconAlpha = xPrefs.getFloat("icon_alpha", 1.0f);
@@ -398,7 +422,8 @@ public class HyperOpenConfig {
      * 模块配置 Activity 加载配置
      */
     public static HyperOpenConfig loadFromApp(Context context) {
-        SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        // Direct Boot：配置统一存 DE 存储（旧版 CE 数据由 DePrefs 一次性迁移）
+        SharedPreferences sp = io.github.qmryqmm.hyperopen.util.DePrefs.get(context, PREF_NAME);
         HyperOpenConfig config = new HyperOpenConfig();
         config.materialStyle = sp.getInt("material_style", MATERIAL_GAUSSIAN_BLUR);
         config.uiStyle = sp.getInt("ui_style", UI_STYLE_MATERIAL);
@@ -420,6 +445,9 @@ public class HyperOpenConfig {
         config.headerBlurRadius = sp.getInt("header_blur_radius", 25);
         config.headerTextCentered = sp.getBoolean("header_text_centered", true);
         config.iconSize = sp.getInt("icon_size", 60);
+        config.maxIconCount = sp.getInt("max_icon_count", 0);
+        config.layoutStyle = sp.getInt("layout_style", LAYOUT_HONEYCOMB);
+        config.ringCount = sp.getInt("ring_count", 2);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
         config.influenceRadius = sp.getInt("influence_radius", 70);
         config.iconAlpha = sp.getFloat("icon_alpha", 1.0f);
@@ -456,7 +484,8 @@ public class HyperOpenConfig {
      * 保存配置 (支持全局只读分享给 SystemUI + 实时广播通知)
      */
     public void save(Context context) {
-        SharedPreferences sp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        // Direct Boot：配置统一存 DE 存储
+        SharedPreferences sp = io.github.qmryqmm.hyperopen.util.DePrefs.get(context, PREF_NAME);
         sp.edit()
             .putInt("material_style", materialStyle)
             .putInt("ui_style", uiStyle)
@@ -478,6 +507,9 @@ public class HyperOpenConfig {
             .putInt("header_blur_radius", headerBlurRadius)
             .putBoolean("header_text_centered", headerTextCentered)
             .putInt("icon_size", iconSize)
+            .putInt("max_icon_count", maxIconCount)
+            .putInt("layout_style", layoutStyle)
+            .putInt("ring_count", ringCount)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
             .putFloat("icon_alpha", iconAlpha)
@@ -505,21 +537,8 @@ public class HyperOpenConfig {
             .putString("shortcuts_json", serializeShortcutsJson(shortcuts))
             .apply();
 
-        // 开放目录与文件可读权限，为 XSharedPreferences 回退提供支持
-        try {
-            java.io.File dataDir = context.getDataDir();
-            dataDir.setReadable(true, false);
-            dataDir.setExecutable(true, false);
-            java.io.File prefsDir = new java.io.File(dataDir, "shared_prefs");
-            if (prefsDir.exists()) {
-                prefsDir.setReadable(true, false);
-                prefsDir.setExecutable(true, false);
-            }
-            java.io.File prefsFile = new java.io.File(prefsDir, PREF_NAME + ".xml");
-            if (prefsFile.exists()) {
-                prefsFile.setReadable(true, false);
-            }
-        } catch (Throwable ignored) {}
+        // 开放 DE 目录与文件可读权限，为 XSharedPreferences 回退提供支持
+        io.github.qmryqmm.hyperopen.util.DePrefs.applyWorldReadable(context, PREF_NAME);
 
         // 发送广播通知 SystemUI 实时热重载配置
         try {
@@ -559,13 +578,16 @@ public class HyperOpenConfig {
         List<ShortcutItem> items = new ArrayList<>();
 
         // 1. 微信扫一扫 (智能助理标准入口，配 Remix 扫一扫矢量图标 + 微信绿微透底垫)
-        items.add(new ShortcutItem(
+        //    默认启动主空间微信扫码；要启动应用双开/分身（XSpace user 999）时在编辑界面「启动用户」里选择即可
+        ShortcutItem wxScan = new ShortcutItem(
             "wx_scan", "微信扫一扫", "直接唤起扫码镜头",
             ShortcutItem.ACTION_INTENT_URI, "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.scanner.ui.BaseScanUI;end",
             "", "remix:qr-scan-2-line",
             0xFF07C160, true,
             true, 0xFF07C160, GLYPH_PAD_MODE_TRANSLUCENT
-        ));
+        );
+        // userId 默认 0 = 主空间；要跨用户（如 999 双开）在编辑界面「启动用户」里选择，保存时会双写 URI 标记
+        items.add(wxScan);
 
         // 2. 微信付款码 (智能助理官方付款码入口，配 Remix 银行卡矢量图标 + 微信绿微透底垫)
         items.add(new ShortcutItem(

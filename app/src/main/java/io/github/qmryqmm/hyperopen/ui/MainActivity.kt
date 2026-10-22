@@ -78,6 +78,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig
+import io.github.qmryqmm.hyperopen.layout.LayoutCapacity
+import io.github.qmryqmm.hyperopen.model.ActivityLaunchSpec
 import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.safety.SafetyStore
 import io.github.qmryqmm.hyperopen.view.IconGlyphFactory
@@ -159,6 +161,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Direct Boot：入口先补一次 CE→DE 数据迁移（幂等；已迁移时为进程内短路）
+        try {
+            io.github.qmryqmm.hyperopen.util.DePrefs.migrateCeToDe(this, HyperOpenConfig.PREF_NAME)
+        } catch (ignored: Throwable) {}
         val config = HyperOpenConfig.loadFromApp(this)
         setContent {
             HyperOpenApp(activity = this, initialConfig = config)
@@ -226,6 +232,9 @@ fun HyperOpenApp(
     var barBlur by remember { mutableStateOf(initialConfig.barBlur) }
     var floatingNavBar by remember { mutableStateOf(initialConfig.floatingNavBar) }
     var predictiveBack by remember { mutableStateOf(initialConfig.predictiveBack) }
+    var maxIconCount by remember { mutableStateOf(initialConfig.maxIconCount.toFloat()) }
+    var layoutStyle by remember { mutableStateOf(initialConfig.layoutStyle) }
+    var ringCount by remember { mutableStateOf(initialConfig.ringCount.toFloat()) }
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
@@ -237,6 +246,42 @@ fun HyperOpenApp(
     var isNewShortcut by remember { mutableStateOf(false) }
     var requestEditBackTrigger by remember { mutableIntStateOf(0) }
     var showNewShortcutPresetDialog by remember { mutableStateOf(false) }
+
+    // ── 布局容量联动（方案 A）：几何参数决定「图标数量」滑块上限，超额值就地钳制使滑块位置随容量移动 ──
+    // 容量探针与排布引擎同源（同一 dpToPx 管道的 px 值），弧形扇面无几何上限恒为 15
+    val density = ctx.resources.displayMetrics.density
+
+    fun computeLayoutCapacity(): Int = LayoutCapacity.maxFeasibleCount(
+        layoutStyle,
+        (regionDiameter / 2f) * density,
+        iconSize * density,
+        iconSpacingOffset * density,
+        ringCount.toInt().coerceIn(1, 4),
+    )
+
+    val iconCapacity = computeLayoutCapacity()
+    val enabledShortcutsCount = shortcuts.count { it.enabled }
+
+    /** 钳制「图标数量」到当前容量内（0=全部显示永不钳制）；调用方负责 persist() */
+    fun clampIconCountToCapacity() {
+        val cap = computeLayoutCapacity()
+        if (maxIconCount > cap) maxIconCount = cap.toFloat()
+    }
+
+    // 排版预览页：视图引用（返回确认弹窗需调用 commitLayoutChanges/discardLayoutChanges）与「是否保存」弹窗开关
+    var previewViewRef by remember { mutableStateOf<HyperOpenPreviewView?>(null) }
+    var showLayoutSaveDialog by remember { mutableStateOf(false) }
+
+    /** 排版预览页的统一返回出口：存在未保存的排版修改时弹「是否保存」，否则直接退出 */
+    fun requestPreviewExit() {
+        val pv = previewViewRef
+        if (pv != null && pv.hasUnsavedLayoutChanges()) {
+            showLayoutSaveDialog = true
+        } else {
+            pv?.discardLayoutChanges()
+            subPage = 0
+        }
+    }
 
     // 预览界面进入全屏沉浸模式，与真实锁屏 GxzwWindowFrameLayout 1:1 物理屏幕坐标对齐
     DisposableEffect(activity, subPage) {
@@ -273,6 +318,9 @@ fun HyperOpenApp(
         c.headerBlurRadius = headerBlurRadius.toInt()
         c.headerTextCentered = headerTextCentered
         c.iconSize = iconSize.toInt()
+        c.maxIconCount = maxIconCount.toInt()
+        c.layoutStyle = layoutStyle
+        c.ringCount = ringCount.toInt().coerceIn(1, 4)
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
         c.iconAlpha = iconAlpha
@@ -305,6 +353,15 @@ fun HyperOpenApp(
         c.save(ctx)
     }
 
+    // 进入时校准一次：旧配置的「图标数量」可能超过当前几何容量（仅超出时钳制+持久化，0=全部显示不动）
+    LaunchedEffect(Unit) {
+        val cap = computeLayoutCapacity()
+        if (maxIconCount > cap) {
+            maxIconCount = cap.toFloat()
+            persist()
+        }
+    }
+
     /**
      * 恢复全部参数为出厂默认值（视觉 / 物理 / 震动 / 等待时间 / 快捷方式列表）。
      * 以 HyperOpenConfig 字段初始值 + 默认快捷项为准，统一重置所有可编辑状态并持久化。
@@ -323,6 +380,9 @@ fun HyperOpenApp(
         headerBlurRadius = defaults.headerBlurRadius.toFloat()
         headerTextCentered = defaults.headerTextCentered
         iconSize = defaults.iconSize.toFloat()
+        maxIconCount = defaults.maxIconCount.toFloat()
+        layoutStyle = defaults.layoutStyle
+        ringCount = defaults.ringCount.toFloat()
         maxScale = defaults.maxScale
         influenceRadius = defaults.influenceRadius.toFloat()
         iconAlpha = defaults.iconAlpha
@@ -359,24 +419,34 @@ fun HyperOpenApp(
     // 拦截系统返回键与手势返回：在二级页时优先处理
     LaunchedEffect(activity, subPage) {
         activity?.backPressConsumer = {
-            if (subPage == 2) {
-                requestEditBackTrigger++
-                true
-            } else if (subPage != 0) {
-                subPage = 0
-                editingItem = null
-                true
-            } else {
-                false
+            when (subPage) {
+                2 -> {
+                    requestEditBackTrigger++
+                    true
+                }
+                3 -> {
+                    // 排版预览页：有未保存修改时弹「是否保存」，否则直接退出
+                    requestPreviewExit()
+                    true
+                }
+                else -> if (subPage != 0) {
+                    subPage = 0
+                    editingItem = null
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
     BackHandler(enabled = subPage != 0) {
-        if (subPage == 2) {
-            requestEditBackTrigger++
-        } else {
-            subPage = 0
-            editingItem = null
+        when (subPage) {
+            2 -> requestEditBackTrigger++
+            3 -> requestPreviewExit()
+            else -> {
+                subPage = 0
+                editingItem = null
+            }
         }
     }
 
@@ -466,7 +536,7 @@ fun HyperOpenApp(
                                 initialItem = currentEdit,
                                 isNew = isNewShortcut,
                                 backTrigger = requestEditBackTrigger,
-                                onSave = { updated ->
+                                onSave = { updated, exitAfter ->
                                     if (isNewShortcut) {
                                         shortcuts.add(updated)
                                         Toast.makeText(ctx, "已添加快捷方式: ${updated.title}", Toast.LENGTH_SHORT).show()
@@ -478,8 +548,11 @@ fun HyperOpenApp(
                                         }
                                     }
                                     persist()
-                                    subPage = 0
-                                    editingItem = null
+                                    if (exitAfter) {
+                                        subPage = 0
+                                        editingItem = null
+                                    }
+                                    // exitAfter = false（「保存修改」）：留在编辑界面，editingItem 保持不变
                                 },
                                 onDelete = { toDelete ->
                                     shortcuts.removeAll { it.id == toDelete.id }
@@ -510,6 +583,9 @@ fun HyperOpenApp(
                             this.headerBlurRadius = headerBlurRadius.toInt()
                             this.headerTextCentered = headerTextCentered
                             this.iconSize = iconSize.toInt()
+                            this.maxIconCount = maxIconCount.toInt()
+                            this.layoutStyle = layoutStyle
+                            this.ringCount = ringCount.toInt().coerceIn(1, 4)
                             this.maxScale = maxScale
                             this.influenceRadius = influenceRadius.toInt()
                             this.iconAlpha = iconAlpha
@@ -741,7 +817,8 @@ fun HyperOpenApp(
                                         context = viewCtx,
                                         config = currentConfig,
                                         onBackClick = {
-                                            subPage = 0
+                                            // 统一返回出口：有未保存排版修改时弹「是否保存」确认框
+                                            requestPreviewExit()
                                         },
                                         onOrderChanged = { newOrder ->
                                             // 保持启用/未启用项与整体列表同步重排
@@ -760,7 +837,7 @@ fun HyperOpenApp(
                                         onBlurSceneChanged = { scene ->
                                             blurScene = scene
                                         },
-                                    )
+                                    ).also { previewViewRef = it }
                                 },
                             )
                         }
@@ -775,7 +852,7 @@ fun HyperOpenApp(
                                     offsetY = offsetY,
                                     onOffsetY = { offsetY = it; persist() },
                                     regionDiameter = regionDiameter,
-                                    onRegionDiameter = { regionDiameter = it; persist() },
+                                    onRegionDiameter = { regionDiameter = it; clampIconCountToCapacity(); persist() },
                                     showRegionBg = showRegionBg,
                                     onShowRegionBg = { showRegionBg = it; persist() },
                                     showHeaderPill = showHeaderPill,
@@ -793,7 +870,13 @@ fun HyperOpenApp(
                                     headerTextCentered = headerTextCentered,
                                     onHeaderTextCentered = { headerTextCentered = it; persist() },
                                     iconSize = iconSize,
-                                    onIconSize = { iconSize = it; persist() },
+                                    onIconSize = { iconSize = it; clampIconCountToCapacity(); persist() },
+                                    maxIconCount = maxIconCount,
+                                    onMaxIconCount = { maxIconCount = it; persist() },
+                                    iconCapacity = iconCapacity,
+                                    enabledShortcutsCount = enabledShortcutsCount,
+                                    layoutStyle = layoutStyle,
+                                    onLayoutStyle = { layoutStyle = it; clampIconCountToCapacity(); persist() },
                                     maxScale = maxScale,
                                     onMaxScale = { maxScale = it; persist() },
                                     influenceRadius = influenceRadius,
@@ -825,7 +908,7 @@ fun HyperOpenApp(
                                     regionBlurRadius = regionBlurRadius,
                                     onRegionBlurRadius = { regionBlurRadius = it; persist() },
                                     iconSpacingOffset = iconSpacingOffset,
-                                    onIconSpacingOffset = { iconSpacingOffset = it; persist() },
+                                    onIconSpacingOffset = { iconSpacingOffset = it; clampIconCountToCapacity(); persist() },
                                     bubblePaddingPercent = bubblePaddingPercent,
                                     onBubblePaddingPercent = { bubblePaddingPercent = it; persist() },
                                     bubbleBlurRadius = bubbleBlurRadius,
@@ -902,7 +985,14 @@ fun HyperOpenApp(
                         preset.glyphPadEnabled,
                         preset.glyphPadColor,
                         preset.glyphPadMode,
-                    )
+                    ).apply {
+                        userId = preset.userId
+                        shellUseRoot = preset.shellUseRoot
+                        if (this.actionType == ShortcutItem.ACTION_INTENT_URI) {
+                            // 预设 payload 同步写回用户标记，旧版 SystemUI 代码也能识别
+                            this.actionPayload = ShortcutItem.syncUserMarker(this.actionPayload, preset.userId)
+                        }
+                    }
                     isNewShortcut = true
                     subPage = 2
                 },
@@ -955,6 +1045,64 @@ fun HyperOpenApp(
                                     showResetDefaultsDialog = false
                                     resetDefaults()
                                     Toast.makeText(ctx, "已恢复默认参数", Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 排版预览返回确认弹窗：返回键/返回按钮退出排版界面时询问是否保存排版修改 ──
+        if (showLayoutSaveDialog) {
+            Dialog(
+                onDismissRequest = { showLayoutSaveDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.86f)
+                        .padding(vertical = 16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            text = "保存排版修改？",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "当前图标的排版（位置与顺序）尚未保存，退出前是否保存？",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            lineHeight = 20.sp,
+                        )
+                        Spacer(Modifier.height(22.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                text = "放弃修改",
+                                onClick = {
+                                    showLayoutSaveDialog = false
+                                    previewViewRef?.discardLayoutChanges()
+                                    subPage = 0
+                                },
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(
+                                text = "保存并退出",
+                                colors = ButtonDefaults.textButtonColorsPrimary(),
+                                onClick = {
+                                    showLayoutSaveDialog = false
+                                    previewViewRef?.commitLayoutChanges()
+                                    subPage = 0
                                 },
                             )
                         }
@@ -1071,6 +1219,9 @@ fun ParamsPage(
     headerBlurRadius: Float, onHeaderBlurRadius: (Float) -> Unit,
     headerTextCentered: Boolean, onHeaderTextCentered: (Boolean) -> Unit,
     iconSize: Float, onIconSize: (Float) -> Unit,
+    maxIconCount: Float, onMaxIconCount: (Float) -> Unit,
+    iconCapacity: Int, enabledShortcutsCount: Int,
+    layoutStyle: Int, onLayoutStyle: (Int) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
     iconAlpha: Float, onIconAlpha: (Float) -> Unit,
@@ -1200,7 +1351,7 @@ fun ParamsPage(
                     summary = "改变整体图标高度",
                     valueText = "${offsetY.toInt()} dp",
                     value = offsetY,
-                    valueRange = 50f..450f,
+                    valueRange = 0f..450f,
                     onValueChange = onOffsetY,
                 )
                 SliderPreference(
@@ -1210,6 +1361,37 @@ fun ParamsPage(
                     value = regionDiameter,
                     valueRange = 150f..420f,
                     onValueChange = onRegionDiameter,
+                )
+                RadioButtonPreference(
+                    title = "蜂窝阵列布局",
+                    summary = "图标紧凑排布在整个圆形视界内（默认）",
+                    selected = layoutStyle != HyperOpenConfig.LAYOUT_RING && layoutStyle != HyperOpenConfig.LAYOUT_ARC,
+                    onClick = { onLayoutStyle(HyperOpenConfig.LAYOUT_HONEYCOMB) },
+                )
+                RadioButtonPreference(
+                    title = "空心同心圆环布局",
+                    summary = "中心留空，图标排布在同心圆环上",
+                    selected = layoutStyle == HyperOpenConfig.LAYOUT_RING,
+                    onClick = { onLayoutStyle(HyperOpenConfig.LAYOUT_RING) },
+                )
+                RadioButtonPreference(
+                    title = "弧形扇面布局",
+                    summary = "图标沿 150° 弧带排布，贴合拇指热区",
+                    selected = layoutStyle == HyperOpenConfig.LAYOUT_ARC,
+                    onClick = { onLayoutStyle(HyperOpenConfig.LAYOUT_ARC) },
+                )
+                SliderPreference(
+                    title = "图标数量",
+                    summary = if (layoutStyle == HyperOpenConfig.LAYOUT_ARC) {
+                        "弧形扇面布局不设几何上限；已启用 $enabledShortcutsCount 项"
+                    } else {
+                        "当前参数下最多容纳 $iconCapacity 个；已启用 $enabledShortcutsCount 项" +
+                            "，超出上限的启用项不显示"
+                    },
+                    valueText = if (maxIconCount.toInt() <= 0) "全部显示" else "${maxIconCount.toInt()} 个",
+                    value = maxIconCount.coerceIn(0f, maxOf(iconCapacity, 1).toFloat()),
+                    valueRange = 0f..maxOf(iconCapacity, 1).toFloat(),
+                    onValueChange = onMaxIconCount,
                 )
                 SwitchPreference(
                     title = "显示圆形区域底衬与边框",
@@ -1350,7 +1532,8 @@ fun ParamsPage(
                     onValueChange = { onFisheyeZoomAlpha(it / 100f) },
                 )
                 SliderPreference(
-                    title = "蜂窝图标紧凑程度",
+                    title = "图标紧凑程度",
+                    summary = "对蜂窝阵列、空心同心圆环与弧形扇面布局均生效",
                     valueText = when {
                         iconSpacingOffset.toInt() < 0 -> "紧凑 (${iconSpacingOffset.toInt()} dp)"
                         iconSpacingOffset.toInt() > 0 -> "松散 (+${iconSpacingOffset.toInt()} dp)"
@@ -1688,13 +1871,72 @@ fun ShortcutRow(
 // 快捷方式参数编辑界面（全新二级设置界面，完全符合 miuix 规范）
 // ─────────────────────────────────────────────────────────────────────
 
+/** 设备 Android 用户条目（id + 显示名），供「启动用户」选择列表使用 */
+private data class AndroidUserOption(val id: Int, val name: String)
+
+/**
+ * 枚举设备上的 Android 用户：
+ * 1) 反射 UserManager#getUsers()（@SystemApi；可用时拿到真实用户名，如「手机分身」）
+ * 2) 失败则退化为常用固定项：主空间 0 + 应用双开/手机分身 999
+ */
+private fun loadAndroidUsers(ctx: android.content.Context): List<AndroidUserOption> {
+    val found = mutableListOf<AndroidUserOption>()
+    try {
+        val um = ctx.getSystemService(android.os.UserManager::class.java)
+        if (um != null) {
+            val raw: List<*>? = try {
+                @Suppress("UNCHECKED_CAST")
+                um.javaClass.getMethod("getUsers").invoke(um) as? List<*>
+            } catch (_: Throwable) {
+                try {
+                    @Suppress("UNCHECKED_CAST")
+                    um.javaClass.getMethod("getUsers", java.lang.Boolean.TYPE)
+                        .invoke(um, true) as? List<*>
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            raw?.forEach { u ->
+                if (u == null) return@forEach
+                try {
+                    val id = u.javaClass.getField("id").getInt(u)
+                    val name = (u.javaClass.getField("name").get(u) as? String)
+                        ?.ifBlank { "用户$id" } ?: "用户$id"
+                    found.add(AndroidUserOption(id, name))
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    } catch (_: Throwable) {
+    }
+    if (found.isEmpty()) found.add(AndroidUserOption(0, "主空间"))
+    if (found.none { it.id == 999 }) found.add(AndroidUserOption(999, "应用双开 / 手机分身"))
+    return found.sortedBy { it.id }
+}
+
+/** 「启动 Activity」附加 Extra 的编辑器内存行（保存/测试时转 ActivityLaunchSpec.Extra） */
+private data class ActivityExtraRow(
+    val key: String = "",
+    val type: String = ActivityLaunchSpec.TYPE_STRING,
+    val value: String = "",
+)
+
+/** Extra 类型循环切换：string → int → long → bool → float → string */
+private fun nextExtraType(t: String): String = when (t) {
+    ActivityLaunchSpec.TYPE_STRING -> ActivityLaunchSpec.TYPE_INT
+    ActivityLaunchSpec.TYPE_INT -> ActivityLaunchSpec.TYPE_LONG
+    ActivityLaunchSpec.TYPE_LONG -> ActivityLaunchSpec.TYPE_BOOL
+    ActivityLaunchSpec.TYPE_BOOL -> ActivityLaunchSpec.TYPE_FLOAT
+    else -> ActivityLaunchSpec.TYPE_STRING
+}
+
 @Composable
 fun ShortcutEditPage(
     contentPadding: PaddingValues,
     initialItem: ShortcutItem,
     isNew: Boolean,
     backTrigger: Int = 0,
-    onSave: (ShortcutItem) -> Unit,
+    onSave: (ShortcutItem, Boolean) -> Unit,
     onDelete: (ShortcutItem) -> Unit,
     onExitWithoutSave: () -> Unit,
 ) {
@@ -1717,11 +1959,93 @@ fun ShortcutEditPage(
         )
     }
     var enabled by remember { mutableStateOf(initialItem.enabled) }
+    // 启动用户（0 = 当前/主空间默认；>0 跨用户，如 999 应用双开/分身）与 SHELL Root 执行开关
+    // 启动用户：userId 字段优先；老快捷方式只有 URI 标记（i.hyperopen_user）时从 payload 解析回来
+    val initialPickedUser = if (initialItem.userId > 0) initialItem.userId
+        else if (initialItem.actionType == ShortcutItem.ACTION_INTENT_URI)
+            ShortcutItem.extractUserFromPayload(initialItem.actionPayload).coerceAtLeast(0)
+        else 0
+    var pickedUser by remember { mutableIntStateOf(initialPickedUser) }
+    var shellAsRoot by remember { mutableStateOf(initialItem.shellUseRoot) }
+    var customUserText by remember {
+        mutableStateOf(if (initialPickedUser > 0 && initialPickedUser != 999) initialPickedUser.toString() else "")
+    }
+    // ── 「启动 Activity」结构化 Intent 编辑状态（与 actionPayload 的 JSON 双向同步）──
+    val initialActSpec = remember(initialItem) {
+        if (initialItem.actionType == ShortcutItem.ACTION_ACTIVITY) ActivityLaunchSpec.fromJson(initialItem.actionPayload)
+        else ActivityLaunchSpec()
+    }
+    var actAction by remember { mutableStateOf(initialActSpec.action ?: "") }
+    var actData by remember { mutableStateOf(initialActSpec.data ?: "") }
+    var actComponent by remember { mutableStateOf(initialActSpec.component ?: "") }
+    var actPackage by remember { mutableStateOf(initialActSpec.packageName ?: "") }
+    var actExtras by remember {
+        mutableStateOf(initialActSpec.extras.map { ActivityExtraRow(it.key ?: "", it.type ?: "string", it.value ?: "") })
+    }
+    var actNewTask by remember { mutableStateOf(initialActSpec.newTask) }
+    var actUseRoot by remember { mutableStateOf(initialActSpec.useRoot) }
+    // 拼装当前结构化规格为 payload JSON（保存与「立即启动测试」共用，保证测的就是存的）
+    fun buildActPayload(): String {
+        val spec = ActivityLaunchSpec()
+        spec.action = actAction.trim()
+        spec.data = actData.trim()
+        spec.component = actComponent.trim()
+        spec.packageName = actPackage.trim()
+        spec.newTask = actNewTask
+        spec.useRoot = actUseRoot
+        spec.extras = actExtras.map { ActivityLaunchSpec.Extra(it.key.trim(), it.type, it.value) }
+        return spec.toJson()
+    }
+    // 组装当前编辑态为可保存的快捷方式（「保存修改」按钮与未保存弹窗「保存并退出」共用）
+    fun buildSavedItem(): ShortcutItem {
+        val newItem = initialItem.copy()
+        newItem.title = title.trim().ifBlank { "快捷方式" }
+        newItem.subtitle = subtitle.trim()
+        newItem.actionType = actionType
+        newItem.actionPayload = if (actionType == ShortcutItem.ACTION_ACTIVITY) buildActPayload() else actionPayload.trim()
+        newItem.iconPackage = iconPackage.trim()
+        newItem.iconGlyph = iconGlyph.trim()
+        newItem.glyphPadEnabled = glyphPadEnabled
+        newItem.glyphPadColor = glyphPadColor
+        newItem.glyphPadMode = glyphPadMode
+        newItem.appIconCropMode = appIconCropMode
+        newItem.enabled = enabled
+        newItem.userId = pickedUser
+        newItem.shellUseRoot = shellAsRoot
+        if (newItem.actionType == ShortcutItem.ACTION_INTENT_URI) {
+            // 同步写回 URI 标记（i.hyperopen_user=N）：payload 自描述，
+            // 且 SystemUI 里未重启的旧版模块代码也能按用户启动
+            newItem.actionPayload = ShortcutItem.syncUserMarker(newItem.actionPayload, pickedUser)
+        }
+        return newItem
+    }
+    // 设备用户列表（「启动用户」选择用；反射枚举一次即可）
+    val userOptions = remember(ctx) { loadAndroidUsers(ctx) }
 
     var showAppPicker by remember { mutableStateOf(false) }
+    var showActivityPicker by remember { mutableStateOf(false) }
     var showMiuixIconPicker by remember { mutableStateOf(false) }
     var showRemixIconPicker by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
+
+    // 自定义矢量图标底垫颜色：十六进制文本框（与 RGB 分量滑条双向同步）
+    var padHexInput by remember {
+        mutableStateOf(String.format("#%06X", initialItem.glyphPadColor and 0xFFFFFF))
+    }
+    fun parseHexColor(text: String): Int? {
+        val t = text.trim().removePrefix("#").removePrefix("0x").removePrefix("0X")
+        if (t.length != 6) return null
+        return try {
+            (0xFF shl 24) or t.toLong(16).toInt()
+        } catch (_: Throwable) {
+            null
+        }
+    }
+    fun composePadColor(r: Int, g: Int, b: Int): Int =
+        (0xFF shl 24) or ((r and 0xFF) shl 16) or ((g and 0xFF) shl 8) or (b and 0xFF)
+    fun syncPadHexFromColor() {
+        padHexInput = String.format("#%06X", glyphPadColor and 0xFFFFFF)
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1759,19 +2083,24 @@ fun ShortcutEditPage(
         }
     }
 
-    // 检查是否有未保存的修改
-    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled) {
-        title != initialItem.title ||
-        subtitle != initialItem.subtitle ||
-        actionType != initialItem.actionType ||
-        actionPayload != initialItem.actionPayload ||
-        iconPackage != initialItem.iconPackage ||
-        iconGlyph != initialItem.iconGlyph ||
-        glyphPadEnabled != initialItem.glyphPadEnabled ||
-        glyphPadColor != initialItem.glyphPadColor ||
-        glyphPadMode != initialItem.glyphPadMode ||
-        appIconCropMode != (if (initialItem.appIconCropMode > 0) initialItem.appIconCropMode else HyperOpenConfig.CROP_ADAPTIVE_EXPAND) ||
-        enabled != initialItem.enabled
+    // 检查是否有未保存的修改（基准为「最近一次保存」的快照：保存修改后留在编辑页时重置基准，
+    // 返回键不会因已保存内容误弹未保存弹窗）
+    var savedBaseline by remember { mutableStateOf(initialItem) }
+    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled, pickedUser, shellAsRoot, actAction, actData, actComponent, actPackage, actExtras, actNewTask, actUseRoot, savedBaseline) {
+        title != savedBaseline.title ||
+        subtitle != savedBaseline.subtitle ||
+        actionType != savedBaseline.actionType ||
+        actionPayload != savedBaseline.actionPayload ||
+        iconPackage != savedBaseline.iconPackage ||
+        iconGlyph != savedBaseline.iconGlyph ||
+        glyphPadEnabled != savedBaseline.glyphPadEnabled ||
+        glyphPadColor != savedBaseline.glyphPadColor ||
+        glyphPadMode != savedBaseline.glyphPadMode ||
+        appIconCropMode != (if (savedBaseline.appIconCropMode > 0) savedBaseline.appIconCropMode else HyperOpenConfig.CROP_ADAPTIVE_EXPAND) ||
+        enabled != savedBaseline.enabled ||
+        pickedUser != savedBaseline.userId ||
+        shellAsRoot != savedBaseline.shellUseRoot ||
+        (actionType == ShortcutItem.ACTION_ACTIVITY && buildActPayload() != savedBaseline.actionPayload)
     }
 
     // 响应顶部返回键或系统返回手势（记录初始 trigger，只有在当前页面内新发生点击时才响应）
@@ -1907,7 +2236,13 @@ fun ShortcutEditPage(
                                 val testItem = initialItem.copy().apply {
                                     this.title = title.trim().ifBlank { "测试快捷方式" }
                                     this.actionType = actionType
-                                    this.actionPayload = actionPayload.trim()
+                                    this.actionPayload = if (actionType == ShortcutItem.ACTION_ACTIVITY) buildActPayload() else actionPayload.trim()
+                                }
+                                testItem.userId = pickedUser
+                                testItem.shellUseRoot = shellAsRoot
+                                if (testItem.actionType == ShortcutItem.ACTION_INTENT_URI) {
+                                    // 与保存一致：URI 同步写回用户标记，测试的就是最终生效的 payload
+                                    testItem.actionPayload = ShortcutItem.syncUserMarker(testItem.actionPayload, pickedUser)
                                 }
                                 testItem.execute(ctx)
                             },
@@ -2101,7 +2436,10 @@ fun ShortcutEditPage(
                                         .size(36.dp)
                                         .clip(CircleShape)
                                         .background(Color(colorValue))
-                                        .clickable { glyphPadColor = colorValue },
+                                        .clickable {
+                                            glyphPadColor = colorValue
+                                            padHexInput = String.format("#%06X", colorValue and 0xFFFFFF)
+                                        },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (isSelectedColor) {
@@ -2110,6 +2448,86 @@ fun ShortcutEditPage(
                                 }
                             }
                         }
+
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        Text(
+                            text = "自定义底垫颜色",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(glyphPadColor)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (brandColors.none { it.second == glyphPadColor }) {
+                                    Text("✦", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+                            TextField(
+                                value = padHexInput,
+                                onValueChange = { s ->
+                                    padHexInput = s
+                                    parseHexColor(s)?.let { glyphPadColor = it }
+                                },
+                                label = "十六进制颜色 (#RRGGBB)",
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+
+                        SliderPreference(
+                            title = "红色分量",
+                            summary = "自定义底垫颜色的红色通道 (R)",
+                            valueText = "${(glyphPadColor shr 16) and 0xFF}",
+                            value = ((glyphPadColor shr 16) and 0xFF).toFloat(),
+                            valueRange = 0f..255f,
+                            onValueChange = { r ->
+                                glyphPadColor = composePadColor(
+                                    r.toInt(), (glyphPadColor shr 8) and 0xFF, glyphPadColor and 0xFF
+                                )
+                                syncPadHexFromColor()
+                            },
+                        )
+                        SliderPreference(
+                            title = "绿色分量",
+                            summary = "自定义底垫颜色的绿色通道 (G)",
+                            valueText = "${(glyphPadColor shr 8) and 0xFF}",
+                            value = ((glyphPadColor shr 8) and 0xFF).toFloat(),
+                            valueRange = 0f..255f,
+                            onValueChange = { g ->
+                                glyphPadColor = composePadColor(
+                                    (glyphPadColor shr 16) and 0xFF, g.toInt(), glyphPadColor and 0xFF
+                                )
+                                syncPadHexFromColor()
+                            },
+                        )
+                        SliderPreference(
+                            title = "蓝色分量",
+                            summary = "自定义底垫颜色的蓝色通道 (B)",
+                            valueText = "${glyphPadColor and 0xFF}",
+                            value = (glyphPadColor and 0xFF).toFloat(),
+                            valueRange = 0f..255f,
+                            onValueChange = { b ->
+                                glyphPadColor = composePadColor(
+                                    (glyphPadColor shr 16) and 0xFF, (glyphPadColor shr 8) and 0xFF, b.toInt()
+                                )
+                                syncPadHexFromColor()
+                            },
+                        )
 
                         Spacer(Modifier.height(10.dp))
                     }
@@ -2204,6 +2622,12 @@ fun ShortcutEditPage(
                     onClick = { actionType = ShortcutItem.ACTION_INTENT_URI },
                 )
                 RadioButtonPreference(
+                    title = "启动 Activity (ACTIVITY)",
+                    summary = "结构化启动任意 Activity：目标组件 / Data URI / Extra / Action / NEW_TASK / Root",
+                    selected = actionType == ShortcutItem.ACTION_ACTIVITY,
+                    onClick = { actionType = ShortcutItem.ACTION_ACTIVITY },
+                )
+                RadioButtonPreference(
                     title = "Shell 指令 (SHELL)",
                     summary = "执行终端 Shell 脚本命令",
                     selected = actionType == ShortcutItem.ACTION_SHELL,
@@ -2215,6 +2639,58 @@ fun ShortcutEditPage(
                     selected = actionType == ShortcutItem.ACTION_BROADCAST,
                     onClick = { actionType = ShortcutItem.ACTION_BROADCAST },
                 )
+            }
+        }
+
+        // ── 启动用户选择（APP / INTENT_URI / ACTIVITY 生效；0 = 主空间，>0 跨用户启动）──
+        if (actionType == ShortcutItem.ACTION_APP || actionType == ShortcutItem.ACTION_INTENT_URI ||
+            actionType == ShortcutItem.ACTION_ACTIVITY) {
+            val customUserSelected = pickedUser > 0 && userOptions.none { it.id == pickedUser }
+            item(key = "target_user_title") { SmallTitle("启动用户（应用双开 / 分身）") }
+            item(key = "target_user_card") {
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth(),
+                ) {
+                    RadioButtonPreference(
+                        title = "当前用户 / 主空间（默认）",
+                        summary = "在默认用户空间中启动，不跨用户",
+                        selected = pickedUser <= 0,
+                        onClick = { pickedUser = 0 },
+                    )
+                    userOptions.filter { it.id > 0 }.forEach { u ->
+                        RadioButtonPreference(
+                            title = "${u.id} · ${u.name}",
+                            summary = "以 user ${u.id} 身份跨用户启动（该用户内需已安装/双开目标应用）",
+                            selected = pickedUser == u.id,
+                            onClick = { pickedUser = u.id },
+                        )
+                    }
+                    RadioButtonPreference(
+                        title = "自定义用户 ID",
+                        summary = "手动输入其他 Android 用户 ID（user > 0）",
+                        selected = customUserSelected,
+                        onClick = {
+                            pickedUser = customUserText.trim().toIntOrNull()
+                                ?.takeIf { v -> v > 0 && userOptions.none { it.id == v } } ?: 10
+                        },
+                    )
+                    if (customUserSelected) {
+                        Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                            TextField(
+                                value = customUserText,
+                                onValueChange = { text ->
+                                    customUserText = text
+                                    text.trim().toIntOrNull()?.let { v -> if (v > 0) pickedUser = v }
+                                },
+                                label = "目标用户 ID（例如 10）",
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -2233,6 +2709,140 @@ fun ShortcutEditPage(
                         .padding(horizontal = 12.dp)
                         .fillMaxWidth(),
                 ) {
+                    if (actionType == ShortcutItem.ACTION_ACTIVITY) {
+                        // ── 结构化「启动 Activity」编辑器（组件 / Data / Extra / Action / NEW_TASK / Root）──
+                        Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Column {
+                                TextField(
+                                    value = actComponent,
+                                    onValueChange = { actComponent = it },
+                                    label = "目标组件（仅类名，可留空）",
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                TextField(
+                                    value = actPackage,
+                                    onValueChange = { actPackage = it },
+                                    label = "目标包名（组件填类名时需配合填写，也可单独按包名启动，可选）",
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(
+                                    text = "从已安装应用选取活动",
+                                    onClick = { showActivityPicker = true },
+                                    modifier = Modifier.align(Alignment.End),
+                                )
+                                if (!actUseRoot) {
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    text = "附加 Action（点预设快速填入，或在下方自定义）",
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                ) {
+                                    listOf(
+                                        "无" to "",
+                                        "MAIN" to "android.intent.action.MAIN",
+                                        "VIEW" to "android.intent.action.VIEW",
+                                        "DIAL" to "android.intent.action.DIAL",
+                                        "SEND" to "android.intent.action.SEND",
+                                        "EDIT" to "android.intent.action.EDIT",
+                                        "PICK" to "android.intent.action.PICK",
+                                        "SEARCH" to "android.intent.action.SEARCH",
+                                        "SETTINGS" to "android.settings.SETTINGS",
+                                    ).forEach { (label, value) ->
+                                        TextButton(text = label, onClick = { actAction = value })
+                                    }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                TextField(
+                                    value = actAction,
+                                    onValueChange = { actAction = it },
+                                    label = "自定义 Action 字符串（可留空）",
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                TextField(
+                                    value = actData,
+                                    onValueChange = { actData = it },
+                                    label = "附加 Data URI（可选，例如 https:// / tel: / weixin://）",
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    text = "附加 Extra（点类型按钮切换 string/int/long/bool/float）",
+                                    fontSize = 13.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                actExtras.forEachIndexed { i, e ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        TextField(
+                                            value = e.key,
+                                            onValueChange = { v -> actExtras = actExtras.toMutableList().also { it[i] = e.copy(key = v) } },
+                                            label = "Key",
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        TextButton(
+                                            text = e.type,
+                                            onClick = { actExtras = actExtras.toMutableList().also { it[i] = e.copy(type = nextExtraType(e.type)) } },
+                                            modifier = Modifier.padding(horizontal = 4.dp),
+                                        )
+                                        TextField(
+                                            value = e.value,
+                                            onValueChange = { v -> actExtras = actExtras.toMutableList().also { it[i] = e.copy(value = v) } },
+                                            label = "Value",
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        TextButton(
+                                            text = "✕",
+                                            onClick = { actExtras = actExtras.toMutableList().also { it.removeAt(i) } },
+                                        )
+                                    }
+                                }
+                                TextButton(
+                                    text = "＋ 添加 Extra",
+                                    onClick = { actExtras = actExtras + ActivityExtraRow() },
+                                )
+                                }
+                            }
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        SwitchPreference(
+                            title = "使用 Root 打开（su）",
+                            summary = "经 root（桥接 su）执行 am start -n 拉起，可绕过组件未导出/权限限制，并支持与「启动用户」组合",
+                            checked = actUseRoot,
+                            onCheckedChange = { actUseRoot = it },
+                        )
+                        if (actUseRoot) {
+                            Text(
+                                text = "Root 模式仅使用 目标组件 / 目标包名（am start -n），Action / Data / Extra / NEW_TASK 不参与执行（已填写内容会保留）",
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        } else {
+                            SwitchPreference(
+                                title = "Intent.FLAG_ACTIVITY_NEW_TASK",
+                                summary = "在新任务栈中启动 Activity（从指纹面板/SystemUI 启动时通常必须开启）",
+                                checked = actNewTask,
+                                onCheckedChange = { actNewTask = it },
+                            )
+                        }
+                    } else {
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Column {
                             val payloadSingleLine = actionType == ShortcutItem.ACTION_APP || actionType == ShortcutItem.ACTION_BROADCAST
@@ -2267,6 +2877,16 @@ fun ShortcutEditPage(
                             }
                         }
                     }
+                    if (actionType == ShortcutItem.ACTION_SHELL) {
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        SwitchPreference(
+                            title = "以 Root 权限执行（su）",
+                            summary = "开启后命令经 su 以 root 身份执行，可写受保护的系统设置；关闭则以普通 shell 身份执行",
+                            checked = shellAsRoot,
+                            onCheckedChange = { shellAsRoot = it },
+                        )
+                    }
+                    }
                 }
             }
         }
@@ -2278,19 +2898,15 @@ fun ShortcutEditPage(
                     TextButton(
                         text = if (isNew) "确认添加" else "保存修改",
                         onClick = {
-                            val newItem = initialItem.copy()
-                            newItem.title = title.trim().ifBlank { "快捷方式" }
-                            newItem.subtitle = subtitle.trim()
-                            newItem.actionType = actionType
-                            newItem.actionPayload = actionPayload.trim()
-                            newItem.iconPackage = iconPackage.trim()
-                            newItem.iconGlyph = iconGlyph.trim()
-                            newItem.glyphPadEnabled = glyphPadEnabled
-                            newItem.glyphPadColor = glyphPadColor
-                            newItem.glyphPadMode = glyphPadMode
-                            newItem.appIconCropMode = appIconCropMode
-                            newItem.enabled = enabled
-                            onSave(newItem)
+                            val newItem = buildSavedItem()
+                            if (isNew) {
+                                // 新建：保存后退出编辑器，回到快捷方式列表
+                                onSave(newItem, true)
+                            } else {
+                                // 编辑：保存后留在编辑界面继续调整（不自动退出）
+                                savedBaseline = newItem
+                                onSave(newItem, false)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.textButtonColorsPrimary(),
@@ -2324,6 +2940,23 @@ fun ShortcutEditPage(
                 iconPackage = pkg
                 iconGlyph = ""
                 showAppPicker = false
+            },
+        )
+    }
+
+    // ── Activity 选择弹窗（应用 → 活动列表两级，点活动直接填参）──
+    if (showActivityPicker) {
+        ActivityPickerDialog(
+            onDismiss = { showActivityPicker = false },
+            onPick = { pkg, cls, appName ->
+                actComponent = cls
+                actPackage = pkg
+                if (title.isBlank() || title == "新快捷方式") {
+                    title = appName
+                }
+                iconPackage = pkg
+                iconGlyph = ""
+                showActivityPicker = false
             },
         )
     }
@@ -2401,19 +3034,8 @@ fun ShortcutEditPage(
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = {
                                 showUnsavedDialog = false
-                                val newItem = initialItem.copy()
-                                newItem.title = title.trim().ifBlank { "快捷方式" }
-                                newItem.subtitle = subtitle.trim()
-                                newItem.actionType = actionType
-                                newItem.actionPayload = actionPayload.trim()
-                                newItem.iconPackage = iconPackage.trim()
-                                newItem.iconGlyph = iconGlyph.trim()
-                                newItem.glyphPadEnabled = glyphPadEnabled
-                                newItem.glyphPadColor = glyphPadColor
-                                newItem.glyphPadMode = glyphPadMode
-                                newItem.appIconCropMode = appIconCropMode
-                                newItem.enabled = enabled
-                                onSave(newItem)
+                                // 保存并退出：共用 buildSavedItem()（含 userId/shellUseRoot/ACTIVITY payload/URI 标记同步）
+                                onSave(buildSavedItem(), true)
                             },
                         )
                     }
@@ -2432,6 +3054,8 @@ data class PresetAction(
     val subtitle: String,
     val actionType: String,
     val actionPayload: String = "",
+    val userId: Int = 0,
+    val shellUseRoot: Boolean = false,
     val iconGlyph: String = "",
     val iconPackage: String = "",
     val tintColor: Int = 0xFF2A82E4.toInt(),
@@ -2513,6 +3137,8 @@ val PRESET_ACTIONS = listOf(
         subtitle = "直接唤起微信官方扫码镜头",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.scanner.ui.BaseScanUI;end",
+        // userId 默认 0 = 主空间；要启动应用双开/分身（XSpace user 999）在编辑界面「启动用户」里选择
+        userId = 0,
         iconGlyph = "Scan:Regular",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
@@ -3108,6 +3734,362 @@ fun AppListPickerDialog(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    text = "取消",
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+data class ActivityInfoItem(
+    val className: String,
+    val exported: Boolean,
+    val label: String,
+)
+
+/** 应用 → 活动列表两级选择器：点活动直接填入 目标组件/目标包名 */
+@Composable
+fun ActivityPickerDialog(
+    onDismiss: () -> Unit,
+    onPick: (pkg: String, cls: String, appName: String) -> Unit,
+) {
+    val ctx = LocalContext.current
+    var selectedApp by remember { mutableStateOf<AppInfoItem?>(null) }
+    var appSearch by remember { mutableStateOf("") }
+    var filterTab by remember { mutableIntStateOf(0) } // 0=全部, 1=用户应用, 2=系统应用
+    var allApps by remember { mutableStateOf<List<AppInfoItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    var activities by remember { mutableStateOf<List<ActivityInfoItem>>(emptyList()) }
+    var actLoading by remember { mutableStateOf(false) }
+    var actSearch by remember { mutableStateOf("") }
+    var actFilter by remember { mutableIntStateOf(0) } // 0=全部, 1=已导出, 2=未导出
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val pm = ctx.packageManager
+            val installedPackages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+            val list = installedPackages.mapNotNull { pi ->
+                val appInfo = pi.applicationInfo ?: return@mapNotNull null
+                val pkg = pi.packageName
+                val name = appInfo.loadLabel(pm).toString().ifBlank { pkg }
+                val isSys = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                val icon = try {
+                    appInfo.loadIcon(pm)
+                } catch (t: Throwable) {
+                    null
+                }
+                AppInfoItem(pkg, name, isSys, icon)
+            }.distinctBy { it.packageName }
+                .sortedWith(compareBy({ it.appName.lowercase() }, { it.packageName }))
+            withContext(Dispatchers.Main) {
+                allApps = list
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(selectedApp) {
+        val app = selectedApp ?: return@LaunchedEffect
+        actLoading = true
+        activities = emptyList()
+        withContext(Dispatchers.IO) {
+            val list = try {
+                val pm = ctx.packageManager
+                @Suppress("DEPRECATION")
+                val acts = pm.getPackageInfo(app.packageName, PackageManager.GET_ACTIVITIES).activities ?: emptyArray()
+                acts.map { ai ->
+                    val label = try {
+                        ai.loadLabel(pm).toString()
+                    } catch (t: Throwable) {
+                        ""
+                    }
+                    ActivityInfoItem(ai.name, ai.exported, label)
+                }.sortedBy { it.className }
+            } catch (t: Throwable) {
+                emptyList()
+            }
+            withContext(Dispatchers.Main) {
+                activities = list
+                actLoading = false
+            }
+        }
+    }
+
+    val filteredApps = remember(appSearch, filterTab, allApps) {
+        var base = when (filterTab) {
+            1 -> allApps.filter { !it.isSystem }
+            2 -> allApps.filter { it.isSystem }
+            else -> allApps
+        }
+        if (appSearch.isNotBlank()) {
+            base = base.filter {
+                it.appName.contains(appSearch, ignoreCase = true) || it.packageName.contains(appSearch, ignoreCase = true)
+            }
+        }
+        base
+    }
+
+    val filteredActs = remember(actSearch, actFilter, activities) {
+        var base = when (actFilter) {
+            1 -> activities.filter { it.exported }
+            2 -> activities.filter { !it.exported }
+            else -> activities
+        }
+        if (actSearch.isNotBlank()) {
+            base = base.filter {
+                it.className.contains(actSearch, ignoreCase = true) ||
+                    it.label.contains(actSearch, ignoreCase = true)
+            }
+        }
+        base
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            ) {
+                val app = selectedApp
+                if (app == null) {
+                    Text(
+                        text = "选择应用程序",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "点击应用查看其活动列表，点活动直接填入组件参数",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    TabRow(
+                        tabs = listOf("全部 (${allApps.size})", "用户应用", "系统应用"),
+                        selectedTabIndex = filterTab,
+                        onTabSelected = { filterTab = it },
+                        colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                    TextField(
+                        value = appSearch,
+                        onValueChange = { appSearch = it },
+                        label = "搜索应用名称或包名...",
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                    )
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("正在加载已安装应用...", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 380.dp),
+                        ) {
+                            items(filteredApps.size, key = { "app-" + filteredApps[it].packageName }) { idx ->
+                                val item = filteredApps[idx]
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedApp = item }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (item.icon != null) {
+                                        val bmp = remember(item.packageName) {
+                                            val b = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888)
+                                            val c = android.graphics.Canvas(b)
+                                            item.icon.setBounds(0, 0, 96, 96)
+                                            item.icon.draw(c)
+                                            b.toComposeImageBitmap()
+                                        }
+                                        Image(
+                                            painter = BitmapPainter(bmp),
+                                            contentDescription = item.appName,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(8.dp)),
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MiuixTheme.colorScheme.surfaceVariant),
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = item.appName,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MiuixTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                            if (item.isSystem) {
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "系统",
+                                                    fontSize = 10.sp,
+                                                    color = MiuixTheme.colorScheme.primary,
+                                                    modifier = Modifier
+                                                        .background(
+                                                            MiuixTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                                            RoundedCornerShape(4.dp),
+                                                        )
+                                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = item.packageName,
+                                            fontSize = 12.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            text = "← 返回",
+                            onClick = {
+                                selectedApp = null
+                                activities = emptyList()
+                                actSearch = ""
+                            },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = app.appName,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Text(
+                        text = "点活动直接填入 目标组件 / 目标包名（共 ${activities.size} 个活动）",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    TabRow(
+                        tabs = listOf("全部 (${activities.size})", "已导出", "未导出"),
+                        selectedTabIndex = actFilter,
+                        onTabSelected = { actFilter = it },
+                        colors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                    TextField(
+                        value = actSearch,
+                        onValueChange = { actSearch = it },
+                        label = "搜索活动类名或标签...",
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                    )
+                    if (actLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("正在加载活动列表...", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                    } else if (activities.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("该应用未声明任何活动（或无法读取）", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 380.dp),
+                        ) {
+                            items(filteredActs.size, key = { "act-" + filteredActs[it].className }) { idx ->
+                                val act = filteredActs[idx]
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onPick(app.packageName, act.className, app.appName) }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = act.className,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MiuixTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = if (act.exported) "导出" else "未导出",
+                                            fontSize = 10.sp,
+                                            color = MiuixTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .background(
+                                                    MiuixTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                                    RoundedCornerShape(4.dp),
+                                                )
+                                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                                        )
+                                    }
+                                    if (act.label.isNotBlank()) {
+                                        Text(
+                                            text = act.label,
+                                            fontSize = 12.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
                                 }
                             }
                         }

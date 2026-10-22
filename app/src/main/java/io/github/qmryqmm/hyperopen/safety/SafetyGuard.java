@@ -132,6 +132,12 @@ public final class SafetyGuard {
             Log.w(TAG, "无法查询安全模式状态（Provider 不可达），稍后重试");
             return null; // 不写 decided：Provider 未就绪时结论无效，允许后续重试
         }
+        if (state.getBoolean("storage_unavailable", false)) {
+            // 语义修正：存储暂不可用 ≠ 安全模式。绝不据此写 decided=FALSE，
+            // 否则 Direct Boot 锁定期会被误判成「安全模式已激活」且永不翻身
+            Log.w(TAG, "安全模式状态存储暂不可用，稍后重试（不视为安全模式）");
+            return null;
+        }
 
         boolean safeMode = state.getBoolean("safe_mode", false);
         boolean allowed = state.getBoolean("allowed", !safeMode);
@@ -164,6 +170,11 @@ public final class SafetyGuard {
             return hookAllowed;
         }
         Bundle state = call(appContext, M_PROVIDER_STATE, null);
+        if (state != null && state.getBoolean("storage_unavailable", false)) {
+            // 存储暂不可用：保持当前 Hook 状态不变，绝不因「读不到状态」拆掉已装好的 Hook
+            Log.w(TAG, "巡检读到状态存储暂不可用，保持当前 Hook 状态不变");
+            return hookAllowed;
+        }
         if (state != null) {
             boolean allowed = state.getBoolean("allowed", !state.getBoolean("safe_mode", false));
             hookAllowed = allowed;

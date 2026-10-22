@@ -20,6 +20,8 @@ import android.widget.TextView;
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig;
 import io.github.qmryqmm.hyperopen.factory.HyperOSMaterialFactory;
 import io.github.qmryqmm.hyperopen.layout.CircularHoneycombPacking;
+import io.github.qmryqmm.hyperopen.layout.ArcFanPacking;
+import io.github.qmryqmm.hyperopen.layout.HollowRingPacking;
 import io.github.qmryqmm.hyperopen.model.ShortcutItem;
 
 import java.util.ArrayList;
@@ -376,16 +378,50 @@ public class CustomHyperOpenContainer extends FrameLayout {
             if (item.enabled) activeItems.add(item);
         }
 
-        // 计算圆形蜂窝坐标（传入紧凑度偏移量）
+        // 按「图标数量」上限截取排序最前的 N 个启用项（0 = 显示全部）
+        if (config.maxIconCount > 0 && activeItems.size() > config.maxIconCount) {
+            activeItems = new ArrayList<>(activeItems.subList(0, config.maxIconCount));
+        }
+
+        // 计算布局坐标（紧凑度偏移量对蜂窝、空心圆环与弧形扇面通用）
         float spacingOffsetPx = dpToPx(config.iconSpacingOffset);
-        List<PointF> points = CircularHoneycombPacking.calculatePoints(
-            activeItems.size(),
-            fodCenterX,
-            regionCenterY,
-            regionRadiusPx,
-            iconSizePx,
-            spacingOffsetPx
-        );
+        List<PointF> points;
+        if (config.layoutStyle == HyperOpenConfig.LAYOUT_RING) {
+            // 空心同心圆环布局：中心留空，图标排布在 ringCount 圈同心环上
+            points = HollowRingPacking.calculatePoints(
+                activeItems.size(),
+                fodCenterX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx,
+                config.ringCount
+            );
+        } else if (config.layoutStyle == HyperOpenConfig.LAYOUT_ARC) {
+            // 弧形扇面布局：图标沿 150° 弧带排布，单弧放不下自动转双弧
+            points = ArcFanPacking.calculatePoints(
+                activeItems.size(),
+                fodCenterX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx
+            );
+        } else {
+            points = CircularHoneycombPacking.calculatePoints(
+                activeItems.size(),
+                fodCenterX,
+                regionCenterY,
+                regionRadiusPx,
+                iconSizePx,
+                spacingOffsetPx
+            );
+        }
+
+        // 布局容量不足时截断（如空心圆环放不下的启用项、圆盘过小），保证启用项与点集一一对应
+        if (activeItems.size() > points.size()) {
+            activeItems = new ArrayList<>(activeItems.subList(0, points.size()));
+        }
 
         if (canReuseExistingBubbles(activeItems, iconSizeInt)) {
             // 复用已有气泡实例：仅更新目标坐标、Margin 与模糊通道，消除展开时的 View 树重建开销

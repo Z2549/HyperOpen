@@ -211,6 +211,14 @@ public final class IconGlyphFactory {
             if (d != null) return d;
         }
 
+        // 4b) 动作默认行为：ACTIVITY 结构化规格解析目标应用图标
+        if (ShortcutItem.ACTION_ACTIVITY.equals(item.actionType) && notBlank(item.actionPayload)) {
+            String pkg = io.github.qmryqmm.hyperopen.model.ActivityLaunchSpec
+                    .fromJson(item.actionPayload).resolvePackage();
+            Drawable d = processedAppIcon(ctx, pkg, cropMode);
+            if (d != null) return d;
+        }
+
         // 5) 关键词匹配内置符号兜底
         return createGlyph(glyphForItem(item), item.tintColor);
     }
@@ -255,6 +263,14 @@ public final class IconGlyphFactory {
         if (ShortcutItem.ACTION_INTENT_URI.equals(actionType) && notBlank(actionPayload)) {
             Drawable d = iconFromIntent(ctx, actionPayload.trim());
             if (d != null) return d;
+        }
+        if (ShortcutItem.ACTION_ACTIVITY.equals(actionType) && notBlank(actionPayload)) {
+            String pkg = io.github.qmryqmm.hyperopen.model.ActivityLaunchSpec
+                    .fromJson(actionPayload).resolvePackage();
+            if (pkg != null) {
+                Drawable d = appIcon(ctx, pkg);
+                if (d != null) return d;
+            }
         }
         return null;
     }

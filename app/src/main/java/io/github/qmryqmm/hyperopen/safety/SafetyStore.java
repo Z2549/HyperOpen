@@ -7,7 +7,6 @@ import android.util.Log;
 
 import io.github.qmryqmm.hyperopen.config.HyperOpenConfig;
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -308,7 +307,9 @@ public final class SafetyStore {
     // ──────────────────────────────────────────────────────────────
 
     private static SharedPreferences prefs(Context ctx) {
-        return ctx.getSharedPreferences(HyperOpenConfig.PREF_NAME, Context.MODE_PRIVATE);
+        // Direct Boot：安全状态必须存 DE（设备加密）存储，
+        // 否则开机锁定期 safety_check 读不到 → 模块误判/失效
+        return io.github.qmryqmm.hyperopen.util.DePrefs.get(ctx, HyperOpenConfig.PREF_NAME);
     }
 
     private static Bundle getStateLocked(SharedPreferences p) {
@@ -405,22 +406,10 @@ public final class SafetyStore {
     }
 
     /**
-     * 保持 prefs 文件与目录对其它进程可读，作为 XSharedPreferences 兜底路径的前提。
+     * 保持 DE prefs 文件与目录对其它进程可读，作为 XSharedPreferences 兜底路径的前提。
      */
     static void applyWorldReadable(Context ctx) {
-        try {
-            File dataDir = ctx.getDataDir();
-            dataDir.setReadable(true, false);
-            dataDir.setExecutable(true, false);
-            File prefsDir = new File(dataDir, "shared_prefs");
-            if (prefsDir.exists()) {
-                prefsDir.setReadable(true, false);
-                prefsDir.setExecutable(true, false);
-            }
-            File prefsFile = new File(prefsDir, HyperOpenConfig.PREF_NAME + ".xml");
-            if (prefsFile.exists()) {
-                prefsFile.setReadable(true, false);
-            }
-        } catch (Throwable ignored) {}
+        // prefs 已迁 DE，可读化同步作用于 DE 路径
+        io.github.qmryqmm.hyperopen.util.DePrefs.applyWorldReadable(ctx, HyperOpenConfig.PREF_NAME);
     }
 }

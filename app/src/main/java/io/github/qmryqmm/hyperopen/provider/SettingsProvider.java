@@ -21,6 +21,12 @@ public class SettingsProvider extends ContentProvider {
 
     public static final String METHOD_GET_CONFIG = "get_config";
     public static final String METHOD_SAVE_FOD_CENTER = "save_fod_center";
+    /**
+     * 跨进程 Shell/Root 执行桥：SystemUI 侧把命令交回模块 App 进程执行。
+     * 背景：SystemUI 进程里 su 请求 root 时 Magisk 无法弹授权/超时；模块 App 进程的 su 已获授权。
+     * extras: cmd(String, 必填), useRoot(boolean, 默认 true), useRootStr(String, 兼容 adb content call)
+     */
+    public static final String METHOD_RUN_SHELL = "run_shell";
 
     /** 安全模式：启动闸门查询（SystemUI 每次启动时调用，并据此决定是否安装 Hook） */
     public static final String METHOD_SAFETY_CHECK = "safety_check";
@@ -42,12 +48,28 @@ public class SettingsProvider extends ContentProvider {
     @Override
     public boolean onCreate() {
         Log.i(TAG, "SettingsProvider 初始化成功");
+        // Direct Boot：Provider 现在锁定期即被拉起，此刻尝试把旧版 CE 数据迁到 DE
+        //（用户未解锁时会自动跳过，由后续 call()/MainActivity 入口继续迁移）
+        try {
+            Context sctx = getContext();
+            if (sctx != null) {
+                io.github.qmryqmm.hyperopen.util.DePrefs.migrateCeToDe(sctx, HyperOpenConfig.PREF_NAME);
+            }
+        } catch (Throwable ignored) {}
         return true;
     }
 
     @Nullable
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
+        // 任意入口先补一次 CE→DE 迁移（已迁移时为进程内 HashSet 短路，代价可忽略）：
+        // 解锁后的第一次调用把旧版数据搬过来，后续读取即为完整用户数据。
+        try {
+            Context mctx = getContext();
+            if (mctx != null) {
+                io.github.qmryqmm.hyperopen.util.DePrefs.migrateCeToDe(mctx, HyperOpenConfig.PREF_NAME);
+            }
+        } catch (Throwable ignored) {}
         // ── 安全模式相关方法：写入方只在本进程（模块 App），SystemUI 侧只读或上报 ──
         // 注意：call() 内的任何未捕获异常都会跨进程抛回 SystemUI 并可能导致其崩溃，
         // 因此这里必须整段兜底，绝不让异常逃逸出 Provider。
@@ -96,7 +118,7 @@ public class SettingsProvider extends ContentProvider {
                     float fx = extras.getFloat("fod_x", 0f);
                     float fy = extras.getFloat("fod_y", 0f);
                     if (fx > 0f && fy > 0f) {
-                        SharedPreferences sp = ctx.getSharedPreferences(HyperOpenConfig.PREF_NAME, Context.MODE_PRIVATE);
+                        SharedPreferences sp = io.github.qmryqmm.hyperopen.util.DePrefs.get(ctx, HyperOpenConfig.PREF_NAME);
                         sp.edit()
                             .putFloat("last_real_fod_x", fx)
                             .putFloat("last_real_fod_y", fy)
@@ -107,10 +129,34 @@ public class SettingsProvider extends ContentProvider {
             return new Bundle();
         }
 
+        if (METHOD_RUN_SHELL.equals(method)) {
+            Bundle r = new Bundle();
+            r.putBoolean("accepted", false);
+            try {
+                if (extras != null) {
+                    String cmd = extras.getString("cmd");
+                    boolean useRoot = extras.getBoolean("useRoot", true);
+                    String useRootStr = extras.getString("useRootStr");
+                    if (useRootStr != null) {
+                        useRoot = "true".equalsIgnoreCase(useRootStr);
+                    }
+                    if (cmd != null && !cmd.isEmpty()) {
+                        // fire-and-forget：runShellCommand 内部自行异步执行，不阻塞 Binder 调用
+                        io.github.qmryqmm.hyperopen.model.ShortcutItem.runShellCommand(cmd, useRoot);
+                        Log.i(TAG, "run_shell 桥接受理(" + (useRoot ? "root" : "shell") + "): " + cmd);
+                        r.putBoolean("accepted", true);
+                    }
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "run_shell 桥接执行异常", t);
+            }
+            return r;
+        }
+
         if (METHOD_GET_CONFIG.equals(method)) {
             Context ctx = getContext();
             if (ctx != null) {
-                SharedPreferences sp = ctx.getSharedPreferences(HyperOpenConfig.PREF_NAME, Context.MODE_PRIVATE);
+                SharedPreferences sp = io.github.qmryqmm.hyperopen.util.DePrefs.get(ctx, HyperOpenConfig.PREF_NAME);
                 Bundle bundle = new Bundle();
                 bundle.putInt("material_style", sp.getInt("material_style", HyperOpenConfig.MATERIAL_GAUSSIAN_BLUR));
                 bundle.putInt("offset_y", sp.getInt("offset_y", 100));
@@ -124,6 +170,9 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putInt("header_blur_radius", sp.getInt("header_blur_radius", 25));
                 bundle.putBoolean("header_text_centered", sp.getBoolean("header_text_centered", true));
                 bundle.putInt("icon_size", sp.getInt("icon_size", 60));
+                bundle.putInt("max_icon_count", sp.getInt("max_icon_count", 0));
+                bundle.putInt("layout_style", sp.getInt("layout_style", HyperOpenConfig.LAYOUT_HONEYCOMB));
+                bundle.putInt("ring_count", sp.getInt("ring_count", 2));
                 bundle.putFloat("max_scale", sp.getFloat("max_scale", 1.40f));
                 bundle.putInt("influence_radius", sp.getInt("influence_radius", 70));
                 bundle.putFloat("icon_alpha", sp.getFloat("icon_alpha", 1.0f));
@@ -201,19 +250,24 @@ public class SettingsProvider extends ContentProvider {
     }
 
     /**
-     * SafetyStore 返回的 Bundle 可能为 null（例如 Context 获取失败），
-     * 这里统一兜底为一个「安全模式已激活」的空结果，绝不把 null 抛回 SystemUI：
-     * 对调用方而言「查不到状态」与「不允许安装 Hook」应当同向处理，宁可少装一次 Hook。
+     * SafetyStore 返回的 Bundle 可能为 null（例如 Context 获取失败、存储暂不可用）。
+     *
+     * 语义修正：null ≠ 「安全模式激活」。这里返回一个带 storage_unavailable=true 的
+     * 「状态不可查」结果，调用方（SafetyGuard）必须把它当「未决」处理——不写结论、
+     * 稍后重试，绝不能据此永久拒绝安装 Hook 或误报安全模式。
+     * 旧版语义会把「Direct Boot 锁定期读不到存储」误判成安全模式，
+     * 是「重启后模块不生效」的根因之一。
      */
     @NonNull
     private Bundle wrap(@Nullable Bundle b) {
         if (b != null) {
             return b;
         }
-        Log.e(TAG, "安全模式状态读取失败，返回保守结果（禁止安装 Hook）");
+        Log.e(TAG, "安全模式状态读取失败（存储暂不可用），返回可重试的未决结果");
         Bundle fallback = new Bundle();
+        fallback.putBoolean("storage_unavailable", true);
         fallback.putBoolean("allowed", false);
-        fallback.putBoolean("safe_mode", true);
+        fallback.putBoolean("safe_mode", false);
         fallback.putBoolean("hook_enabled", false);
         fallback.putBoolean("just_triggered", false);
         fallback.putBoolean("premature_exit", false);
