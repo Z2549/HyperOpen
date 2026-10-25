@@ -422,40 +422,211 @@ public class ShortcutItem {
     }
 
     private static void toggleSilentMode(Context context) {
+        android.media.AudioManager am =
+                (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return;
+        final boolean ownApp = isOwnAppProcess(context);
         try {
-            android.media.AudioManager am = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-            if (am != null) {
-                int currentMode = am.getRingerMode();
-                if (currentMode == android.media.AudioManager.RINGER_MODE_SILENT || currentMode == android.media.AudioManager.RINGER_MODE_VIBRATE) {
-                    am.setRingerMode(android.media.AudioManager.RINGER_MODE_NORMAL);
-                    showToast(context, "已开启响铃模式");
+            int currentMode = am.getRingerMode();
+            final boolean toNormal = currentMode == android.media.AudioManager.RINGER_MODE_SILENT
+                    || currentMode == android.media.AudioManager.RINGER_MODE_VIBRATE;
+            final int target = toNormal
+                    ? android.media.AudioManager.RINGER_MODE_NORMAL
+                    : android.media.AudioManager.RINGER_MODE_SILENT;
+            try {
+                am.setRingerMode(target);
+                showToast(context, toNormal ? "已开启响铃模式" : "已开启静音模式");
+            } catch (Throwable direct) {
+                // 直调被权限/厂商限制（App 进程缺权限、SystemUI 个别 ROM 拒绝等）
+                // AOSP AudioManagerShellCommand：cmd audio set-ringer-mode NORMAL|VIBRATE|SILENT（大小写敏感）
+                Log.w(TAG, "setRingerMode 直调失败: " + describe(direct));
+                if (ownApp) {
+                    // App 进程：同步 Root 执行并立即回读——真成功/真失败当下见分晓，不再等 1.8s
+                    runRootCommandSync(
+                            "cmd audio set-ringer-mode " + (toNormal ? "NORMAL" : "SILENT"), 8000);
+                    if (am.getRingerMode() == target) {
+                        showToast(context, toNormal ? "已开启响铃模式" : "已开启静音模式");
+                    } else {
+                        showToast(context, "切换静音失败: " + describe(direct)
+                                + "；Root 兜底未生效，请检查本应用 Root 权限");
+                    }
                 } else {
-                    am.setRingerMode(android.media.AudioManager.RINGER_MODE_SILENT);
-                    showToast(context, "已开启静音模式");
+                    // SystemUI 进程：su 弹不了授权 → 桥接到模块 App 进程执行，1.8s 后延迟复读诚实提示
+                    runRootCommand(context,
+                            "cmd audio set-ringer-mode " + (toNormal ? "NORMAL" : "SILENT"));
+                    verifyRingerLater(context, am, target, toNormal, direct, ownApp);
                 }
             }
         } catch (Throwable t) {
             Log.e(TAG, "切换静音失败", t);
-            showToast(context, "切换静音失败: " + t.getMessage());
+            showToast(context, "切换静音失败: " + describe(t));
         }
     }
 
-    private static void toggleDndMode(Context context) {
-        try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null) {
-                int currentFilter = nm.getCurrentInterruptionFilter();
-                if (currentFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL) {
-                    nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY);
-                    showToast(context, "已开启勿扰模式");
+    /** 静音切换 Root 兜底后的延迟复读校验（1.8s 后回查铃声模式，成功/失败如实提示） */
+    private static void verifyRingerLater(Context context, android.media.AudioManager am,
+            int target, boolean toNormal, Throwable direct, boolean ownApp) {
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (am.getRingerMode() == target) {
+                    showToast(context, toNormal ? "已开启响铃模式" : "已开启静音模式");
                 } else {
-                    nm.setInterruptionFilter(android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
-                    showToast(context, "已关闭勿扰模式");
+                    showToast(context, "切换静音失败: " + describe(direct)
+                            + (ownApp ? "；Root 兜底未生效，请检查本应用 Root 权限" : ""));
+                }
+            } catch (Throwable t) {
+                showToast(context, "切换静音失败: " + describe(t));
+            }
+        }, 1800);
+    }
+
+    private static void toggleDndMode(Context context) {
+        android.app.NotificationManager nm =
+                (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        final boolean ownApp = isOwnAppProcess(context);
+        try {
+            // 1) 读取当前过滤器（App 进程无「勿扰访问」权限时读取可能被拒 → -1）
+            int currentFilter = readDndFilterQuiet(nm);
+            boolean hasAccess = hasDndAccess(nm);
+            // 2) App 进程：权限缺失时先 Root 静默自投 allow_dnd（一次生效，随后直调即成）
+            if (ownApp && (!hasAccess || currentFilter < 0)
+                    && runRootCommandSync(
+                            "cmd notification allow_dnd " + context.getPackageName(), 8000)) {
+                hasAccess = hasDndAccess(nm);
+                if (currentFilter < 0) currentFilter = readDndFilterQuiet(nm);
+            }
+            if (currentFilter < 0) {
+                // 读不到状态无法计算切换方向：如实失败；无权限时引导系统授权页
+                Log.w(TAG, "勿扰状态读取失败 hasAccess=" + hasAccess);
+                showToast(context, "切换勿扰失败: 无法读取勿扰状态（请检查勿扰权限）");
+                if (ownApp && !hasAccess) guideDndAccessSettings(context);
+                return;
+            }
+            final boolean toPriority =
+                    currentFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
+            final int target = toPriority
+                    ? android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                    : android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
+            try {
+                nm.setInterruptionFilter(target);
+                showToast(context, toPriority ? "已开启勿扰模式" : "已关闭勿扰模式");
+            } catch (Throwable direct) {
+                // 通知策略访问未授予（App 进程必现 SecurityException / SystemUI 个别 ROM 也未授）
+                Log.w(TAG, "setInterruptionFilter 直调失败: " + describe(direct));
+                if (ownApp) {
+                    // App 进程：同步 Root 直接执行本次切换并立即回读——真成功/真失败当下见分晓
+                    runRootCommandSync(
+                            "cmd notification set_dnd " + (toPriority ? "priority" : "off"), 8000);
+                    if (readDndFilterQuiet(nm) == target) {
+                        showToast(context, toPriority ? "已开启勿扰模式" : "已关闭勿扰模式");
+                    } else {
+                        showToast(context, "切换勿扰失败: " + describe(direct));
+                        if (!hasDndAccess(nm)) guideDndAccessSettings(context);
+                    }
+                } else {
+                    // SystemUI 进程：su 弹不了授权 → 桥接到模块 App 进程执行 + 延迟回读
+                    runRootCommand(context, "cmd notification allow_dnd " + context.getPackageName());
+                    runRootCommand(context,
+                            "cmd notification set_dnd " + (toPriority ? "priority" : "off"));
+                    verifyDndLater(context, nm, target, toPriority, direct);
                 }
             }
         } catch (Throwable t) {
             Log.e(TAG, "切换勿扰模式失败", t);
-            showToast(context, "切换勿扰失败: " + t.getMessage());
+            showToast(context, "切换勿扰失败: " + describe(t));
+        }
+    }
+
+    /** 勿扰切换 Root 兜底后的延迟复读校验（1.8s 后回查过滤器，回读受权限挡住时如实说明） */
+    private static void verifyDndLater(Context context, android.app.NotificationManager nm,
+            int target, boolean toPriority, Throwable direct) {
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (nm.getCurrentInterruptionFilter() == target) {
+                    showToast(context, toPriority ? "已开启勿扰模式" : "已关闭勿扰模式");
+                } else {
+                    showToast(context, "切换勿扰失败: " + describe(direct));
+                }
+            } catch (Throwable t) {
+                // 回读也被策略权限挡住：无法证伪，如实说明是 Root 提交而非确认成功
+                showToast(context, "已通过 Root 提交勿扰切换（状态回读受限）");
+            }
+        }, 1800);
+    }
+
+    /** 异常可读描述：message 为 null 时退回类名，避免 toast 出现 "null" */
+    private static String describe(Throwable t) {
+        String msg = t.getMessage();
+        return (msg == null || msg.isEmpty()) ? t.getClass().getSimpleName() : msg;
+    }
+
+    /** 是否运行在模块 App 自身进程（编辑界面「立即启动测试」；SystemUI 进程包名为 com.android.systemui） */
+    private static boolean isOwnAppProcess(Context context) {
+        try {
+            return context != null
+                    && "io.github.qmryqmm.hyperopen".equals(context.getPackageName());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * App 进程内同步执行 root 命令（带超时，返回是否 exit 0）。
+     * 仅限 ownApp 调用——SystemUI 进程 su 授权弹窗不可见会挂起，那里必须走异步桥接。
+     */
+    private static boolean runRootCommandSync(String cmd, long timeoutMs) {
+        Process p = null;
+        try {
+            p = Runtime.getRuntime().exec("su");
+            DataOutputStream os = new DataOutputStream(p.getOutputStream());
+            os.writeBytes(cmd + "\nexit\n");
+            os.flush();
+            os.close();
+            if (!p.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "root 命令超时(" + timeoutMs + "ms): " + cmd);
+                return false;
+            }
+            int code = p.exitValue();
+            if (code != 0) Log.w(TAG, "root 命令 exit=" + code + ": " + cmd);
+            return code == 0;
+        } catch (Throwable t) {
+            Log.w(TAG, "root 命令执行失败: " + cmd, t);
+            return false;
+        } finally {
+            if (p != null) p.destroy();
+        }
+    }
+
+    /** 读取当前勿扰过滤器；被权限拒绝等异常时返回 -1 */
+    private static int readDndFilterQuiet(android.app.NotificationManager nm) {
+        try {
+            return nm.getCurrentInterruptionFilter();
+        } catch (Throwable t) {
+            Log.w(TAG, "读取勿扰过滤器失败: " + describe(t));
+            return -1;
+        }
+    }
+
+    /** 是否已获系统「勿扰访问」（通知策略访问）权限 */
+    private static boolean hasDndAccess(android.app.NotificationManager nm) {
+        try {
+            return nm.isNotificationPolicyAccessGranted();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** App 进程内引导到系统「勿扰访问」授权页（无 Root 时的唯一出路） */
+    private static void guideDndAccessSettings(Context context) {
+        try {
+            Intent i = new Intent(
+                    android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(i);
+            showToast(context, "已打开「勿扰访问」设置，请允许 HyperOpen 后重试");
+        } catch (Throwable t) {
+            Log.w(TAG, "打开勿扰授权页失败", t);
         }
     }
 

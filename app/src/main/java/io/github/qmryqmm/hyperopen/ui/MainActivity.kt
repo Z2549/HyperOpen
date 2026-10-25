@@ -249,8 +249,9 @@ fun HyperOpenApp(
     val shortcutsListState = rememberLazyListState()
     val settingsListState = rememberLazyListState()
     val themeListState = rememberLazyListState()
+    val permissionListState = rememberLazyListState()
 
-    // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页, 3=整体预览页
+    // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页, 3=整体预览页, 4=权限检测页
     var subPage by remember { mutableStateOf(0) }
     var editingItem by remember { mutableStateOf<ShortcutItem?>(null) }
     var isNewShortcut by remember { mutableStateOf(false) }
@@ -469,6 +470,7 @@ fun HyperOpenApp(
             1 -> "主题设置"
             2 -> if (isNewShortcut) "新建快捷方式" else "快捷方式参数设置"
             3 -> "指纹快捷整体预览"
+            4 -> "权限检测"
             else -> when (page) {
                 0 -> "参数配置"
                 1 -> "快捷项目"
@@ -853,6 +855,12 @@ fun HyperOpenApp(
                             )
                         }
                     }
+                    4 -> {
+                        PermissionCheckPage(
+                            contentPadding = pagePadding,
+                            lazyListState = permissionListState,
+                        )
+                    }
                     else -> {
                         when (page) {
                             0 -> {
@@ -971,6 +979,7 @@ fun HyperOpenApp(
                                     safetyTick = safetyTick,
                                     onSafetyRefresh = { safetyTick++ },
                                     onOpenThemePage = { subPage = 1 },
+                                    onOpenPermissionPage = { subPage = 4 },
                                     onResetDefaults = { showResetDefaultsDialog = true },
                                 )
                             }
@@ -2318,7 +2327,7 @@ fun ShortcutEditPage(
                                     // 与保存一致：URI 同步写回用户标记，测试的就是最终生效的 payload
                                     testItem.actionPayload = ShortcutItem.syncUserMarker(testItem.actionPayload, pickedUser)
                                 }
-                                testItem.execute(ctx)
+                                testItem.executeAsync(ctx)
                             },
                         )
                     }
@@ -4884,6 +4893,7 @@ fun SettingsPage(
     safetyTick: Int,
     onSafetyRefresh: () -> Unit,
     onOpenThemePage: () -> Unit,
+    onOpenPermissionPage: () -> Unit,
     onResetDefaults: () -> Unit,
 ) {
     LazyColumn(
@@ -4915,6 +4925,30 @@ fun SettingsPage(
                         )
                     },
                     onClick = onOpenThemePage,
+                )
+            }
+        }
+
+        // ── 权限检测 ──
+        item(key = "permission_title") { SmallTitle("权限") }
+        item(key = "permission_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                ArrowPreference(
+                    title = "权限检测",
+                    summary = "Root · 应用列表 · 振动 · 勿扰 · 存储 · LSPosed 作用域",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Scan,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = onOpenPermissionPage,
                 )
             }
         }
@@ -5262,5 +5296,271 @@ fun ThemeSettingsPage(
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 二级页：权限检测（Root / 应用列表 / 振动 / 勿扰 / 存储 / LSPosed 作用域）
+// ─────────────────────────────────────────────────────────────
+@Composable
+fun PermissionCheckPage(
+    contentPadding: PaddingValues,
+    lazyListState: LazyListState,
+) {
+    val ctx = LocalContext.current
+    var detectTick by remember { mutableIntStateOf(0) }
+    var running by remember { mutableStateOf(true) }
+    val status = remember { androidx.compose.runtime.mutableStateMapOf<String, Pair<Boolean?, String>>() }
+    val items = remember {
+        listOf(
+            Triple("root", "Root 权限（su）", "用途：重启系统界面、SHELL/root 启动动作、跨用户启动兜底、锁屏壁纸读取兜底。首次检测会弹出 Root 授权，允许后点「重新检测」即可刷新。"),
+            Triple("packages", "应用列表（QUERY_ALL_PACKAGES）", "用途：快捷方式「从已安装应用选取」列表、应用图标获取与图标裁切缓存、APP 动作启动目标解析。"),
+            Triple("vibrate", "振动（VIBRATE）", "用途：手势选中与确认的触觉反馈，覆盖 Tick / Click / Heavy / Double / 自定义 5 种震动模式。"),
+            Triple("dnd", "勿扰策略访问", "用途：DND 快捷动作切换勿扰与响铃模式。动作由系统界面（SystemUI）执行、系统界面默认具备该权限，本项仅反映本应用自身授权状态。"),
+            Triple("storage", "所有文件访问（MANAGE_EXTERNAL_STORAGE）", "用途：直接读取本地图片作为自定义图标；经系统相册 / 文件选择器选图时无需此权限。"),
+            Triple("lsposed", "LSPosed 模块与作用域", "用途：模块需在 LSPosed 中启用并勾选作用域 com.android.systemui，否则锁屏快捷面板不生效；读取 LSPosed 数据校验依赖 Root。"),
+        )
+    }
+
+    LaunchedEffect(detectTick) {
+        running = true
+        status.clear()
+        items.forEach { (key, _, _) -> status[key] = null to "检测中…" }
+        val root = withContext(Dispatchers.IO) { detectRootAccess() }
+        status["root"] = root
+        status["packages"] = withContext(Dispatchers.IO) { detectPackageVisibility(ctx) }
+        status["vibrate"] = withContext(Dispatchers.IO) { detectVibrate(ctx) }
+        status["dnd"] = withContext(Dispatchers.IO) { detectDndAccess(ctx) }
+        status["storage"] = withContext(Dispatchers.IO) { detectStorageAccess() }
+        status["lsposed"] = withContext(Dispatchers.IO) { detectLsposedScope(ctx, root.first == true) }
+        running = false
+    }
+
+    LazyColumn(
+        state = lazyListState,
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .scrollEndHaptic(),
+        contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item(key = "perm_header") { SmallTitle("权限检测") }
+        item(key = "perm_overview") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text(
+                        text = if (running) {
+                            "正在检测…（共 ${items.size} 项）"
+                        } else {
+                            val ok = items.count { status[it.first]?.first == true }
+                            val no = items.count { status[it.first]?.first == false }
+                            "共 ${items.size} 项：已满足 $ok 项 · 未满足 $no 项"
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "绿色 ✓ 已满足 · 红色 ✗ 未满足 · 黄色 … 检测中或需在 LSPosed 中人工确认",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+        item(key = "perm_refresh") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                ArrowPreference(
+                    title = "重新检测",
+                    summary = "重新扫描全部权限状态（Root 授权后用它刷新结果）",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Scan,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = { detectTick++ },
+                )
+            }
+        }
+        items.forEach { (key, itemTitle, purpose) ->
+            item(key = "perm_$key") {
+                val st = status[key]
+                val color = when (st?.first) {
+                    true -> Color(0xFF07C160)
+                    false -> Color(0xFFE94634)
+                    null -> Color(0xFFFF9933)
+                }
+                val label = when (st?.first) {
+                    true -> "✓ 已满足"
+                    false -> "✗ 未满足"
+                    null -> "… 检测中"
+                }
+                Card(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = itemTitle,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = color,
+                            )
+                        }
+                        Text(
+                            text = purpose,
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                        Text(
+                            text = st?.second ?: "检测中…",
+                            fontSize = 12.sp,
+                            color = color.copy(alpha = 0.9f),
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+// ── 权限检测执行器（全部跑在 IO 线程）：返回 (状态 true=满足 / false=不满足 / null=待确认, 说明文字) ──
+
+private fun detectRootAccess(): Pair<Boolean?, String> {
+    var process: Process? = null
+    return try {
+        process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+        process.outputStream.close()
+        val finished = process.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            false to "检测超时：首次使用需在弹窗中允许 Root，授权后点「重新检测」"
+        } else {
+            val out = process.inputStream.bufferedReader().readText().trim()
+            if (process.exitValue() == 0 && out.contains("uid=0")) {
+                true to out.lineSequence().first().trim()
+            } else {
+                val err = process.errorStream.bufferedReader().readText().trim()
+                false to (err.ifBlank { "su 未授权或系统未 Root" }).lineSequence().first().take(70)
+            }
+        }
+    } catch (e: Exception) {
+        false to (e.message ?: "未找到 su（系统未 Root）")
+    } finally {
+        process?.destroy()
+    }
+}
+
+private fun detectPackageVisibility(ctx: android.content.Context): Pair<Boolean?, String> {
+    val declared = ctx.checkSelfPermission("android.permission.QUERY_ALL_PACKAGES") == PackageManager.PERMISSION_GRANTED
+    val count = try {
+        ctx.packageManager.getInstalledApplications(0).size
+    } catch (e: Exception) {
+        -1
+    }
+    return when {
+        declared && count >= 50 -> true to "已声明并授予；当前可见 $count 个应用"
+        declared -> true to "已声明并授予；可见 $count 个应用（偏少，可能受系统限制）"
+        count in 0..49 -> false to "未授权；仅可见 $count 个应用，应用选择器与图标加载会不全"
+        else -> true to "可见 $count 个应用"
+    }
+}
+
+private fun detectVibrate(ctx: android.content.Context): Pair<Boolean?, String> {
+    val granted = ctx.checkSelfPermission("android.permission.VIBRATOR") == PackageManager.PERMISSION_GRANTED
+    val has = (ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)?.hasVibrator() ?: false
+    return when {
+        !granted -> false to "振动权限未授予；硬件${if (has) "支持震动" else "无振动马达"}"
+        !has -> false to "权限已授予，但设备没有振动马达"
+        else -> true to "权限已授予，硬件支持震动"
+    }
+}
+
+private fun detectDndAccess(ctx: android.content.Context): Pair<Boolean?, String> {
+    return try {
+        val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
+        if (nm.isNotificationPolicyAccessGranted) {
+            true to "已授予勿扰策略访问"
+        } else {
+            false to "未授予勿扰策略访问（快捷动作实际由系统界面执行，本项仅供参考）"
+        }
+    } catch (e: Exception) {
+        null to "检测失败：${e.message}"
+    }
+}
+
+private fun detectStorageAccess(): Pair<Boolean?, String> {
+    return try {
+        if (android.os.Environment.isExternalStorageManager()) {
+            true to "已授予所有文件访问权限"
+        } else {
+            false to "未授予（可选：经系统相册 / 文件选择器选图时不需要）"
+        }
+    } catch (e: Exception) {
+        false to "检测失败：${e.message}"
+    }
+}
+
+private fun detectLsposedScope(ctx: android.content.Context, hasRoot: Boolean): Pair<Boolean?, String> {
+    val managerInstalled = listOf("org.lsposed.manager", "io.github.lsposed.manager").any { pkg ->
+        try {
+            ctx.packageManager.getPackageInfo(pkg, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+    if (!hasRoot) {
+        return if (managerInstalled) {
+            null to "已装 LSPosed 管理器；读取作用域需 Root，通过 Root 检测后点「重新检测」"
+        } else {
+            false to "未检测到 LSPosed 管理器，且无 Root 无法校验作用域"
+        }
+    }
+    return try {
+        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "grep -r -l io.github.qmryqmm.hyperopen /data/adb/lspd 2>/dev/null"))
+        p.outputStream.close()
+        val finished = p.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+            p.destroyForcibly()
+            null to "读取 LSPosed 数据超时，点「重新检测」重试"
+        } else {
+            val out = p.inputStream.bufferedReader().readText().trim()
+            when {
+                p.exitValue() == 0 && out.isNotEmpty() ->
+                    true to "LSPosed 数据中找到本模块记录：${out.lineSequence().first().take(60)}"
+                p.exitValue() == 0 ->
+                    false to if (managerInstalled) "未找到本模块记录；请在 LSPosed 中启用模块并勾选作用域 com.android.systemui" else "未找到本模块记录，且未安装 LSPosed 管理器"
+                else ->
+                    false to "/data/adb/lspd 下未找到本模块（LSPosed 未安装或模块未启用）"
+            }
+        }
+    } catch (e: Exception) {
+        false to (e.message ?: "读取 LSPosed 数据失败")
     }
 }

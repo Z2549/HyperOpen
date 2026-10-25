@@ -12,6 +12,10 @@
 
     <!-- 允许 App 完全实时读取系统真实桌面壁纸与触觉反馈 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 静音/响铃模式切换（App 进程直调 AudioManager.setRingerMode 的前置权限） -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 勿扰模式切换（通知策略访问；实际授予仍由 Root allow_dnd 兜底） -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
