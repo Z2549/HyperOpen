@@ -3510,7 +3510,7 @@ val PRESET_ACTIONS = listOf(
         title = "自定义快捷方式",
         subtitle = "自由配置目标应用、自定义 Intent 或 Shell",
         actionType = ShortcutItem.ACTION_APP,
-        iconGlyph = "sparkle",
+        iconGlyph = "remix:sparkling-fill",
         tintColor = 0xFF3482FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF3482FF.toInt(),
@@ -3521,7 +3521,7 @@ val PRESET_ACTIONS = listOf(
         title = "唤醒小爱",
         subtitle = "一键唤醒语音助手与小爱同学",
         actionType = ShortcutItem.ACTION_XIAOAI,
-        iconGlyph = "Mic:Regular",
+        iconGlyph = "remix:mic-fill",
         tintColor = 0xFF1485EE.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1485EE.toInt(),
@@ -3532,7 +3532,7 @@ val PRESET_ACTIONS = listOf(
         title = "静音模式",
         subtitle = "快速切换响铃与静音震动",
         actionType = ShortcutItem.ACTION_MUTE,
-        iconGlyph = "VolumeOff:Regular",
+        iconGlyph = "remix:volume-mute-fill",
         tintColor = 0xFFFA8C16.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFA8C16.toInt(),
@@ -3543,7 +3543,7 @@ val PRESET_ACTIONS = listOf(
         title = "勿扰模式",
         subtitle = "快速开启或退出静音勿扰模式",
         actionType = ShortcutItem.ACTION_DND,
-        iconGlyph = "Blocklist:Regular",
+        iconGlyph = "remix:notification-3-fill",
         tintColor = 0xFF722ED1.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF722ED1.toInt(),
@@ -3554,7 +3554,7 @@ val PRESET_ACTIONS = listOf(
         title = "强光手电筒",
         subtitle = "开关手机后置 LED 强光照明",
         actionType = ShortcutItem.ACTION_FLASHLIGHT,
-        iconGlyph = "Flashlight:Regular",
+        iconGlyph = "remix:flashlight-fill",
         tintColor = 0xFFFAAD14.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFAAD14.toInt(),
@@ -3565,7 +3565,7 @@ val PRESET_ACTIONS = listOf(
         title = "街拍相机",
         subtitle = "秒级直达系统原生相机抓拍界面",
         actionType = ShortcutItem.ACTION_CAMERA,
-        iconGlyph = "Camera:Regular",
+        iconGlyph = "remix:camera-fill",
         tintColor = 0xFFFF4D4F.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFF4D4F.toInt(),
@@ -3579,7 +3579,7 @@ val PRESET_ACTIONS = listOf(
         actionPayload = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.scanner.ui.BaseScanUI;end",
         // userId 默认 0 = 主空间；要启动应用双开/分身（XSpace user 999）在编辑界面「启动用户」里选择
         userId = 0,
-        iconGlyph = "Scan:Regular",
+        iconGlyph = "remix:qr-scan-2-line",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3591,7 +3591,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "出示收银台向商家付款",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;launchFlags=0x10000000;component=com.tencent.mm/com.tencent.mm.plugin.offline.ui.WalletOfflineCoinPurseUI;i.key_entry_scene=2;end",
-        iconGlyph = "BankCards:Regular",
+        iconGlyph = "remix:qr-code-line",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3603,7 +3603,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速出示面对面二维码收款",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.collect.ui.CollectMainUI;end",
-        iconGlyph = "QrCode:Regular",
+        iconGlyph = "remix:money-cny-circle-line",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3615,7 +3615,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "直接打开微信朋友圈主页",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;launchFlags=0x14000000;component=com.tencent.mm/.plugin.sns.ui.SnsTimeLineUI;B.sns_timeline_NeedFirstLoadint=true;end",
-        iconGlyph = "Photos:Regular",
+        iconGlyph = "remix:image-2-fill",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3627,7 +3627,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "展示微信个人二维码名片",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x14000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.setting.ui.setting.SelfQRCodeUI;end",
-        iconGlyph = "ContactsCircle:Regular",
+        iconGlyph = "remix:user-3-fill",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3639,7 +3639,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速发起微信AA分账收款",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10000000;package=com.tencent.mm;component=com.tencent.mm/.plugin.aa.ui.AAEntranceUI;end",
-        iconGlyph = "BankCards:Regular",
+        iconGlyph = "remix:money-cny-circle-fill",
         tintColor = 0xFF07C160.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF07C160.toInt(),
@@ -3651,7 +3651,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速识别二维码或扫码骑行",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=10000007&sourceId=xiaomiLeft&source=shortcut&showOthers=true&chInfo=ch_xiaomiLeft",
-        iconGlyph = "Scan:Regular",
+        iconGlyph = "remix:qr-scan-2-line",
         tintColor = 0xFF1677FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1677FF.toInt(),
@@ -3663,7 +3663,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "直接打开支付宝付款条码",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=20000056&chInfo=ch_xiaomiLeft",
-        iconGlyph = "BankCards:Regular",
+        iconGlyph = "remix:qr-code-fill",
         tintColor = 0xFF1677FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1677FF.toInt(),
@@ -3675,7 +3675,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速展示支付宝面对面二维码收钱",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=20000123&chInfo=ch_xiaomi_left&sceneCode=KF_CHANGSHANG&shareUserId=2088831085791813&partnerId=ch_xiaomi_left&pikshemo=YES",
-        iconGlyph = "QrCode:Regular",
+        iconGlyph = "remix:money-cny-circle-fill",
         tintColor = 0xFF1677FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1677FF.toInt(),
@@ -3687,7 +3687,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "地铁与公交交通一卡通直接刷码",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=200011235&source=xiaomiLeft&chInfo=ch_xiaomiLeft",
-        iconGlyph = "QrCode:Regular",
+        iconGlyph = "remix:subway-fill",
         tintColor = 0xFF52C41A.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF52C41A.toInt(),
@@ -3699,7 +3699,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "政务办事、社保医保公积金",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=20000178&chInfo=ch_xiaomi_left&sceneCode=KF_CHANGSHANG&shareUserId=2088831085791813&partnerId=ch_xiaomi_left&pikshemo=YES",
-        iconGlyph = "Community:Regular",
+        iconGlyph = "remix:shield-check-fill",
         tintColor = 0xFF1677FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1677FF.toInt(),
@@ -3711,7 +3711,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "水费、电费、燃气费便民缴费",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "alipays://platformapi/startapp?appId=20000193&chInfo=ch_xiaomi_left&sceneCode=KF_CHANGSHANG&shareUserId=2088831085791813&partnerId=ch_xiaomi_left&pikshemo=YES",
-        iconGlyph = "Home:Regular",
+        iconGlyph = "remix:coupon-3-fill",
         tintColor = 0xFF1677FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1677FF.toInt(),
@@ -3723,7 +3723,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "小米系统原生扫码器",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=miui.intent.action.scanner;launchFlags=0x10000000;component=com.xiaomi.scanner/.app.ScanActivity;i.extra_intent_module_index=0;S.fromApp=com.miui.personalassistant;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "Scan:Regular",
+        iconGlyph = "remix:qr-scan-2-fill",
         tintColor = 0xFF3482FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF3482FF.toInt(),
@@ -3735,7 +3735,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "小米扫一扫快速提取文档",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=miui.intent.action.scanner;launchFlags=0x10000000;component=com.xiaomi.scanner/.app.ScanActivity;i.extra_intent_module_index=5;S.fromApp=com.miui.personalassistant;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "File:Regular",
+        iconGlyph = "remix:sticky-note-fill",
         tintColor = 0xFF3482FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF3482FF.toInt(),
@@ -3747,7 +3747,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "小米扫一扫实时拍照翻译",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=miui.intent.action.scanner;launchFlags=0x10000000;component=com.xiaomi.scanner/.app.ScanActivity;i.extra_intent_module_index=2;S.fromApp=com.miui.personalassistant;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "Translate:Regular",
+        iconGlyph = "remix:translate-2",
         tintColor = 0xFF3482FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF3482FF.toInt(),
@@ -3759,7 +3759,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "安全中心一键扫描垃圾清理",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=miui.intent.action.GARBAGE_CLEANUP;category=android.intent.category.DEFAULT;launchFlags=0x10000000;component=com.miui.cleanmaster/com.miui.optimizecenter.MainActivity;end",
-        iconGlyph = "Delete:Regular",
+        iconGlyph = "remix:delete-bin-6-fill",
         tintColor = 0xFF52C41A.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF52C41A.toInt(),
@@ -3771,7 +3771,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "小米计算器高级科学换算",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;launchFlags=0x10080000;component=com.miui.calculator/.cal.AllInOneCalculatorActivity;B.extra_is_scientific=true;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "calc",
+        iconGlyph = "remix:calculator-fill",
         tintColor = 0xFF13C2C2.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF13C2C2.toInt(),
@@ -3783,7 +3783,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "即时多国汇率实时换算",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=com.miui.calculator.action.CURRENCY;launchFlags=0x10080000;component=com.miui.calculator/.convert.CurrencyActivity;S.external_jump_type=personalassistant;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "calc",
+        iconGlyph = "remix:exchange-funds-fill",
         tintColor = 0xFF13C2C2.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF13C2C2.toInt(),
@@ -3795,7 +3795,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速开启系统高保真录音",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=mi.quicksearch.intent.action.RETRIEVE;launchFlags=0x10000000;component=com.android.soundrecorder/.SoundRecorder;S.miref=PersonalAssistant_QuickStart;end",
-        iconGlyph = "Mic:Regular",
+        iconGlyph = "remix:disc-fill",
         tintColor = 0xFFFAAD14.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFAAD14.toInt(),
@@ -3807,7 +3807,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "日历快速创建待办与活动",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=android.intent.action.INSERT;category=android.intent.category.DEFAULT;type=vnd.android.cursor.item/event;package=com.android.calendar;end",
-        iconGlyph = "Alarm:Regular",
+        iconGlyph = "remix:calendar-event-fill",
         tintColor = 0xFF1890FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1890FF.toInt(),
@@ -3819,7 +3819,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "小米智能卡银行卡刷卡界面",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=com.miui.intent.action.DOUBLE_CLICK;launchFlags=0x10000000;i.card_group_id=2;end",
-        iconGlyph = "BankCards:Regular",
+        iconGlyph = "remix:bank-card-fill",
         tintColor = 0xFFFA541C.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFA541C.toInt(),
@@ -3831,7 +3831,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "刷公交地铁一卡通卡面",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=com.miui.intent.action.DOUBLE_CLICK;launchFlags=0x10000000;S.event_source=shortcut_of_trans_card;end",
-        iconGlyph = "BankCards:Regular",
+        iconGlyph = "remix:subway-fill",
         tintColor = 0xFF1890FF.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF1890FF.toInt(),
@@ -3843,7 +3843,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "快速调出小区/门禁实体模拟卡",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "intent:#Intent;action=com.miui.intent.action.DOUBLE_CLICK;launchFlags=0x10000000;i.card_group_id=3;end",
-        iconGlyph = "Unlock:Regular",
+        iconGlyph = "remix:lock-unlock-fill",
         tintColor = 0xFF52C41A.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFF52C41A.toInt(),
@@ -3855,7 +3855,7 @@ val PRESET_ACTIONS = listOf(
         subtitle = "淘宝拍照图像识物查同款",
         actionType = ShortcutItem.ACTION_INTENT_URI,
         actionPayload = "taobao://h5.m.taobao.com/tusou/capture.html?pssource=xiaomi&bc_fl_src=growth_dhh_2200803434487_android-xiaomikuaijie-1069565676-xiaomikuaijie",
-        iconGlyph = "Camera:Regular",
+        iconGlyph = "remix:shopping-bag-3-fill",
         tintColor = 0xFFFF5000.toInt(),
         glyphPadEnabled = true,
         glyphPadColor = 0xFFFF5000.toInt(),
@@ -3903,7 +3903,11 @@ fun PresetActionPickerDialog(
                 ) {
                     items(PRESET_ACTIONS) { action ->
                         val vector = remember(action.iconGlyph) {
-                            MiuixIconRegistry.find(action.iconGlyph)
+                            if (RemixIconRegistry.isRemixIcon(action.iconGlyph)) {
+                                RemixIconRegistry.find(action.iconGlyph)
+                            } else {
+                                MiuixIconRegistry.find(action.iconGlyph)
+                            }
                         }
                         Row(
                             modifier = Modifier
@@ -5314,10 +5318,10 @@ fun PermissionCheckPage(
     val status = remember { androidx.compose.runtime.mutableStateMapOf<String, Pair<Boolean?, String>>() }
     val items = remember {
         listOf(
-            Triple("root", "Root 权限（su）", "用途：重启系统界面、SHELL/root 启动动作、跨用户启动兜底、锁屏壁纸读取兜底。首次检测会弹出 Root 授权，允许后点「重新检测」即可刷新。"),
-            Triple("packages", "应用列表（QUERY_ALL_PACKAGES）", "用途：快捷方式「从已安装应用选取」列表、应用图标获取与图标裁切缓存、APP 动作启动目标解析。"),
-            Triple("dnd", "勿扰策略访问", "用途：DND 快捷动作切换勿扰与响铃模式。动作由系统界面（SystemUI）执行、系统界面默认具备该权限，本项仅反映本应用自身授权状态。"),
-            Triple("storage", "所有文件访问（MANAGE_EXTERNAL_STORAGE）", "用途：直接读取本地图片作为自定义图标；经系统相册 / 文件选择器选图时无需此权限。"),
+            Triple("root", "Root 权限", "用途：重启系统界面、SHELL/root 启动动作、跨用户启动兜底、锁屏壁纸读取兜底。建议授权。"),
+            Triple("packages", "应用列表", "用途：快捷方式「从已安装应用选取」列表、应用图标获取与图标裁切缓存、APP 动作启动目标解析。"),
+            Triple("dnd", "勿扰策略访问", "用途：快捷动作切换勿扰与响铃模式。本项仅反映本应用自身授权状态，有root无需授权"),
+            Triple("storage", "所有文件访问", "用途：直接读取本地图片作为自定义图标；经系统相册 / 文件选择器选图时无需此权限。"),
             Triple("lsposed", "LSPosed 模块与作用域", "用途：模块需在 LSPosed 中启用并勾选作用域 com.android.systemui，否则锁屏快捷面板不生效；读取 LSPosed 数据校验依赖 Root。"),
         )
     }
@@ -5397,7 +5401,6 @@ fun PermissionCheckPage(
         val root = withContext(Dispatchers.IO) { detectRootAccess() }
         status["root"] = root
         status["packages"] = withContext(Dispatchers.IO) { detectPackageVisibility(ctx) }
-        status["vibrate"] = withContext(Dispatchers.IO) { detectVibrate(ctx) }
         status["dnd"] = withContext(Dispatchers.IO) { detectDndAccess(ctx) }
         status["storage"] = withContext(Dispatchers.IO) { detectStorageAccess() }
         status["lsposed"] = withContext(Dispatchers.IO) { detectLsposedScope(ctx, root.first == true) }
@@ -5450,7 +5453,7 @@ fun PermissionCheckPage(
             ) {
                 ArrowPreference(
                     title = "重新检测",
-                    summary = "重新扫描全部权限状态（Root 授权后用它刷新结果）",
+                    summary = "重新扫描全部权限状态",
                     startAction = {
                         Icon(
                             imageVector = MiuixIcons.Scan,
@@ -5567,7 +5570,7 @@ private fun detectDndAccess(ctx: android.content.Context): Pair<Boolean?, String
         if (nm.isNotificationPolicyAccessGranted) {
             true to "已授予勿扰策略访问"
         } else {
-            false to "未授予勿扰策略访问（快捷动作实际由系统界面执行，本项仅供参考）"
+            false to "未授予勿扰策略访问（本项仅供参考，有root无需授权）"
         }
     } catch (e: Exception) {
         null to "检测失败：${e.message}"
