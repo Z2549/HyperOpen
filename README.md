@@ -120,5 +120,5 @@
 - **包名**：`io.github.qmryqmm.hyperopen`
 - **当前版本**：`v0.32`
 - **作者**：[青冥日月](https://www.coolapk.com/u/3268816)
-- **项目地址**：[https://github.com/qmryqmm/HyperOpen](https://github.com/qmryqmm/HyperOpen)
+- **项目地址**：[HyperOpen](https://github.com/qmryqmm/HyperOpen)
 - **UI 框架**：[Miuix KMP](https://github.com/miuix-kotlin-multiplatform/miuix)
