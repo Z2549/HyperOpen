@@ -25,6 +25,8 @@ import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.view.CircularBubbleView
 import io.github.qmryqmm.hyperopen.view.CircularRegionBackdropView
 import io.github.qmryqmm.hyperopen.view.CustomHyperOpenContainer
+import io.github.qmryqmm.hyperopen.view.HintTextStyler
+import io.github.qmryqmm.hyperopen.view.StrokeTextView
 
 /**
  * 整体指纹快捷面板高保真预览与长按拖拽交互视图。
@@ -355,7 +357,7 @@ class HyperOpenPreviewView(
             }
         }
 
-        headerTitle = TextView(context).apply {
+        headerTitle = StrokeTextView(context).apply {
             text = "滑动选择快捷方式"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setTextColor(Color.WHITE)
@@ -363,7 +365,7 @@ class HyperOpenPreviewView(
             gravity = Gravity.CENTER
         }
 
-        headerSubtitle = TextView(context).apply {
+        headerSubtitle = StrokeTextView(context).apply {
             text = "移至目标图标后松手直接打开"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             setTextColor(0xAAFFFFFF.toInt())
@@ -889,6 +891,8 @@ class HyperOpenPreviewView(
             it.animate().alpha(1f).setDuration(200).start()
         }
 
+        HintTextStyler.reset(headerTitle, true)
+        HintTextStyler.reset(headerSubtitle, false)
         headerTitle.text = "自定义排版模式"
         headerTitle.setTextColor(0xFFFF9933.toInt())
         headerSubtitle.text = "长按并拖动图标交换位置，点击空白完成"
@@ -923,8 +927,9 @@ class HyperOpenPreviewView(
             }.start()
         }
 
+        HintTextStyler.reset(headerTitle, true)
+        HintTextStyler.reset(headerSubtitle, false)
         headerTitle.text = "滑动选择快捷方式"
-        headerTitle.setTextColor(Color.WHITE)
         headerSubtitle.text = "移至目标图标后松手直接打开"
 
         for (b in bubbleViews) {
@@ -1192,17 +1197,18 @@ class HyperOpenPreviewView(
                 closest.bringToFront()
                 currentSelectedBubble = closest
 
-                headerTitle.text = closest.item.title
-                headerTitle.setTextColor(closest.item.tintColor)
-                headerSubtitle.text = closest.item.subtitle
+                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐/文案覆盖）
+                HintTextStyler.apply(headerTitle, closest.item, true)
+                HintTextStyler.apply(headerSubtitle, closest.item, false)
                 triggerHaptic()
             }
         } else {
             if (currentSelectedBubble != null) {
                 currentSelectedBubble?.setSelectedState(false)
                 currentSelectedBubble = null
+                HintTextStyler.reset(headerTitle, true)
+                HintTextStyler.reset(headerSubtitle, false)
                 headerTitle.text = "滑动选择快捷方式"
-                headerTitle.setTextColor(Color.WHITE)
                 headerSubtitle.text = "移至目标图标后松手直接打开"
             }
         }
@@ -1216,8 +1222,9 @@ class HyperOpenPreviewView(
             b.applyScale(1.0f)
             b.setIconAlpha(config.iconAlpha)
         }
+        HintTextStyler.reset(headerTitle, true)
+        HintTextStyler.reset(headerSubtitle, false)
         headerTitle.text = "滑动选择快捷方式"
-        headerTitle.setTextColor(Color.WHITE)
         headerSubtitle.text = "移至目标图标后松手直接打开"
         notifyBlurSceneChanged()
     }

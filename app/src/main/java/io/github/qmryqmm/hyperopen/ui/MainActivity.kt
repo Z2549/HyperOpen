@@ -71,9 +71,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1959,6 +1961,29 @@ fun ShortcutEditPage(
         )
     }
     var enabled by remember { mutableStateOf(initialItem.enabled) }
+    // ── 提示文字样式（hint* 字段）：颜色 / 透明度 / 投影 / 描边 / 字重 / 字距 / 文案覆盖 / 显隐 ──
+    var hintTextColor by remember { mutableIntStateOf(initialItem.hintTextColor) }
+    var hintTextAlpha by remember { mutableFloatStateOf(initialItem.hintTextAlpha) }
+    var hintTextColorSub by remember { mutableIntStateOf(initialItem.hintTextColorSub) }
+    /** -1 = 跟随标题透明度 ×0.82 */
+    var hintTextAlphaSub by remember { mutableFloatStateOf(initialItem.hintTextAlphaSub) }
+    var hintTextShadow by remember { mutableFloatStateOf(initialItem.hintTextShadow.toFloat()) }
+    var hintTextStroke by remember { mutableFloatStateOf(initialItem.hintTextStroke.toFloat()) }
+    var hintTextWeight by remember { mutableIntStateOf(initialItem.hintTextWeight) }
+    var hintTextLetterSpacing by remember { mutableFloatStateOf(initialItem.hintTextLetterSpacing) }
+    var hintTextOverride by remember { mutableStateOf(initialItem.hintTextOverride) }
+    var showHintTitle by remember { mutableStateOf(initialItem.showHintTitle) }
+    var showHintSubtitle by remember { mutableStateOf(initialItem.showHintSubtitle) }
+    // 颜色十六进制输入（关闭「跟随」后显示，与底垫 padHexInput 同款双向同步模式）
+    var hintHexInput by remember {
+        val base = if (initialItem.hintTextColor != 0) initialItem.hintTextColor else initialItem.tintColor
+        mutableStateOf(String.format("#%06X", base and 0xFFFFFF))
+    }
+    var hintHexSubInput by remember {
+        val base = if (initialItem.hintTextColorSub != 0) initialItem.hintTextColorSub
+            else if (initialItem.hintTextColor != 0) initialItem.hintTextColor else initialItem.tintColor
+        mutableStateOf(String.format("#%06X", base and 0xFFFFFF))
+    }
     // 启动用户（0 = 当前/主空间默认；>0 跨用户，如 999 应用双开/分身）与 SHELL Root 执行开关
     // 启动用户：userId 字段优先；老快捷方式只有 URI 标记（i.hyperopen_user）时从 payload 解析回来
     val initialPickedUser = if (initialItem.userId > 0) initialItem.userId
@@ -2012,6 +2037,17 @@ fun ShortcutEditPage(
         newItem.enabled = enabled
         newItem.userId = pickedUser
         newItem.shellUseRoot = shellAsRoot
+        newItem.hintTextColor = hintTextColor
+        newItem.hintTextAlpha = hintTextAlpha.coerceIn(0.05f, 1f)
+        newItem.hintTextColorSub = hintTextColorSub
+        newItem.hintTextAlphaSub = hintTextAlphaSub
+        newItem.hintTextShadow = hintTextShadow.toInt().coerceIn(0, 100)
+        newItem.hintTextStroke = Math.round(hintTextStroke).coerceIn(0, 4)
+        newItem.hintTextWeight = hintTextWeight
+        newItem.hintTextLetterSpacing = (Math.round(hintTextLetterSpacing * 2f) / 2f).coerceIn(-2f, 6f)
+        newItem.hintTextOverride = hintTextOverride
+        newItem.showHintTitle = showHintTitle
+        newItem.showHintSubtitle = showHintSubtitle
         if (newItem.actionType == ShortcutItem.ACTION_INTENT_URI) {
             // 同步写回 URI 标记（i.hyperopen_user=N）：payload 自描述，
             // 且 SystemUI 里未重启的旧版模块代码也能按用户启动
@@ -2086,7 +2122,7 @@ fun ShortcutEditPage(
     // 检查是否有未保存的修改（基准为「最近一次保存」的快照：保存修改后留在编辑页时重置基准，
     // 返回键不会因已保存内容误弹未保存弹窗）
     var savedBaseline by remember { mutableStateOf(initialItem) }
-    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled, pickedUser, shellAsRoot, actAction, actData, actComponent, actPackage, actExtras, actNewTask, actUseRoot, savedBaseline) {
+    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled, pickedUser, shellAsRoot, actAction, actData, actComponent, actPackage, actExtras, actNewTask, actUseRoot, savedBaseline, hintTextColor, hintTextAlpha, hintTextColorSub, hintTextAlphaSub, hintTextShadow, hintTextStroke, hintTextWeight, hintTextLetterSpacing, hintTextOverride, showHintTitle, showHintSubtitle) {
         title != savedBaseline.title ||
         subtitle != savedBaseline.subtitle ||
         actionType != savedBaseline.actionType ||
@@ -2100,6 +2136,17 @@ fun ShortcutEditPage(
         enabled != savedBaseline.enabled ||
         pickedUser != savedBaseline.userId ||
         shellAsRoot != savedBaseline.shellUseRoot ||
+        hintTextColor != savedBaseline.hintTextColor ||
+        hintTextAlpha != savedBaseline.hintTextAlpha ||
+        hintTextColorSub != savedBaseline.hintTextColorSub ||
+        hintTextAlphaSub != savedBaseline.hintTextAlphaSub ||
+        hintTextShadow.toInt() != savedBaseline.hintTextShadow ||
+        Math.round(hintTextStroke) != savedBaseline.hintTextStroke ||
+        hintTextWeight != savedBaseline.hintTextWeight ||
+        Math.round(hintTextLetterSpacing * 2f) / 2 != Math.round(savedBaseline.hintTextLetterSpacing * 2f) / 2 ||
+        hintTextOverride != savedBaseline.hintTextOverride ||
+        showHintTitle != savedBaseline.showHintTitle ||
+        showHintSubtitle != savedBaseline.showHintSubtitle ||
         (actionType == ShortcutItem.ACTION_ACTIVITY && buildActPayload() != savedBaseline.actionPayload)
     }
 
@@ -2568,6 +2615,272 @@ fun ShortcutEditPage(
                     checked = enabled,
                     onCheckedChange = { enabled = it },
                 )
+            }
+        }
+
+        // ── 提示文字（顶部胶囊选中提示的颜色/透明度/文案/质感）──
+        item(key = "hint_text_title") { SmallTitle("提示文字") }
+        item(key = "hint_text_card") {
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+            ) {
+                // 实时预览胶囊：颜色/透明度/字重/字距/投影按与真机一致的回退链解析
+                val previewDensity = androidx.compose.ui.platform.LocalDensity.current.density
+                val previewTitleBase = Color(if (hintTextColor != 0) hintTextColor else initialItem.tintColor)
+                val previewTitleAlpha = hintTextAlpha.coerceIn(0.05f, 1f)
+                val previewSubAlphaEffective =
+                    (if (hintTextAlpha <= 0f) 1f else hintTextAlpha).coerceIn(0.05f, 1f) * 0.82f
+                val previewSubBase = Color(
+                    if (hintTextColorSub != 0) hintTextColorSub
+                    else if (hintTextColor != 0) hintTextColor else initialItem.tintColor
+                )
+                val previewSubAlpha =
+                    if (hintTextAlphaSub >= 0f) hintTextAlphaSub.coerceIn(0.05f, 1f) else previewSubAlphaEffective
+                val previewShadow = if (hintTextShadow >= 0.5f) {
+                    Shadow(
+                        color = Color(0x99000000),
+                        blurRadius = hintTextShadow / 20f * 4f * previewDensity,
+                    )
+                } else null
+                val previewWeight = when (hintTextWeight) {
+                    0 -> FontWeight.Light
+                    2 -> FontWeight.Medium
+                    3 -> FontWeight.Bold
+                    else -> FontWeight.Normal
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0x33FFFFFF))
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (showHintTitle) {
+                            Text(
+                                text = hintTextOverride.trim().ifEmpty { title.trim().ifBlank { "快捷方式" } },
+                                fontSize = 15.sp,
+                                fontWeight = previewWeight,
+                                letterSpacing = (15f * hintTextLetterSpacing * 0.05f).sp,
+                                color = previewTitleBase.copy(alpha = previewTitleBase.alpha * previewTitleAlpha),
+                                style = TextStyle(shadow = previewShadow),
+                            )
+                        }
+                        if (showHintSubtitle) {
+                            Text(
+                                text = subtitle.trim().ifEmpty { "移至目标图标后松手直接打开" },
+                                fontSize = 11.sp,
+                                letterSpacing = (11f * hintTextLetterSpacing * 0.05f).sp,
+                                color = previewSubBase.copy(alpha = previewSubBase.alpha * previewSubAlpha),
+                                style = TextStyle(shadow = previewShadow),
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                Text(
+                    text = "文字内容",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                )
+                SwitchPreference(
+                    title = "显示提示标题",
+                    summary = "选中图标时胶囊内显示主标题（快捷方式标题）",
+                    checked = showHintTitle,
+                    onCheckedChange = { showHintTitle = it },
+                )
+                SwitchPreference(
+                    title = "显示提示副标题",
+                    summary = "选中图标时胶囊内显示副标题描述",
+                    checked = showHintSubtitle,
+                    onCheckedChange = { showHintSubtitle = it },
+                )
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    TextField(
+                        value = hintTextOverride,
+                        onValueChange = { hintTextOverride = it },
+                        label = "提示标题文案覆盖（留空则使用快捷方式标题）",
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                Text(
+                    text = "颜色与透明度",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                )
+                SwitchPreference(
+                    title = "标题颜色跟随图标主题色",
+                    summary = "开启 = 使用图标底色 tintColor（旧行为），关闭可自定义提示标题颜色",
+                    checked = hintTextColor == 0,
+                    onCheckedChange = { follow ->
+                        hintTextColor = if (follow) 0
+                        else parseHexColor(hintHexInput) ?: (initialItem.tintColor or 0xFF000000.toInt())
+                    },
+                )
+                if (hintTextColor != 0) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(hintTextColor)),
+                        )
+                        TextField(
+                            value = hintHexInput,
+                            onValueChange = { s ->
+                                hintHexInput = s
+                                parseHexColor(s)?.let { hintTextColor = it }
+                            },
+                            label = "标题颜色 十六进制 (#RRGGBB)",
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                SliderPreference(
+                    title = "标题透明度",
+                    summary = "提示标题不透明度 5%~100%",
+                    valueText = "${Math.round(hintTextAlpha.coerceIn(0.05f, 1f) * 100)}%",
+                    value = hintTextAlpha.coerceIn(0.05f, 1f),
+                    valueRange = 0.05f..1f,
+                    onValueChange = { hintTextAlpha = (Math.round(it * 20f) / 20f).coerceIn(0.05f, 1f) },
+                )
+                SwitchPreference(
+                    title = "副标题颜色跟随标题",
+                    summary = "开启 = 与标题同色；关闭可自定义副标题独立颜色",
+                    checked = hintTextColorSub == 0,
+                    onCheckedChange = { follow ->
+                        hintTextColorSub = if (follow) 0
+                        else parseHexColor(hintHexSubInput)
+                            ?: (if (hintTextColor != 0) hintTextColor else initialItem.tintColor)
+                    },
+                )
+                if (hintTextColorSub != 0) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(hintTextColorSub)),
+                        )
+                        TextField(
+                            value = hintHexSubInput,
+                            onValueChange = { s ->
+                                hintHexSubInput = s
+                                parseHexColor(s)?.let { hintTextColorSub = it }
+                            },
+                            label = "副标题颜色 十六进制 (#RRGGBB)",
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                SwitchPreference(
+                    title = "副标题透明度跟随标题",
+                    summary = "开启 = 标题透明度 ×82%（旧版 0xAA 淡化效果），关闭可独立调节",
+                    checked = hintTextAlphaSub < 0f,
+                    onCheckedChange = { follow ->
+                        hintTextAlphaSub = if (follow) -1f else previewSubAlphaEffective
+                    },
+                )
+                SliderPreference(
+                    title = "副标题透明度",
+                    summary = "提示副标题不透明度 5%~100%",
+                    valueText = "${Math.round((if (hintTextAlphaSub >= 0f) hintTextAlphaSub else previewSubAlphaEffective) * 100)}%",
+                    value = if (hintTextAlphaSub >= 0f) hintTextAlphaSub.coerceIn(0.05f, 1f)
+                    else previewSubAlphaEffective,
+                    valueRange = 0.05f..1f,
+                    onValueChange = { hintTextAlphaSub = (Math.round(it * 20f) / 20f).coerceIn(0.05f, 1f) },
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                Text(
+                    text = "质感与排版",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp),
+                )
+                SliderPreference(
+                    title = "文字阴影",
+                    summary = "黑色柔光投影，弱壁纸背景下提升可读性；半径 = 强度/20×4px",
+                    valueText = if (hintTextShadow < 0.5f) "关闭" else "${hintTextShadow.toInt()}",
+                    value = hintTextShadow,
+                    valueRange = 0f..100f,
+                    onValueChange = { hintTextShadow = (Math.round(it / 5f) * 5f).coerceIn(0f, 100f) },
+                )
+                SliderPreference(
+                    title = "文字描边",
+                    summary = "深色对比描边，任意壁纸下都清晰；1dp 步进",
+                    valueText = if (Math.round(hintTextStroke) == 0) "关闭" else "${Math.round(hintTextStroke)}dp",
+                    value = Math.round(hintTextStroke).toFloat(),
+                    valueRange = 0f..4f,
+                    onValueChange = { hintTextStroke = Math.round(it).coerceIn(0, 4).toFloat() },
+                )
+                RadioButtonPreference(
+                    title = "细体 (Light)",
+                    summary = "提示标题使用细字重",
+                    selected = hintTextWeight == 0,
+                    onClick = { hintTextWeight = 0 },
+                )
+                RadioButtonPreference(
+                    title = "常规 (Regular)",
+                    summary = "提示标题使用系统常规字重",
+                    selected = hintTextWeight == 1,
+                    onClick = { hintTextWeight = 1 },
+                )
+                RadioButtonPreference(
+                    title = "中黑 (Medium)",
+                    summary = "提示标题使用中黑字重",
+                    selected = hintTextWeight == 2,
+                    onClick = { hintTextWeight = 2 },
+                )
+                RadioButtonPreference(
+                    title = "粗体 (Bold)",
+                    summary = "提示标题粗体（默认，与旧版观感一致）",
+                    selected = hintTextWeight == 3,
+                    onClick = { hintTextWeight = 3 },
+                )
+                SliderPreference(
+                    title = "字间距",
+                    summary = "提示文字字间距 -2~+6（×0.05em），字母文案调宽更精致",
+                    valueText = String.format("%+.1f", hintTextLetterSpacing),
+                    value = hintTextLetterSpacing,
+                    valueRange = -2f..6f,
+                    onValueChange = { hintTextLetterSpacing = (Math.round(it * 2f) / 2f).coerceIn(-2f, 6f) },
+                )
+
+                Spacer(Modifier.height(10.dp))
             }
         }
 

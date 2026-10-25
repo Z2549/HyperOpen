@@ -66,6 +66,29 @@ public class ShortcutItem {
     /** SHELL 动作是否以 root（su）权限执行；false = 普通 shell（sh）身份 */
     public boolean shellUseRoot = false;
 
+    /* ===== 提示文字（顶部胶囊）自定义样式 ===== */
+    /** 提示标题颜色（0xAARRGGBB）；0 = 跟随 tintColor（旧行为） */
+    public int hintTextColor = 0;
+    /** 提示标题透明度 0.05~1.00；默认 1.00 */
+    public float hintTextAlpha = 1.0f;
+    /** 提示副标题颜色；0 = 跟随标题颜色 */
+    public int hintTextColorSub = 0;
+    /** 提示副标题透明度；-1 = 跟随标题透明度 ×0.82（旧行为 0xAA） */
+    public float hintTextAlphaSub = -1f;
+    /** 文字投影强度 0~100（步进 5，0=关闭）；黑色柔光半径 = 值/20×4px */
+    public int hintTextShadow = 0;
+    /** 文字描边宽度 0~4dp（0=关闭）；深色描边提升壁纸背景可读性 */
+    public int hintTextStroke = 0;
+    /** 字重：0=Light 1=Regular 2=Medium 3=Bold（作用于标题，默认与旧版假粗体一致） */
+    public int hintTextWeight = 3;
+    /** 字间距 -2~+6（步进 0.5，实现系数 ×0.05em）；0=系统默认 */
+    public float hintTextLetterSpacing = 0f;
+    /** 选中时的标题文案覆盖；空 = 使用快捷项标题 */
+    public String hintTextOverride = "";
+    /** 选中时是否显示标题/副标题 */
+    public boolean showHintTitle = true;
+    public boolean showHintSubtitle = true;
+
     public ShortcutItem(String id, String title, String subtitle, String actionType, String actionPayload, int tintColor, boolean enabled) {
         this(id, title, subtitle, actionType, actionPayload, "", "", tintColor, enabled, false, 0xFF2A82E4, 1, 2, 0f, 0f);
     }
@@ -128,6 +151,17 @@ public class ShortcutItem {
             json.put("customOffsetY", (double) customOffsetY);
             json.put("userId", userId);
             json.put("shellUseRoot", shellUseRoot);
+            json.put("hintTextColor", hintTextColor);
+            json.put("hintTextAlpha", (double) hintTextAlpha);
+            json.put("hintTextColorSub", hintTextColorSub);
+            json.put("hintTextAlphaSub", (double) hintTextAlphaSub);
+            json.put("hintTextShadow", hintTextShadow);
+            json.put("hintTextStroke", hintTextStroke);
+            json.put("hintTextWeight", hintTextWeight);
+            json.put("hintTextLetterSpacing", (double) hintTextLetterSpacing);
+            json.put("hintTextOverride", hintTextOverride == null ? "" : hintTextOverride);
+            json.put("showHintTitle", showHintTitle);
+            json.put("showHintSubtitle", showHintSubtitle);
         } catch (JSONException e) {
             Log.e(TAG, "Error serializing ShortcutItem to JSON", e);
         }
@@ -154,6 +188,17 @@ public class ShortcutItem {
         );
         item.userId = json.optInt("userId", 0);
         item.shellUseRoot = json.optBoolean("shellUseRoot", false);
+        item.hintTextColor = json.optInt("hintTextColor", 0);
+        item.hintTextAlpha = (float) json.optDouble("hintTextAlpha", 1.0);
+        item.hintTextColorSub = json.optInt("hintTextColorSub", 0);
+        item.hintTextAlphaSub = (float) json.optDouble("hintTextAlphaSub", -1.0);
+        item.hintTextShadow = json.optInt("hintTextShadow", 0);
+        item.hintTextStroke = json.optInt("hintTextStroke", 0);
+        item.hintTextWeight = json.optInt("hintTextWeight", 3);
+        item.hintTextLetterSpacing = (float) json.optDouble("hintTextLetterSpacing", 0.0);
+        item.hintTextOverride = json.optString("hintTextOverride", "");
+        item.showHintTitle = json.optBoolean("showHintTitle", true);
+        item.showHintSubtitle = json.optBoolean("showHintSubtitle", true);
         return item;
     }
 
@@ -166,7 +211,42 @@ public class ShortcutItem {
         );
         item.userId = userId;
         item.shellUseRoot = shellUseRoot;
+        item.hintTextColor = hintTextColor;
+        item.hintTextAlpha = hintTextAlpha;
+        item.hintTextColorSub = hintTextColorSub;
+        item.hintTextAlphaSub = hintTextAlphaSub;
+        item.hintTextShadow = hintTextShadow;
+        item.hintTextStroke = hintTextStroke;
+        item.hintTextWeight = hintTextWeight;
+        item.hintTextLetterSpacing = hintTextLetterSpacing;
+        item.hintTextOverride = hintTextOverride;
+        item.showHintTitle = showHintTitle;
+        item.showHintSubtitle = showHintSubtitle;
         return item;
+    }
+
+    /** 解析后的提示标题颜色：hintTextColor 非 0 用自定义，否则跟随 tintColor */
+    public int resolveHintTitleColor() {
+        return hintTextColor != 0 ? hintTextColor : tintColor;
+    }
+
+    /** 解析后的提示标题透明度，钳在 0.05~1.00 */
+    public float resolveHintTitleAlpha() {
+        float a = hintTextAlpha <= 0f ? 1f : hintTextAlpha;
+        return Math.max(0.05f, Math.min(1f, a));
+    }
+
+    /** 解析后的提示副标题颜色：自定义色 → 标题色 → tintColor 链式回退 */
+    public int resolveHintSubtitleColor() {
+        return hintTextColorSub != 0 ? hintTextColorSub : resolveHintTitleColor();
+    }
+
+    /** 解析后的提示副标题透明度：自定义值 → 标题透明度×0.82（对应旧版 0xAA） */
+    public float resolveHintSubtitleAlpha() {
+        if (hintTextAlphaSub >= 0f) {
+            return Math.max(0.05f, Math.min(1f, hintTextAlphaSub));
+        }
+        return resolveHintTitleAlpha() * 0.82f;
     }
 
     /**

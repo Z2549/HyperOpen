@@ -207,14 +207,14 @@ public class CustomHyperOpenContainer extends FrameLayout {
             }
         });
 
-        headerTitle = new TextView(getContext());
+        headerTitle = new StrokeTextView(getContext());
         headerTitle.setText("滑动选择快捷方式");
         headerTitle.setTextColor(Color.WHITE);
         headerTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         headerTitle.getPaint().setFakeBoldText(true);
         headerPill.addView(headerTitle);
 
-        headerSubtitle = new TextView(getContext());
+        headerSubtitle = new StrokeTextView(getContext());
         headerSubtitle.setText("移至目标图标后松手直接打开");
         headerSubtitle.setTextColor(0xAAFFFFFF);
         headerSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
@@ -324,7 +324,18 @@ public class CustomHyperOpenContainer extends FrameLayout {
                     || a.glyphPadEnabled != b.glyphPadEnabled
                     || a.glyphPadColor != b.glyphPadColor
                     || a.glyphPadMode != b.glyphPadMode
-                    || a.appIconCropMode != b.appIconCropMode) {
+                    || a.appIconCropMode != b.appIconCropMode
+                    || a.hintTextColor != b.hintTextColor
+                    || Float.compare(a.hintTextAlpha, b.hintTextAlpha) != 0
+                    || a.hintTextColorSub != b.hintTextColorSub
+                    || Float.compare(a.hintTextAlphaSub, b.hintTextAlphaSub) != 0
+                    || a.hintTextShadow != b.hintTextShadow
+                    || a.hintTextStroke != b.hintTextStroke
+                    || a.hintTextWeight != b.hintTextWeight
+                    || Float.compare(a.hintTextLetterSpacing, b.hintTextLetterSpacing) != 0
+                    || !Objects.equals(a.hintTextOverride, b.hintTextOverride)
+                    || a.showHintTitle != b.showHintTitle
+                    || a.showHintSubtitle != b.showHintSubtitle) {
                 return false;
             }
         }
@@ -339,10 +350,11 @@ public class CustomHyperOpenContainer extends FrameLayout {
         this.fodCenterY = fodY;
         this.currentSelectedBubble = null;
 
-        // 重置顶部提示文字为初始状态
+        // 重置顶部提示文字为初始状态（含 hint* 自定义样式清空：颜色/投影/描边/字重/字距/显隐）
         if (headerTitle != null && headerSubtitle != null) {
+            HintTextStyler.reset(headerTitle, true);
+            HintTextStyler.reset(headerSubtitle, false);
             headerTitle.setText("滑动选择快捷方式");
-            headerTitle.setTextColor(Color.WHITE);
             headerSubtitle.setText("移至目标图标后松手直接打开");
         }
 
@@ -574,10 +586,9 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 closest.bringToFront();
                 currentSelectedBubble = closest;
 
-                // 更新顶部标题
-                headerTitle.setText(closest.item.title);
-                headerTitle.setTextColor(closest.item.tintColor);
-                headerSubtitle.setText(closest.item.subtitle);
+                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐/文案覆盖）
+                HintTextStyler.apply(headerTitle, closest.item, true);
+                HintTextStyler.apply(headerSubtitle, closest.item, false);
 
                 triggerHaptic();
             }
@@ -585,8 +596,9 @@ public class CustomHyperOpenContainer extends FrameLayout {
             if (currentSelectedBubble != null) {
                 currentSelectedBubble.setSelectedState(false);
                 currentSelectedBubble = null;
+                HintTextStyler.reset(headerTitle, true);
+                HintTextStyler.reset(headerSubtitle, false);
                 headerTitle.setText("滑动选择快捷方式");
-                headerTitle.setTextColor(Color.WHITE);
                 headerSubtitle.setText("移至目标图标后松手直接打开");
             }
         }
