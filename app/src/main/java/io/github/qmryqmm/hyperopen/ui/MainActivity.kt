@@ -87,6 +87,7 @@ import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.safety.SafetyStore
 import io.github.qmryqmm.hyperopen.view.IconGlyphFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -2773,7 +2774,7 @@ fun ShortcutEditPage(
                 )
                 SwitchPreference(
                     title = "标题颜色跟随图标主题色",
-                    summary = "开启 = 使用图标底色 tintColor（旧行为），关闭可自定义提示标题颜色",
+                    summary = "开启 = 使用图标底色，关闭可自定义提示标题颜色",
                     checked = hintTextColor == 0,
                     onCheckedChange = { follow ->
                         hintTextColor = if (follow) 0
@@ -2918,7 +2919,7 @@ fun ShortcutEditPage(
                 }
                 SwitchPreference(
                     title = "副标题透明度跟随标题",
-                    summary = "开启 = 标题透明度 ×82%（旧版 0xAA 淡化效果），关闭可独立调节",
+                    summary = "开启 = 标题透明度 ×82%，关闭可独立调节",
                     checked = hintTextAlphaSub < 0f,
                     onCheckedChange = { follow ->
                         hintTextAlphaSub = if (follow) -1f else previewSubAlphaEffective
@@ -2980,7 +2981,7 @@ fun ShortcutEditPage(
                 )
                 RadioButtonPreference(
                     title = "粗体 (Bold)",
-                    summary = "提示标题粗体（默认，与旧版观感一致）",
+                    summary = "提示标题粗体（默认）",
                     selected = hintTextWeight == 3,
                     onClick = { hintTextWeight = 3 },
                 )
@@ -3053,7 +3054,7 @@ fun ShortcutEditPage(
                 )
                 RadioButtonPreference(
                     title = "启动 Activity (ACTIVITY)",
-                    summary = "结构化启动任意 Activity：目标组件 / Data URI / Extra / Action / NEW_TASK / Root",
+                    summary = "结构化启动任意 Activity",
                     selected = actionType == ShortcutItem.ACTION_ACTIVITY,
                     onClick = { actionType = ShortcutItem.ACTION_ACTIVITY },
                 )
@@ -5300,7 +5301,7 @@ fun ThemeSettingsPage(
 }
 
 // ─────────────────────────────────────────────────────────────
-// 二级页：权限检测（Root / 应用列表 / 振动 / 勿扰 / 存储 / LSPosed 作用域）
+// 二级页：权限检测（Root / 应用列表 / 勿扰 / 存储 / LSPosed 作用域）
 // ─────────────────────────────────────────────────────────────
 @Composable
 fun PermissionCheckPage(
@@ -5315,11 +5316,78 @@ fun PermissionCheckPage(
         listOf(
             Triple("root", "Root 权限（su）", "用途：重启系统界面、SHELL/root 启动动作、跨用户启动兜底、锁屏壁纸读取兜底。首次检测会弹出 Root 授权，允许后点「重新检测」即可刷新。"),
             Triple("packages", "应用列表（QUERY_ALL_PACKAGES）", "用途：快捷方式「从已安装应用选取」列表、应用图标获取与图标裁切缓存、APP 动作启动目标解析。"),
-            Triple("vibrate", "振动（VIBRATE）", "用途：手势选中与确认的触觉反馈，覆盖 Tick / Click / Heavy / Double / 自定义 5 种震动模式。"),
             Triple("dnd", "勿扰策略访问", "用途：DND 快捷动作切换勿扰与响铃模式。动作由系统界面（SystemUI）执行、系统界面默认具备该权限，本项仅反映本应用自身授权状态。"),
             Triple("storage", "所有文件访问（MANAGE_EXTERNAL_STORAGE）", "用途：直接读取本地图片作为自定义图标；经系统相册 / 文件选择器选图时无需此权限。"),
             Triple("lsposed", "LSPosed 模块与作用域", "用途：模块需在 LSPosed 中启用并勾选作用域 com.android.systemui，否则锁屏快捷面板不生效；读取 LSPosed 数据校验依赖 Root。"),
         )
+    }
+
+    val permScope = androidx.compose.runtime.rememberCoroutineScope()
+    // 从系统授权页返回后整页复检
+    val permSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { detectTick++ }
+
+    fun refreshKey(key: String, rootOk: Boolean) {
+        permScope.launch {
+            status[key] = withContext(Dispatchers.IO) {
+                when (key) {
+                    "root" -> detectRootAccess()
+                    "packages" -> detectPackageVisibility(ctx)
+                    "dnd" -> detectDndAccess(ctx)
+                    "storage" -> detectStorageAccess()
+                    else -> detectLsposedScope(ctx, rootOk)
+                }
+            }
+        }
+    }
+
+    // 点击「未满足」卡片时尝试申请对应权限
+    fun tryRequestPermission(key: String) {
+        when (key) {
+            "root" -> {
+                status[key] = null to "正在请求 Root 授权…"
+                Toast.makeText(ctx, "已唤起 Root 授权请求，请在弹窗中允许", Toast.LENGTH_SHORT).show()
+                refreshKey("root", false)
+            }
+            "packages" -> Toast.makeText(
+                ctx,
+                "该权限随安装包声明授予，无法运行时申请；若应用列表偏少属系统限制",
+                Toast.LENGTH_SHORT
+            ).show()
+            "dnd" -> runCatching {
+                permSettingsLauncher.launch(Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            }.onFailure {
+                Toast.makeText(ctx, "未找到勿扰授权设置页", Toast.LENGTH_SHORT).show()
+            }
+            "storage" -> {
+                val intent = runCatching {
+                    Intent(
+                        android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:${ctx.packageName}")
+                    )
+                }.getOrElse { Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION) }
+                runCatching { permSettingsLauncher.launch(intent) }.onFailure {
+                    Toast.makeText(ctx, "未找到文件访问授权设置页", Toast.LENGTH_SHORT).show()
+                }
+            }
+            else -> { // lsposed：打开 LSPosed 管理器，装不上则退回复检
+                val managerIntent = listOf("org.lsposed.manager", "io.github.lsposed.manager")
+                    .firstNotNullOfOrNull { pkg -> ctx.packageManager.getLaunchIntentForPackage(pkg) }
+                if (managerIntent != null) {
+                    Toast.makeText(ctx, "已打开 LSPosed 管理器，请确认模块已启用并勾选作用域", Toast.LENGTH_SHORT).show()
+                    runCatching {
+                        managerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ctx.startActivity(managerIntent)
+                    }
+                    status[key] = null to "已打开 LSPosed 管理器，切换回来后复检…"
+                } else {
+                    Toast.makeText(ctx, "未安装 LSPosed 管理器，改用 Root 复检", Toast.LENGTH_SHORT).show()
+                    status[key] = null to "未检测到管理器，尝试 Root 复检…"
+                }
+                refreshKey(key, status["root"]?.first == true)
+            }
+        }
     }
 
     LaunchedEffect(detectTick) {
@@ -5366,7 +5434,7 @@ fun PermissionCheckPage(
                         color = MiuixTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "绿色 ✓ 已满足 · 红色 ✗ 未满足 · 黄色 … 检测中或需在 LSPosed 中人工确认",
+                        text = "绿色 ✓ 已满足 · 红色 ✗ 未满足（点击可尝试申请） · 黄色 … 检测中或需在 LSPosed 中人工确认",
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         modifier = Modifier.padding(top = 4.dp),
@@ -5405,13 +5473,14 @@ fun PermissionCheckPage(
                 }
                 val label = when (st?.first) {
                     true -> "✓ 已满足"
-                    false -> "✗ 未满足"
+                    false -> "✗ 未满足 · 点击申请"
                     null -> "… 检测中"
                 }
                 Card(
                     modifier = Modifier
                         .padding(horizontal = 12.dp)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .clickable(enabled = st?.first == false) { tryRequestPermission(key) },
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -5491,15 +5560,6 @@ private fun detectPackageVisibility(ctx: android.content.Context): Pair<Boolean?
     }
 }
 
-private fun detectVibrate(ctx: android.content.Context): Pair<Boolean?, String> {
-    val granted = ctx.checkSelfPermission("android.permission.VIBRATOR") == PackageManager.PERMISSION_GRANTED
-    val has = (ctx.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator)?.hasVibrator() ?: false
-    return when {
-        !granted -> false to "振动权限未授予；硬件${if (has) "支持震动" else "无振动马达"}"
-        !has -> false to "权限已授予，但设备没有振动马达"
-        else -> true to "权限已授予，硬件支持震动"
-    }
-}
 
 private fun detectDndAccess(ctx: android.content.Context): Pair<Boolean?, String> {
     return try {
