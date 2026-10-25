@@ -1197,7 +1197,7 @@ class HyperOpenPreviewView(
                 closest.bringToFront()
                 currentSelectedBubble = closest
 
-                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐/文案覆盖）
+                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐）
                 HintTextStyler.apply(headerTitle, closest.item, true)
                 HintTextStyler.apply(headerSubtitle, closest.item, false)
                 triggerHaptic()

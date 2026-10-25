@@ -83,8 +83,6 @@ public class ShortcutItem {
     public int hintTextWeight = 3;
     /** 字间距 -2~+6（步进 0.5，实现系数 ×0.05em）；0=系统默认 */
     public float hintTextLetterSpacing = 0f;
-    /** 选中时的标题文案覆盖；空 = 使用快捷项标题 */
-    public String hintTextOverride = "";
     /** 选中时是否显示标题/副标题 */
     public boolean showHintTitle = true;
     public boolean showHintSubtitle = true;
@@ -159,7 +157,6 @@ public class ShortcutItem {
             json.put("hintTextStroke", hintTextStroke);
             json.put("hintTextWeight", hintTextWeight);
             json.put("hintTextLetterSpacing", (double) hintTextLetterSpacing);
-            json.put("hintTextOverride", hintTextOverride == null ? "" : hintTextOverride);
             json.put("showHintTitle", showHintTitle);
             json.put("showHintSubtitle", showHintSubtitle);
         } catch (JSONException e) {
@@ -196,7 +193,6 @@ public class ShortcutItem {
         item.hintTextStroke = json.optInt("hintTextStroke", 0);
         item.hintTextWeight = json.optInt("hintTextWeight", 3);
         item.hintTextLetterSpacing = (float) json.optDouble("hintTextLetterSpacing", 0.0);
-        item.hintTextOverride = json.optString("hintTextOverride", "");
         item.showHintTitle = json.optBoolean("showHintTitle", true);
         item.showHintSubtitle = json.optBoolean("showHintSubtitle", true);
         return item;
@@ -219,7 +215,6 @@ public class ShortcutItem {
         item.hintTextStroke = hintTextStroke;
         item.hintTextWeight = hintTextWeight;
         item.hintTextLetterSpacing = hintTextLetterSpacing;
-        item.hintTextOverride = hintTextOverride;
         item.showHintTitle = showHintTitle;
         item.showHintSubtitle = showHintSubtitle;
         return item;

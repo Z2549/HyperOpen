@@ -333,7 +333,6 @@ public class CustomHyperOpenContainer extends FrameLayout {
                     || a.hintTextStroke != b.hintTextStroke
                     || a.hintTextWeight != b.hintTextWeight
                     || Float.compare(a.hintTextLetterSpacing, b.hintTextLetterSpacing) != 0
-                    || !Objects.equals(a.hintTextOverride, b.hintTextOverride)
                     || a.showHintTitle != b.showHintTitle
                     || a.showHintSubtitle != b.showHintSubtitle) {
                 return false;
@@ -586,7 +585,7 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 closest.bringToFront();
                 currentSelectedBubble = closest;
 
-                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐/文案覆盖）
+                // 更新顶部标题（含 hint* 自定义样式：颜色/透明度/投影/描边/字重/字距/显隐）
                 HintTextStyler.apply(headerTitle, closest.item, true);
                 HintTextStyler.apply(headerSubtitle, closest.item, false);
 

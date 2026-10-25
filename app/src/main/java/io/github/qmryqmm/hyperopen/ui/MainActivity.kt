@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -241,6 +242,13 @@ fun HyperOpenApp(
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
     var showResetDefaultsDialog by remember { mutableStateOf(false) }
+
+    // ── 页面滚动位置记忆：状态提升到 HyperOpenApp 顶层，跨底部导航切换与二级页进出持续存活，
+    //    返回页面时停在上次滚动位置而不是回到顶部 ──
+    val paramsListState = rememberLazyListState()
+    val shortcutsListState = rememberLazyListState()
+    val settingsListState = rememberLazyListState()
+    val themeListState = rememberLazyListState()
 
     // 导航路由：0=主界面, 1=主题设置页, 2=快捷方式编辑页, 3=整体预览页
     var subPage by remember { mutableStateOf(0) }
@@ -523,6 +531,7 @@ fun HyperOpenApp(
                     1 -> {
                         ThemeSettingsPage(
                             contentPadding = pagePadding,
+                            lazyListState = themeListState,
                             themeMode = themeMode,
                             onThemeMode = { themeMode = it; persist() },
                             monet = monetColors,
@@ -849,6 +858,7 @@ fun HyperOpenApp(
                             0 -> {
                                 ParamsPage(
                                     contentPadding = innerPadding,
+                                    lazyListState = paramsListState,
                                     materialStyle = materialStyle,
                                     onMaterialStyle = { materialStyle = it; persist() },
                                     offsetY = offsetY,
@@ -924,6 +934,7 @@ fun HyperOpenApp(
                             1 -> {
                                 ShortcutsManagementPage(
                                     contentPadding = innerPadding,
+                                    lazyListState = shortcutsListState,
                                     shortcuts = shortcuts,
                                     onOpenPreview = {
                                         subPage = 3
@@ -956,6 +967,7 @@ fun HyperOpenApp(
                             else -> {
                                 SettingsPage(
                                     contentPadding = innerPadding,
+                                    lazyListState = settingsListState,
                                     safetyTick = safetyTick,
                                     onSafetyRefresh = { safetyTick++ },
                                     onOpenThemePage = { subPage = 1 },
@@ -1209,6 +1221,7 @@ private fun CollapsibleSectionTitle(
 @Composable
 fun ParamsPage(
     contentPadding: PaddingValues,
+    lazyListState: LazyListState,
     materialStyle: Int, onMaterialStyle: (Int) -> Unit,
     offsetY: Float, onOffsetY: (Float) -> Unit,
     regionDiameter: Float, onRegionDiameter: (Float) -> Unit,
@@ -1246,7 +1259,6 @@ fun ParamsPage(
     iconGlowEffect: Boolean, onIconGlowEffect: (Boolean) -> Unit,
 ) {
     val ctx = LocalContext.current
-    val lazyListState = rememberLazyListState()
 
     // 各分区折叠状态（key → 是否已收起），通过 SharedPreferences 记忆持久化
     val uiPrefs = remember { ctx.getSharedPreferences("hyperopen_ui_state", android.content.Context.MODE_PRIVATE) }
@@ -1430,8 +1442,8 @@ fun ParamsPage(
                     .fillMaxWidth(),
             ) {
                 SwitchPreference(
-                    title = "显示顶部提示胶囊",
-                    summary = "展示当前选中的快捷方式标题与描述",
+                    title = "显示顶部提示文本",
+                    summary = "展示当前选中的快捷方式标题与描述，顶部提示总开关",
                     checked = showHeaderPill,
                     onCheckedChange = onShowHeaderPill,
                 )
@@ -1697,6 +1709,7 @@ fun ParamsPage(
 @Composable
 fun ShortcutsManagementPage(
     contentPadding: PaddingValues,
+    lazyListState: LazyListState,
     shortcuts: SnapshotStateList<ShortcutItem>,
     onOpenPreview: () -> Unit,
     onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
@@ -1704,8 +1717,6 @@ fun ShortcutsManagementPage(
     onAddShortcut: () -> Unit,
     onResetShortcuts: () -> Unit,
 ) {
-    val lazyListState = rememberLazyListState()
-
     LazyColumn(
         state = lazyListState,
         modifier = Modifier
@@ -1945,6 +1956,25 @@ fun ShortcutEditPage(
     val ctx = LocalContext.current
     val lazyListState = rememberLazyListState()
 
+    // ── 选项分组展开收起（与参数配置页同款）：key → 是否已收起，持久化到 hyperopen_ui_state ──
+    val uiPrefs = remember { ctx.getSharedPreferences("hyperopen_ui_state", android.content.Context.MODE_PRIVATE) }
+    val collapsed = remember {
+        androidx.compose.runtime.mutableStateMapOf<String, Boolean>().apply {
+            listOf(
+                "icon_settings", "single_app_icon_crop", "single_miuix_pad",
+                "basic_info", "hint_text", "action_type", "target_user", "payload",
+            ).forEach { k ->
+                if (uiPrefs.getBoolean("edit_section_collapsed_$k", false)) put(k, true)
+            }
+        }
+    }
+    fun isOpen(key: String) = collapsed[key] != true
+    fun toggle(key: String) {
+        val willCollapse = isOpen(key)
+        collapsed[key] = willCollapse
+        uiPrefs.edit().putBoolean("edit_section_collapsed_$key", willCollapse).apply()
+    }
+
     var title by remember { mutableStateOf(initialItem.title) }
     var subtitle by remember { mutableStateOf(initialItem.subtitle) }
     var actionType by remember { mutableStateOf(initialItem.actionType) }
@@ -1961,7 +1991,7 @@ fun ShortcutEditPage(
         )
     }
     var enabled by remember { mutableStateOf(initialItem.enabled) }
-    // ── 提示文字样式（hint* 字段）：颜色 / 透明度 / 投影 / 描边 / 字重 / 字距 / 文案覆盖 / 显隐 ──
+    // ── 提示文字样式（hint* 字段）：颜色 / 透明度 / 投影 / 描边 / 字重 / 字距 / 显隐 ──
     var hintTextColor by remember { mutableIntStateOf(initialItem.hintTextColor) }
     var hintTextAlpha by remember { mutableFloatStateOf(initialItem.hintTextAlpha) }
     var hintTextColorSub by remember { mutableIntStateOf(initialItem.hintTextColorSub) }
@@ -1971,7 +2001,6 @@ fun ShortcutEditPage(
     var hintTextStroke by remember { mutableFloatStateOf(initialItem.hintTextStroke.toFloat()) }
     var hintTextWeight by remember { mutableIntStateOf(initialItem.hintTextWeight) }
     var hintTextLetterSpacing by remember { mutableFloatStateOf(initialItem.hintTextLetterSpacing) }
-    var hintTextOverride by remember { mutableStateOf(initialItem.hintTextOverride) }
     var showHintTitle by remember { mutableStateOf(initialItem.showHintTitle) }
     var showHintSubtitle by remember { mutableStateOf(initialItem.showHintSubtitle) }
     // 颜色十六进制输入（关闭「跟随」后显示，与底垫 padHexInput 同款双向同步模式）
@@ -2045,7 +2074,6 @@ fun ShortcutEditPage(
         newItem.hintTextStroke = Math.round(hintTextStroke).coerceIn(0, 4)
         newItem.hintTextWeight = hintTextWeight
         newItem.hintTextLetterSpacing = (Math.round(hintTextLetterSpacing * 2f) / 2f).coerceIn(-2f, 6f)
-        newItem.hintTextOverride = hintTextOverride
         newItem.showHintTitle = showHintTitle
         newItem.showHintSubtitle = showHintSubtitle
         if (newItem.actionType == ShortcutItem.ACTION_INTENT_URI) {
@@ -2122,7 +2150,7 @@ fun ShortcutEditPage(
     // 检查是否有未保存的修改（基准为「最近一次保存」的快照：保存修改后留在编辑页时重置基准，
     // 返回键不会因已保存内容误弹未保存弹窗）
     var savedBaseline by remember { mutableStateOf(initialItem) }
-    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled, pickedUser, shellAsRoot, actAction, actData, actComponent, actPackage, actExtras, actNewTask, actUseRoot, savedBaseline, hintTextColor, hintTextAlpha, hintTextColorSub, hintTextAlphaSub, hintTextShadow, hintTextStroke, hintTextWeight, hintTextLetterSpacing, hintTextOverride, showHintTitle, showHintSubtitle) {
+    val isModified = remember(title, subtitle, actionType, actionPayload, iconPackage, iconGlyph, glyphPadEnabled, glyphPadColor, glyphPadMode, appIconCropMode, enabled, pickedUser, shellAsRoot, actAction, actData, actComponent, actPackage, actExtras, actNewTask, actUseRoot, savedBaseline, hintTextColor, hintTextAlpha, hintTextColorSub, hintTextAlphaSub, hintTextShadow, hintTextStroke, hintTextWeight, hintTextLetterSpacing, showHintTitle, showHintSubtitle) {
         title != savedBaseline.title ||
         subtitle != savedBaseline.subtitle ||
         actionType != savedBaseline.actionType ||
@@ -2144,7 +2172,6 @@ fun ShortcutEditPage(
         Math.round(hintTextStroke) != savedBaseline.hintTextStroke ||
         hintTextWeight != savedBaseline.hintTextWeight ||
         Math.round(hintTextLetterSpacing * 2f) / 2 != Math.round(savedBaseline.hintTextLetterSpacing * 2f) / 2 ||
-        hintTextOverride != savedBaseline.hintTextOverride ||
         showHintTitle != savedBaseline.showHintTitle ||
         showHintSubtitle != savedBaseline.showHintSubtitle ||
         (actionType == ShortcutItem.ACTION_ACTIVITY && buildActPayload() != savedBaseline.actionPayload)
@@ -2300,7 +2327,10 @@ fun ShortcutEditPage(
         }
 
         // ── 图标自定义配置 ──
-        item(key = "icon_settings_title") { SmallTitle("图标设置") }
+        item(key = "icon_settings_title") {
+            CollapsibleSectionTitle("图标设置", isOpen("icon_settings")) { toggle("icon_settings") }
+        }
+        if (isOpen("icon_settings")) {
         item(key = "icon_settings_card") {
             Card(
                 modifier = Modifier
@@ -2378,10 +2408,14 @@ fun ShortcutEditPage(
                 }
             }
         }
+        }
 
         // ── 仅当快捷方式的图标为应用图标时，显示独享的应用图标形状方案 ──
         if (isAppIcon) {
-            item(key = "single_app_icon_crop_title") { SmallTitle("应用图标形状方案") }
+            item(key = "single_app_icon_crop_title") {
+                CollapsibleSectionTitle("应用图标形状方案", isOpen("single_app_icon_crop")) { toggle("single_app_icon_crop") }
+            }
+            if (isOpen("single_app_icon_crop")) {
             item(key = "single_app_icon_crop_card") {
                 Card(
                     modifier = Modifier
@@ -2402,11 +2436,15 @@ fun ShortcutEditPage(
                     )
                 }
             }
+            }
         }
 
         // ── 仅当选择 Miuix 或 Remix 矢量图标时，展示独享的底垫与色彩配置 ──
         if (vectorIcon != null && iconPackage.isBlank()) {
-            item(key = "single_miuix_pad_title") { SmallTitle("矢量图标底垫与色彩") }
+            item(key = "single_miuix_pad_title") {
+                CollapsibleSectionTitle("矢量图标底垫与色彩", isOpen("single_miuix_pad")) { toggle("single_miuix_pad") }
+            }
+            if (isOpen("single_miuix_pad")) {
             item(key = "single_miuix_pad_card") {
                 Card(
                     modifier = Modifier
@@ -2580,10 +2618,14 @@ fun ShortcutEditPage(
                     }
                 }
             }
+            }
         }
 
         // ── 基础信息 ──
-        item(key = "basic_info_title") { SmallTitle("基础参数") }
+        item(key = "basic_info_title") {
+            CollapsibleSectionTitle("基础参数", isOpen("basic_info")) { toggle("basic_info") }
+        }
+        if (isOpen("basic_info")) {
         item(key = "basic_info_card") {
             Card(
                 modifier = Modifier
@@ -2617,9 +2659,13 @@ fun ShortcutEditPage(
                 )
             }
         }
+        }
 
         // ── 提示文字（顶部胶囊选中提示的颜色/透明度/文案/质感）──
-        item(key = "hint_text_title") { SmallTitle("提示文字") }
+        item(key = "hint_text_title") {
+            CollapsibleSectionTitle("提示文字", isOpen("hint_text")) { toggle("hint_text") }
+        }
+        if (isOpen("hint_text")) {
         item(key = "hint_text_card") {
             Card(
                 modifier = Modifier
@@ -2665,7 +2711,7 @@ fun ShortcutEditPage(
                     ) {
                         if (showHintTitle) {
                             Text(
-                                text = hintTextOverride.trim().ifEmpty { title.trim().ifBlank { "快捷方式" } },
+                                text = title.trim().ifBlank { "快捷方式" },
                                 fontSize = 15.sp,
                                 fontWeight = previewWeight,
                                 letterSpacing = (15f * hintTextLetterSpacing * 0.05f).sp,
@@ -2706,15 +2752,6 @@ fun ShortcutEditPage(
                     checked = showHintSubtitle,
                     onCheckedChange = { showHintSubtitle = it },
                 )
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                    TextField(
-                        value = hintTextOverride,
-                        onValueChange = { hintTextOverride = it },
-                        label = "提示标题文案覆盖（留空则使用快捷方式标题）",
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -2759,6 +2796,39 @@ fun ShortcutEditPage(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+                    SliderPreference(
+                        title = "标题红色分量",
+                        summary = "提示标题颜色的红色通道 (R)",
+                        valueText = "${(hintTextColor shr 16) and 0xFF}",
+                        value = ((hintTextColor shr 16) and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { r ->
+                            hintTextColor = composePadColor(r.toInt(), (hintTextColor shr 8) and 0xFF, hintTextColor and 0xFF)
+                            hintHexInput = String.format("#%06X", hintTextColor and 0xFFFFFF)
+                        },
+                    )
+                    SliderPreference(
+                        title = "绿色分量",
+                        summary = "提示标题颜色的绿色通道 (G)",
+                        valueText = "${(hintTextColor shr 8) and 0xFF}",
+                        value = ((hintTextColor shr 8) and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { g ->
+                            hintTextColor = composePadColor((hintTextColor shr 16) and 0xFF, g.toInt(), hintTextColor and 0xFF)
+                            hintHexInput = String.format("#%06X", hintTextColor and 0xFFFFFF)
+                        },
+                    )
+                    SliderPreference(
+                        title = "蓝色分量",
+                        summary = "提示标题颜色的蓝色通道 (B)",
+                        valueText = "${hintTextColor and 0xFF}",
+                        value = (hintTextColor and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { b ->
+                            hintTextColor = composePadColor((hintTextColor shr 16) and 0xFF, (hintTextColor shr 8) and 0xFF, b.toInt())
+                            hintHexInput = String.format("#%06X", hintTextColor and 0xFFFFFF)
+                        },
+                    )
                 }
                 SliderPreference(
                     title = "标题透明度",
@@ -2803,6 +2873,39 @@ fun ShortcutEditPage(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+                    SliderPreference(
+                        title = "副标题红色分量",
+                        summary = "提示副标题颜色的红色通道 (R)",
+                        valueText = "${(hintTextColorSub shr 16) and 0xFF}",
+                        value = ((hintTextColorSub shr 16) and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { r ->
+                            hintTextColorSub = composePadColor(r.toInt(), (hintTextColorSub shr 8) and 0xFF, hintTextColorSub and 0xFF)
+                            hintHexSubInput = String.format("#%06X", hintTextColorSub and 0xFFFFFF)
+                        },
+                    )
+                    SliderPreference(
+                        title = "副标题绿色分量",
+                        summary = "提示副标题颜色的绿色通道 (G)",
+                        valueText = "${(hintTextColorSub shr 8) and 0xFF}",
+                        value = ((hintTextColorSub shr 8) and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { g ->
+                            hintTextColorSub = composePadColor((hintTextColorSub shr 16) and 0xFF, g.toInt(), hintTextColorSub and 0xFF)
+                            hintHexSubInput = String.format("#%06X", hintTextColorSub and 0xFFFFFF)
+                        },
+                    )
+                    SliderPreference(
+                        title = "副标题蓝色分量",
+                        summary = "提示副标题颜色的蓝色通道 (B)",
+                        valueText = "${hintTextColorSub and 0xFF}",
+                        value = (hintTextColorSub and 0xFF).toFloat(),
+                        valueRange = 0f..255f,
+                        onValueChange = { b ->
+                            hintTextColorSub = composePadColor((hintTextColorSub shr 16) and 0xFF, (hintTextColorSub shr 8) and 0xFF, b.toInt())
+                            hintHexSubInput = String.format("#%06X", hintTextColorSub and 0xFFFFFF)
+                        },
+                    )
                 }
                 SwitchPreference(
                     title = "副标题透明度跟随标题",
@@ -2812,15 +2915,16 @@ fun ShortcutEditPage(
                         hintTextAlphaSub = if (follow) -1f else previewSubAlphaEffective
                     },
                 )
-                SliderPreference(
-                    title = "副标题透明度",
-                    summary = "提示副标题不透明度 5%~100%",
-                    valueText = "${Math.round((if (hintTextAlphaSub >= 0f) hintTextAlphaSub else previewSubAlphaEffective) * 100)}%",
-                    value = if (hintTextAlphaSub >= 0f) hintTextAlphaSub.coerceIn(0.05f, 1f)
-                    else previewSubAlphaEffective,
-                    valueRange = 0.05f..1f,
-                    onValueChange = { hintTextAlphaSub = (Math.round(it * 20f) / 20f).coerceIn(0.05f, 1f) },
-                )
+                if (hintTextAlphaSub >= 0f) {
+                    SliderPreference(
+                        title = "副标题透明度",
+                        summary = "提示副标题不透明度 5%~100%",
+                        valueText = "${Math.round(hintTextAlphaSub.coerceIn(0.05f, 1f) * 100)}%",
+                        value = hintTextAlphaSub.coerceIn(0.05f, 1f),
+                        valueRange = 0.05f..1f,
+                        onValueChange = { hintTextAlphaSub = (Math.round(it * 20f) / 20f).coerceIn(0.05f, 1f) },
+                    )
+                }
 
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -2883,9 +2987,13 @@ fun ShortcutEditPage(
                 Spacer(Modifier.height(10.dp))
             }
         }
+        }
 
         // ── 启动选项类型选择 ──
-        item(key = "action_type_title") { SmallTitle("启动选项与执行动作") }
+        item(key = "action_type_title") {
+            CollapsibleSectionTitle("启动选项与执行动作", isOpen("action_type")) { toggle("action_type") }
+        }
+        if (isOpen("action_type")) {
         item(key = "action_type_card") {
             Card(
                 modifier = Modifier
@@ -2954,12 +3062,16 @@ fun ShortcutEditPage(
                 )
             }
         }
+        }
 
         // ── 启动用户选择（APP / INTENT_URI / ACTIVITY 生效；0 = 主空间，>0 跨用户启动）──
         if (actionType == ShortcutItem.ACTION_APP || actionType == ShortcutItem.ACTION_INTENT_URI ||
             actionType == ShortcutItem.ACTION_ACTIVITY) {
             val customUserSelected = pickedUser > 0 && userOptions.none { it.id == pickedUser }
-            item(key = "target_user_title") { SmallTitle("启动用户（应用双开 / 分身）") }
+            item(key = "target_user_title") {
+                CollapsibleSectionTitle("启动用户（应用双开 / 分身）", isOpen("target_user")) { toggle("target_user") }
+            }
+            if (isOpen("target_user")) {
             item(key = "target_user_card") {
                 Card(
                     modifier = Modifier
@@ -3005,6 +3117,7 @@ fun ShortcutEditPage(
                     }
                 }
             }
+            }
         }
 
         // ── 动作参数详情填写 ──
@@ -3015,7 +3128,10 @@ fun ShortcutEditPage(
             actionType == ShortcutItem.ACTION_CAMERA
 
         if (!isNoPayloadAction) {
-            item(key = "payload_title") { SmallTitle("动作参数详情 (Payload)") }
+            item(key = "payload_title") {
+                CollapsibleSectionTitle("动作参数详情 (Payload)", isOpen("payload")) { toggle("payload") }
+            }
+            if (isOpen("payload")) {
             item(key = "payload_card") {
                 Card(
                     modifier = Modifier
@@ -3201,6 +3317,7 @@ fun ShortcutEditPage(
                     }
                     }
                 }
+            }
             }
         }
 
@@ -4763,13 +4880,12 @@ fun RemixIconPickerDialog(
 @Composable
 fun SettingsPage(
     contentPadding: PaddingValues,
+    lazyListState: LazyListState,
     safetyTick: Int,
     onSafetyRefresh: () -> Unit,
     onOpenThemePage: () -> Unit,
     onResetDefaults: () -> Unit,
 ) {
-    val lazyListState = rememberLazyListState()
-
     LazyColumn(
         state = lazyListState,
         modifier = Modifier
@@ -5057,12 +5173,11 @@ fun InfoLine(text: String) {
 @Composable
 fun ThemeSettingsPage(
     contentPadding: PaddingValues,
+    lazyListState: LazyListState,
     themeMode: Int, onThemeMode: (Int) -> Unit,
     monet: Boolean, onMonet: (Boolean) -> Unit,
     floatingNavBar: Boolean, onFloatingNavBar: (Boolean) -> Unit,
 ) {
-    val lazyListState = rememberLazyListState()
-
     LazyColumn(
         state = lazyListState,
         modifier = Modifier
