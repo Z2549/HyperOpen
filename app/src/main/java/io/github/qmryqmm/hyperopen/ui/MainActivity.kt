@@ -244,6 +244,7 @@ fun HyperOpenApp(
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
     var showResetDefaultsDialog by remember { mutableStateOf(false) }
+    var showResetShortcutsDialog by remember { mutableStateOf(false) }
 
     // ── 页面滚动位置记忆：状态提升到 HyperOpenApp 顶层，跨底部导航切换与二级页进出持续存活，
     //    返回页面时停在上次滚动位置而不是回到顶部 ──
@@ -426,8 +427,7 @@ fun HyperOpenApp(
         barBlur = defaults.barBlur
         floatingNavBar = defaults.floatingNavBar
         predictiveBack = defaults.predictiveBack
-        shortcuts.clear()
-        shortcuts.addAll(HyperOpenConfig.getDefaultShortcuts())
+        // 恢复默认参数：保留现有快捷项目列表不变，仅重置外观、几何、物理、震动与等待时间等其他参数
         persist()
     }
 
@@ -971,12 +971,6 @@ fun HyperOpenApp(
                                     onAddShortcut = {
                                         showNewShortcutPresetDialog = true
                                     },
-                                    onResetShortcuts = {
-                                        shortcuts.clear()
-                                        shortcuts.addAll(HyperOpenConfig.getDefaultShortcuts())
-                                        persist()
-                                        Toast.makeText(ctx, "已恢复默认快捷项目", Toast.LENGTH_SHORT).show()
-                                    },
                                 )
                             }
                             else -> {
@@ -988,6 +982,7 @@ fun HyperOpenApp(
                                     onOpenThemePage = { subPage = 1 },
                                     onOpenPermissionPage = { subPage = 4 },
                                     onResetDefaults = { showResetDefaultsDialog = true },
+                                    onResetShortcuts = { showResetShortcutsDialog = true },
                                 )
                             }
                         }
@@ -1053,7 +1048,7 @@ fun HyperOpenApp(
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "将重置全部外观、物理、震动与等待时间参数，并恢复默认快捷项目列表。此操作不可撤销，确定继续吗？",
+                            text = "将重置全部外观、几何、物理、震动与等待时间等参数为出厂默认值，但保留当前配置的快捷项目。确定继续吗？",
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             lineHeight = 20.sp,
@@ -1075,6 +1070,62 @@ fun HyperOpenApp(
                                     showResetDefaultsDialog = false
                                     resetDefaults()
                                     Toast.makeText(ctx, "已恢复默认参数", Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 恢复预设布局二次确认弹窗 ──
+        if (showResetShortcutsDialog) {
+            Dialog(
+                onDismissRequest = { showResetShortcutsDialog = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.86f)
+                        .padding(vertical = 16.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            text = "恢复预设布局？",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "将重置快捷项目列表为系统初始预设，您自定义添加或修改的快捷方式将被替换。其他外观与物理参数保持不变。此操作不可撤销，确定继续吗？",
+                            fontSize = 14.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            lineHeight = 20.sp,
+                        )
+                        Spacer(Modifier.height(22.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                text = "取消",
+                                onClick = { showResetShortcutsDialog = false },
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(
+                                text = "恢复预设",
+                                colors = ButtonDefaults.textButtonColorsPrimary(),
+                                onClick = {
+                                    showResetShortcutsDialog = false
+                                    shortcuts.clear()
+                                    shortcuts.addAll(HyperOpenConfig.getDefaultShortcuts())
+                                    persist()
+                                    Toast.makeText(ctx, "已恢复预设布局", Toast.LENGTH_SHORT).show()
                                 },
                             )
                         }
@@ -1738,7 +1789,6 @@ fun ShortcutsManagementPage(
     onShortcutToggle: (ShortcutItem, Boolean) -> Unit,
     onShortcutClick: (ShortcutItem) -> Unit,
     onAddShortcut: () -> Unit,
-    onResetShortcuts: () -> Unit,
 ) {
     LazyColumn(
         state = lazyListState,
@@ -1778,19 +1828,6 @@ fun ShortcutsManagementPage(
                             )
                         },
                         onClick = onAddShortcut,
-                    )
-                    ArrowPreference(
-                        title = "恢复预设布局",
-                        summary = "重置为微信扫一扫/付款码/扫一扫等初始快捷项",
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.Reset,
-                                contentDescription = null,
-                                tint = MiuixTheme.colorScheme.primary,
-                                modifier = Modifier.padding(end = 8.dp),
-                            )
-                        },
-                        onClick = onResetShortcuts,
                     )
                 }
             }
@@ -4913,6 +4950,7 @@ fun SettingsPage(
     onOpenThemePage: () -> Unit,
     onOpenPermissionPage: () -> Unit,
     onResetDefaults: () -> Unit,
+    onResetShortcuts: () -> Unit,
 ) {
     LazyColumn(
         state = lazyListState,
@@ -5000,9 +5038,8 @@ fun SettingsPage(
             }
         }
 
-        // ── 恢复默认参数 ──
+        // ── 恢复默认参数与预设布局 ──
         item(key = "reset_defaults_card") {
-            val ctx = LocalContext.current
             Card(
                 modifier = Modifier
                     .padding(horizontal = 12.dp)
@@ -5010,7 +5047,7 @@ fun SettingsPage(
             ) {
                 ArrowPreference(
                     title = "恢复默认参数",
-                    summary = "重置全部外观、物理、震动与快捷项目为出厂默认值",
+                    summary = "重置全部外观、几何、物理与等待时间参数为出厂默认值，但保留现有快捷项目",
                     startAction = {
                         Icon(
                             imageVector = MiuixIcons.Reset,
@@ -5020,6 +5057,19 @@ fun SettingsPage(
                         )
                     },
                     onClick = onResetDefaults,
+                )
+                ArrowPreference(
+                    title = "恢复预设布局",
+                    summary = "重置快捷项目列表为预设",
+                    startAction = {
+                        Icon(
+                            imageVector = MiuixIcons.Reset,
+                            contentDescription = null,
+                            tint = MiuixTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    },
+                    onClick = onResetShortcuts,
                 )
             }
         }
