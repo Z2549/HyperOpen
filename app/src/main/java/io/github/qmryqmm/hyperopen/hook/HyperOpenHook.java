@@ -513,6 +513,77 @@ public class HyperOpenHook {
         } catch (Throwable t) {
             Log.e(TAG, "Hook Handler#postDelayed 失败", t);
         }
+
+        // 6. Hook MiuiGxzwManager.isUnlockByGxzw() 与 KeyguardUpdateMonitorInjector.isFingerprintUnlock()：
+        //    人脸识别成功停留在锁屏时，用户按指纹图标会先进入桌面（触发 onKeyguardHide -> dismissGxzwView）；
+        //    若用户继续保持按住指纹，放行解锁判定为 true，驱动系统安排 mShowRunnable 从而在桌面上唤出快捷面板。
+        try {
+            Class<?> gxzwManagerClass = XposedHelpers.findClass(
+                "com.miui.keyguard.biometrics.fod.MiuiGxzwManager", cl
+            );
+            record(XposedHelpers.findAndHookMethod(
+                gxzwManagerClass, "isUnlockByGxzw", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
+                        HyperOpenConfig cfg = HyperOpenConfig.getCached();
+                        if (cfg == null || !cfg.faceUnlockQuickOpen) return;
+                        if (isFaceUnlockPressing(param.thisObject)) {
+                            param.setResult(Boolean.TRUE);
+                        }
+                    }
+                }
+            ));
+            Log.i(TAG, "已成功安装 MiuiGxzwManager.isUnlockByGxzw 人脸解锁长按放行 Hook！");
+        } catch (Throwable t) {
+            Log.e(TAG, "Hook MiuiGxzwManager.isUnlockByGxzw 失败", t);
+        }
+
+        try {
+            Class<?> stubClass = XposedHelpers.findClass(
+                "com.android.keyguard.stub.MiuiKeyguardUpdateMonitorInjectorStub", cl
+            );
+            record(XposedHelpers.findAndHookMethod(
+                stubClass, "isFingerprintUnlock", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
+                        HyperOpenConfig cfg = HyperOpenConfig.getCached();
+                        if (cfg == null || !cfg.faceUnlockQuickOpen) return;
+                        if (isFaceUnlockPressingGlobal(cl)) {
+                            param.setResult(Boolean.TRUE);
+                        }
+                    }
+                }
+            ));
+            Log.i(TAG, "已成功安装 MiuiKeyguardUpdateMonitorInjectorStub.isFingerprintUnlock 人脸解锁长按放行 Hook！");
+        } catch (Throwable t) {
+            Log.w(TAG, "Hook MiuiKeyguardUpdateMonitorInjectorStub.isFingerprintUnlock 失败 (可能为旧版 MIUI)", t);
+        }
+
+        // 跨版本兼容：直接 Hook 底层实体类 KeyguardUpdateMonitorInjector.isFingerprintUnlock()，
+        // 彻底覆盖 20240808.0 / 20250121.0 等未采用新 Stub 体系或使用 KeyguardStub 包装的旧版本。
+        try {
+            Class<?> injectorClass = XposedHelpers.findClass(
+                "com.android.keyguard.injector.KeyguardUpdateMonitorInjector", cl
+            );
+            record(XposedHelpers.findAndHookMethod(
+                injectorClass, "isFingerprintUnlock", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (!active) return;
+                        HyperOpenConfig cfg = HyperOpenConfig.getCached();
+                        if (cfg == null || !cfg.faceUnlockQuickOpen) return;
+                        if (isFaceUnlockPressingGlobal(cl)) {
+                            param.setResult(Boolean.TRUE);
+                        }
+                    }
+                }
+            ));
+            Log.i(TAG, "已成功安装 KeyguardUpdateMonitorInjector.isFingerprintUnlock 跨版本底层兼容 Hook！");
+        } catch (Throwable t) {
+            Log.w(TAG, "Hook KeyguardUpdateMonitorInjector.isFingerprintUnlock 失败", t);
+        }
     }
 
     /**
@@ -536,6 +607,79 @@ public class HyperOpenHook {
         try {
             Object mark = XposedHelpers.getAdditionalInstanceField(r, FIELD_SHOW_RUNNABLE);
             return Boolean.TRUE.equals(mark);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 判断当前是否处于「人脸识别成功停留在锁屏，且用户正按住指纹图标」的状态。
+     * 当且仅当手指按下且处于人脸解锁状态时放行，确保：
+     * 1. 短按轻触（< 等待时间即松手）：onTouchUp 已置 mTouchDown=false，原生直接进桌面；
+     * 2. 持续长按（手指不松开）：dismissGxzwView 判定为有效解锁，顺利触发 postDelayed(mShowRunnable) 展开快捷面板。
+     */
+    private static boolean isFaceUnlockPressing(Object gxzwManager) {
+        if (gxzwManager == null) return false;
+        try {
+            Object iconView = XposedHelpers.getObjectField(gxzwManager, "mMiuiGxzwIconView");
+            if (iconView == null) return false;
+            boolean touchDown = XposedHelpers.getBooleanField(iconView, "mTouchDown");
+            boolean catchDown = XposedHelpers.getBooleanField(iconView, "isCatchDownEvent");
+            if (!touchDown || !catchDown) return false;
+
+            // 1. 尝试从 gxzwManager 字段获取 injector
+            try {
+                Object injector = XposedHelpers.getObjectField(gxzwManager, "mKeyguardUpdateMonitorInjector");
+                if (injector != null) {
+                    Boolean shouldListen = (Boolean) XposedHelpers.callMethod(injector, "shouldListenForFingerprintWhenUnlocked");
+                    if (Boolean.TRUE.equals(shouldListen)) return true;
+                }
+            } catch (Throwable ignored) {}
+
+            // 2. 尝试从 InterfacesImplManager 获取单例 (新版)
+            try {
+                ClassLoader cl = gxzwManager.getClass().getClassLoader();
+                Class<?> stubClass = XposedHelpers.findClass(
+                    "com.android.keyguard.stub.MiuiKeyguardUpdateMonitorInjectorStub", cl
+                );
+                Class<?> ifaceMgr = XposedHelpers.findClass(
+                    "com.miui.systemui.interfacesmanager.InterfacesImplManager", cl
+                );
+                Object stub = XposedHelpers.callStaticMethod(ifaceMgr, "getImpl", stubClass);
+                if (stub != null) {
+                    Boolean shouldListen = (Boolean) XposedHelpers.callMethod(stub, "shouldListenForFingerprintWhenUnlocked");
+                    if (Boolean.TRUE.equals(shouldListen)) return true;
+                }
+            } catch (Throwable ignored) {}
+
+            // 3. 跨版本回退：尝试通过 MiuiFaceUnlockManager 直接检查是否处于停留锁屏状态 (三代通用)
+            try {
+                ClassLoader cl = gxzwManager.getClass().getClassLoader();
+                Class<?> faceMgrClass = XposedHelpers.findClass(
+                    "com.miui.keyguard.biometrics.faceunlock.MiuiFaceUnlockManager", cl
+                );
+                Class<?> ifaceMgr = XposedHelpers.findClass(
+                    "com.miui.systemui.interfacesmanager.InterfacesImplManager", cl
+                );
+                Object faceMgr = XposedHelpers.callStaticMethod(ifaceMgr, "getImpl", faceMgrClass);
+                if (faceMgr != null) {
+                    Boolean stayScreen = (Boolean) XposedHelpers.callMethod(faceMgr, "isFaceUnlockSuccessAndStayScreen");
+                    if (Boolean.TRUE.equals(stayScreen)) return true;
+                }
+            } catch (Throwable ignored) {}
+        } catch (Throwable t) {
+            Log.w(TAG, "检查人脸解锁按下状态异常", t);
+        }
+        return false;
+    }
+
+    private static boolean isFaceUnlockPressingGlobal(ClassLoader cl) {
+        try {
+            Class<?> factoryClass = XposedHelpers.findClass(
+                "com.miui.keyguard.biometrics.fod.MiuiFingerPrintFactory", cl
+            );
+            Object mgr = XposedHelpers.callStaticMethod(factoryClass, "getFingerPrintManager");
+            return isFaceUnlockPressing(mgr);
         } catch (Throwable t) {
             return false;
         }

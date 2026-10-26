@@ -218,6 +218,7 @@ fun HyperOpenApp(
     var regionDimAlpha by remember { mutableFloatStateOf(initialConfig.regionDimAlpha) }
     var bubbleDimAlpha by remember { mutableFloatStateOf(initialConfig.bubbleDimAlpha) }
     var showDelayMs by remember { mutableFloatStateOf(initialConfig.showDelayMs.toFloat()) }
+    var faceUnlockQuickOpen by remember { mutableStateOf(initialConfig.faceUnlockQuickOpen) }
     var hapticEnabled by remember { mutableStateOf(initialConfig.hapticEnabled) }
     var hapticStrength by remember { mutableFloatStateOf(initialConfig.hapticStrength.toFloat()) }
     var hapticDurationMs by remember { mutableFloatStateOf(initialConfig.hapticDurationMs.toFloat()) }
@@ -343,6 +344,7 @@ fun HyperOpenApp(
         c.regionDimAlpha = regionDimAlpha
         c.bubbleDimAlpha = bubbleDimAlpha
         c.showDelayMs = showDelayMs.toInt()
+        c.faceUnlockQuickOpen = faceUnlockQuickOpen
         c.hapticEnabled = hapticEnabled
         c.hapticStrength = hapticStrength.toInt()
         c.hapticDurationMs = hapticDurationMs.toInt()
@@ -405,6 +407,7 @@ fun HyperOpenApp(
         regionDimAlpha = defaults.regionDimAlpha
         bubbleDimAlpha = defaults.bubbleDimAlpha
         showDelayMs = defaults.showDelayMs.toFloat()
+        faceUnlockQuickOpen = defaults.faceUnlockQuickOpen
         hapticEnabled = defaults.hapticEnabled
         hapticStrength = defaults.hapticStrength.toFloat()
         hapticDurationMs = defaults.hapticDurationMs.toFloat()
@@ -610,6 +613,7 @@ fun HyperOpenApp(
                             this.regionDimAlpha = regionDimAlpha
                             this.bubbleDimAlpha = bubbleDimAlpha
                             this.showDelayMs = showDelayMs.toInt()
+                            this.faceUnlockQuickOpen = faceUnlockQuickOpen
                             this.hapticEnabled = hapticEnabled
                             this.hapticStrength = hapticStrength.toInt()
                             this.hapticDurationMs = hapticDurationMs.toInt()
@@ -918,6 +922,8 @@ fun HyperOpenApp(
                                     onBubbleDimAlpha = { bubbleDimAlpha = it; persist() },
                                     showDelayMs = showDelayMs,
                                     onShowDelayMs = { showDelayMs = it; persist() },
+                                    faceUnlockQuickOpen = faceUnlockQuickOpen,
+                                    onFaceUnlockQuickOpen = { faceUnlockQuickOpen = it; persist() },
                                     hapticEnabled = hapticEnabled,
                                     onHapticEnabled = { hapticEnabled = it; persist() },
                                     hapticStrength = hapticStrength,
@@ -1257,6 +1263,7 @@ fun ParamsPage(
     regionDimAlpha: Float, onRegionDimAlpha: (Float) -> Unit,
     bubbleDimAlpha: Float, onBubbleDimAlpha: (Float) -> Unit,
     showDelayMs: Float, onShowDelayMs: (Float) -> Unit,
+    faceUnlockQuickOpen: Boolean, onFaceUnlockQuickOpen: (Boolean) -> Unit,
     hapticEnabled: Boolean, onHapticEnabled: (Boolean) -> Unit,
     hapticStrength: Float, onHapticStrength: (Float) -> Unit,
     hapticDurationMs: Float, onHapticDurationMs: (Float) -> Unit,
@@ -1532,6 +1539,12 @@ fun ParamsPage(
                     value = showDelayMs,
                     valueRange = 0f..2000f,
                     onValueChange = onShowDelayMs,
+                )
+                SwitchPreference(
+                    title = "人脸解锁后长按快捷方式",
+                    summary = "人脸识别成功停留在锁屏时，长按指纹进入桌面并继续唤出快捷方式（短按轻触仅进入桌面）",
+                    checked = faceUnlockQuickOpen,
+                    onCheckedChange = onFaceUnlockQuickOpen,
                 )
                 SliderPreference(
                     title = "图标基础尺寸",
