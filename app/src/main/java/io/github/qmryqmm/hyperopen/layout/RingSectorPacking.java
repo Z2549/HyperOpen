@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * 空心圆环「扇区触发」几何：
  * <p>
- * 快捷方式数量较少（1 ~ 5 个）时，空心圆环布局的中心留白区过大、图标稀疏，鱼眼欧氏距离判定
+ * 快捷方式数量较少（1 ~ 6 个）时，空心圆环布局的中心留白区过大、图标稀疏，鱼眼欧氏距离判定
  * 容易误触。本类把整个圆形视界改造成「大圆套小圆」的扇区结构：
  * <ul>
  *   <li>图标沿半径 R 的圆周均分排布，R 同时也是触发距离（图标阵列围成的圆）；</li>
@@ -42,13 +42,13 @@ public class RingSectorPacking {
         }
     }
 
-    /** 扇区触发模式支持的快捷方式数量上限（不含）：数量达到该值时回退到常规空心圆环布局 */
-    public static final int MAX_SECTOR_COUNT_EXCLUSIVE = 6;
+    /** 扇区触发模式支持的快捷方式数量上限（不含）：1 ~ 6 个支持扇区，7 个及以上回退常规空心圆环布局 */
+    public static final int MAX_SECTOR_COUNT_EXCLUSIVE = 7;
 
     /**
      * 计算扇区触发布局。
      *
-     * @param count         图标数量（1 ~ 5）
+     * @param count         图标数量（1 ~ 6）
      * @param cx            圆心 X（通常为指纹中心 X）
      * @param cy            圆心 Y（指纹中心 - offsetY）
      * @param regionRadius  圆形视界半径（扇区向外延伸的边界）

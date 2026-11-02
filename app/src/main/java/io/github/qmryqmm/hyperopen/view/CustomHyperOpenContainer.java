@@ -115,6 +115,13 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 regionBackdrop.setStyle(resolvedStyle);
                 regionBackdrop.setBlurRadius(config.showRegionBg ? config.regionBlurRadius : 0);
                 regionBackdrop.setDimAlpha(config.showRegionBg ? config.regionDimAlpha : 0f);
+                // 扇区分隔线样式（颜色/透明度/虚线规格）热生效
+                if (ringSectorSpec != null) {
+                    regionBackdrop.setSectorOverlay(true, ringSectorSpec.count,
+                            ringSectorSpec.cancelRadius, ringSectorSpec.startAngleDeg,
+                            config.sectorLineColor, config.sectorLineAlpha,
+                            config.sectorDashLength, config.sectorDashGap, config.sectorLineWidth);
+                }
             }
             // 顶部提示参数（位置、文字大小、居中、模糊与背景）热生效
             applyHeaderPillStyleAndLayout();
@@ -620,7 +627,9 @@ public class CustomHyperOpenContainer extends FrameLayout {
         // 扇区分隔虚线：开启时绘制取消区小圆 + N 条径向淡灰虚线（关闭则恢复纯净底衬）
         if (sectorMode && ringSectorSpec != null && ringSectorSpec.count == activeItems.size()) {
             regionBackdrop.setSectorOverlay(true, ringSectorSpec.count,
-                    ringSectorSpec.cancelRadius, ringSectorSpec.startAngleDeg);
+                    ringSectorSpec.cancelRadius, ringSectorSpec.startAngleDeg,
+                    config.sectorLineColor, config.sectorLineAlpha,
+                    config.sectorDashLength, config.sectorDashGap, config.sectorLineWidth);
         } else {
             regionBackdrop.setSectorOverlay(false, 0, 0f, -90f);
         }

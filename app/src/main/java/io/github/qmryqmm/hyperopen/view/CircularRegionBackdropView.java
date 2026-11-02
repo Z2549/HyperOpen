@@ -45,6 +45,16 @@ public class CircularRegionBackdropView extends FrameLayout {
     private float sectorCancelRadiusPx = 0f;
     /** 第一个扇区的中心角（度，-90 = 正上方） */
     private float sectorStartAngleDeg = -90f;
+    /** 分隔线颜色（ARGB，alpha 由 sectorLineAlpha 独立控制） */
+    private int sectorLineColor = 0xFFBFBFBF;
+    /** 分隔线透明度 (0.0 ~ 1.0) */
+    private float sectorLineAlpha = 0.4f;
+    /** 虚线实线段长度 (dp) */
+    private int sectorDashLengthDp = 6;
+    /** 虚线间隔长度 (dp) */
+    private int sectorDashGapDp = 5;
+    /** 分隔线粗细 (dp) */
+    private float sectorLineWidthDp = 1.2f;
 
     private OverlayDrawView overlayView;
     private Drawable systemBackdropBlurDrawable;
@@ -175,14 +185,40 @@ public class CircularRegionBackdropView extends FrameLayout {
      * @param startAngleDeg     第一个扇区的中心角（度，-90 = 正上方）
      */
     public void setSectorOverlay(boolean enabled, int count, float cancelRadiusPx, float startAngleDeg) {
+        setSectorOverlay(enabled, count, cancelRadiusPx, startAngleDeg,
+                sectorLineColor, sectorLineAlpha, sectorDashLengthDp, sectorDashGapDp, sectorLineWidthDp);
+    }
+
+    /**
+     * 带样式参数的扇区分隔线覆盖层。
+     *
+     * @param lineColor    分隔线颜色（ARGB，忽略其 alpha，透明度由 lineAlpha 控制）
+     * @param lineAlpha    透明度 0.0 ~ 1.0
+     * @param dashLengthDp 虚线实线段长度 (dp)
+     * @param dashGapDp    虚线间隔长度 (dp)
+     * @param lineWidthDp  分隔线粗细 (dp)
+     */
+    public void setSectorOverlay(boolean enabled, int count, float cancelRadiusPx, float startAngleDeg,
+                                 int lineColor, float lineAlpha, int dashLengthDp, int dashGapDp,
+                                 float lineWidthDp) {
         boolean changed = this.sectorOverlayEnabled != enabled
                 || this.sectorCount != count
                 || Math.abs(this.sectorCancelRadiusPx - cancelRadiusPx) > 0.5f
-                || Math.abs(this.sectorStartAngleDeg - startAngleDeg) > 0.01f;
+                || Math.abs(this.sectorStartAngleDeg - startAngleDeg) > 0.01f
+                || this.sectorLineColor != lineColor
+                || Math.abs(this.sectorLineAlpha - lineAlpha) > 0.002f
+                || this.sectorDashLengthDp != dashLengthDp
+                || this.sectorDashGapDp != dashGapDp
+                || Math.abs(this.sectorLineWidthDp - lineWidthDp) > 0.01f;
         this.sectorOverlayEnabled = enabled;
         this.sectorCount = count;
         this.sectorCancelRadiusPx = cancelRadiusPx;
         this.sectorStartAngleDeg = startAngleDeg;
+        this.sectorLineColor = lineColor;
+        this.sectorLineAlpha = Math.max(0f, Math.min(1f, lineAlpha));
+        this.sectorDashLengthDp = Math.max(1, dashLengthDp);
+        this.sectorDashGapDp = Math.max(1, dashGapDp);
+        this.sectorLineWidthDp = Math.max(0.3f, lineWidthDp);
         if (changed && overlayView != null) {
             overlayView.invalidate();
         }
@@ -281,7 +317,9 @@ public class CircularRegionBackdropView extends FrameLayout {
         private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         /** 扇区分隔虚线画笔（淡灰色，随尺寸变化重建 DashPathEffect） */
         private final Paint sectorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private int sectorDashWidthPx = -1;
+        private int sectorDashLengthPx = -1;
+        private int sectorDashGapPx = -1;
+        private int sectorStrokeWidthPx100 = -1;
         private final HyperOSMaterialFactory.CircularOpticsCache opticsCache =
             new HyperOSMaterialFactory.CircularOpticsCache();
 
@@ -293,8 +331,6 @@ public class CircularRegionBackdropView extends FrameLayout {
 
             sectorPaint.setStyle(Paint.Style.STROKE);
             sectorPaint.setStrokeCap(Paint.Cap.ROUND);
-            // 淡灰色：在深色 / 浅色底衬上都能看清，又不喧宾夺主
-            sectorPaint.setColor(0x66BFBFBF);
         }
 
         @Override
@@ -326,14 +362,21 @@ public class CircularRegionBackdropView extends FrameLayout {
             float viewRadius = Math.min(w, h) / 2f;
             float outerRadius = Math.max(sectorCancelRadiusPx, viewRadius - dp(1f));
 
-            // 虚线规格随尺寸重建（6dp 实线 + 5dp 间隔），只在变化时重新分配对象
-            int dashPx = Math.max(2, Math.round(dp(6f)));
-            if (dashPx != sectorDashWidthPx) {
-                sectorDashWidthPx = dashPx;
-                sectorPaint.setPathEffect(new android.graphics.DashPathEffect(
-                        new float[]{dashPx, Math.max(2, Math.round(dp(5f)))}, 0f));
-                sectorPaint.setStrokeWidth(Math.max(1f, dp(1.2f)));
+            // 虚线规格与线宽随配置重建，仅在参数变化时重新分配 PathEffect 对象
+            int dashLen = Math.max(1, Math.round(dp(sectorDashLengthDp)));
+            int dashGap = Math.max(1, Math.round(dp(sectorDashGapDp)));
+            int strokeW100 = Math.round(dp(sectorLineWidthDp) * 100f);
+            if (dashLen != sectorDashLengthPx || dashGap != sectorDashGapPx || strokeW100 != sectorStrokeWidthPx100) {
+                sectorDashLengthPx = dashLen;
+                sectorDashGapPx = dashGap;
+                sectorStrokeWidthPx100 = strokeW100;
+                sectorPaint.setPathEffect(new android.graphics.DashPathEffect(new float[]{dashLen, dashGap}, 0f));
+                sectorPaint.setStrokeWidth(Math.max(0.3f, dp(sectorLineWidthDp)));
             }
+
+            // 颜色每帧按配置合成：RGB 取自定义色，透明度独立控制
+            int alphaByte = Math.max(0, Math.min(255, Math.round(sectorLineAlpha * 255f)));
+            sectorPaint.setColor((alphaByte << 24) | (sectorLineColor & 0x00FFFFFF));
 
             // 1. 取消区小圆（圆内松手返回，不触发任何快捷方式）
             if (sectorCancelRadiusPx > 1f) {

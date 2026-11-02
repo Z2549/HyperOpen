@@ -586,6 +586,21 @@ class HyperOpenPreviewView(
             regionBackdrop.setStyle(resolvedStyle)
             regionBackdrop.setBlurRadius(if (config.showRegionBg) config.regionBlurRadius.toFloat() else 0f)
             regionBackdrop.setDimAlpha(if (config.showRegionBg) config.regionDimAlpha else 0f)
+            // 扇区分隔线样式（颜色/透明度/虚线规格）热生效
+            val liveSpec = ringSectorSpec
+            if (liveSpec != null && isRingSectorActive()) {
+                regionBackdrop.setSectorOverlay(
+                    true,
+                    liveSpec.count,
+                    liveSpec.cancelRadius,
+                    liveSpec.startAngleDeg,
+                    config.sectorLineColor,
+                    config.sectorLineAlpha,
+                    config.sectorDashLength,
+                    config.sectorDashGap,
+                    config.sectorLineWidth
+                )
+            }
         }
         applyHeaderPillStyleAndLayout()
         refreshFloatingBackButtonBackground()
@@ -755,7 +770,12 @@ class HyperOpenPreviewView(
                 true,
                 sectorSpecForOverlay.count,
                 sectorSpecForOverlay.cancelRadius,
-                sectorSpecForOverlay.startAngleDeg
+                sectorSpecForOverlay.startAngleDeg,
+                config.sectorLineColor,
+                config.sectorLineAlpha,
+                config.sectorDashLength,
+                config.sectorDashGap,
+                config.sectorLineWidth
             )
         } else {
             regionBackdrop.setSectorOverlay(false, 0, 0f, -90f)

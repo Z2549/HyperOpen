@@ -118,6 +118,16 @@ public class HyperOpenConfig {
      * 每个扇形触发对应图标；该模式下禁止自定义排版（拖拽排序与单个图标偏移不生效）。
      */
     public boolean ringSectorMode = true;
+    /** 扇区分隔线颜色 (ARGB，透明度由 sectorLineAlpha 独立控制，默认淡灰 #FFBFBFBF) */
+    public int sectorLineColor = 0xFFBFBFBF;
+    /** 扇区分隔线透明度 (0.0 ~ 1.0，默认 0.4) */
+    public float sectorLineAlpha = 0.4f;
+    /** 虚线实线段长度 (2 ~ 20 dp，默认 6) */
+    public int sectorDashLength = 6;
+    /** 虚线间隔长度 (2 ~ 20 dp，默认 5) */
+    public int sectorDashGap = 5;
+    /** 分隔线粗细 (0.5 ~ 4.0 dp，默认 1.2) */
+    public float sectorLineWidth = 1.2f;
     public float maxScale = 1.40f;
     public int influenceRadius = 70;  // dp
 
@@ -349,6 +359,11 @@ public class HyperOpenConfig {
                     config.layoutStyle = bundle.getInt("layout_style", LAYOUT_HONEYCOMB);
                     config.stockSystemAnim = bundle.getBoolean("stock_system_anim", true);
                     config.ringSectorMode = bundle.getBoolean("ring_sector_mode", true);
+                    config.sectorLineColor = bundle.getInt("sector_line_color", 0xFFBFBFBF);
+                    config.sectorLineAlpha = bundle.getFloat("sector_line_alpha", 0.4f);
+                    config.sectorDashLength = bundle.getInt("sector_dash_length", 6);
+                    config.sectorDashGap = bundle.getInt("sector_dash_gap", 5);
+                    config.sectorLineWidth = bundle.getFloat("sector_line_width", 1.2f);
                     config.stockSystemRegion = bundle.getBoolean("stock_system_region", true);
                     config.ringCount = bundle.getInt("ring_count", 2);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
@@ -435,6 +450,11 @@ public class HyperOpenConfig {
         config.layoutStyle = xPrefs.getInt("layout_style", LAYOUT_HONEYCOMB);
         config.stockSystemAnim = xPrefs.getBoolean("stock_system_anim", true);
         config.ringSectorMode = xPrefs.getBoolean("ring_sector_mode", true);
+        config.sectorLineColor = xPrefs.getInt("sector_line_color", 0xFFBFBFBF);
+        config.sectorLineAlpha = xPrefs.getFloat("sector_line_alpha", 0.4f);
+        config.sectorDashLength = xPrefs.getInt("sector_dash_length", 6);
+        config.sectorDashGap = xPrefs.getInt("sector_dash_gap", 5);
+        config.sectorLineWidth = xPrefs.getFloat("sector_line_width", 1.2f);
         config.stockSystemRegion = xPrefs.getBoolean("stock_system_region", true);
         config.ringCount = xPrefs.getInt("ring_count", 2);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
@@ -511,6 +531,11 @@ public class HyperOpenConfig {
         config.layoutStyle = sp.getInt("layout_style", LAYOUT_HONEYCOMB);
         config.stockSystemAnim = sp.getBoolean("stock_system_anim", true);
         config.ringSectorMode = sp.getBoolean("ring_sector_mode", true);
+        config.sectorLineColor = sp.getInt("sector_line_color", 0xFFBFBFBF);
+        config.sectorLineAlpha = sp.getFloat("sector_line_alpha", 0.4f);
+        config.sectorDashLength = sp.getInt("sector_dash_length", 6);
+        config.sectorDashGap = sp.getInt("sector_dash_gap", 5);
+        config.sectorLineWidth = sp.getFloat("sector_line_width", 1.2f);
         config.stockSystemRegion = sp.getBoolean("stock_system_region", true);
         config.ringCount = sp.getInt("ring_count", 2);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
@@ -588,6 +613,11 @@ public class HyperOpenConfig {
             .putBoolean("stock_system_anim", stockSystemAnim)
             .putBoolean("stock_system_region", stockSystemRegion)
             .putBoolean("ring_sector_mode", ringSectorMode)
+            .putInt("sector_line_color", sectorLineColor)
+            .putFloat("sector_line_alpha", sectorLineAlpha)
+            .putInt("sector_dash_length", sectorDashLength)
+            .putInt("sector_dash_gap", sectorDashGap)
+            .putFloat("sector_line_width", sectorLineWidth)
             .putInt("ring_count", ringCount)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)
