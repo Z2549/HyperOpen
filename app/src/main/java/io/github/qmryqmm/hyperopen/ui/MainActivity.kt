@@ -257,6 +257,7 @@ fun HyperOpenApp(
     var stockSystemAnim by remember { mutableStateOf(initialConfig.stockSystemAnim) }
     var stockSystemRegion by remember { mutableStateOf(initialConfig.stockSystemRegion) }
     var ringCount by remember { mutableStateOf(initialConfig.ringCount.toFloat()) }
+    var ringSectorMode by remember { mutableStateOf(initialConfig.ringSectorMode) }
     val shortcuts = remember { mutableStateListOf<ShortcutItem>().apply { addAll(initialConfig.shortcuts) } }
     var safetyTick by remember { mutableStateOf(0) }
     var page by remember { mutableStateOf(0) }
@@ -410,6 +411,7 @@ fun HyperOpenApp(
         c.stockSystemAnim = stockSystemAnim
         c.stockSystemRegion = stockSystemRegion
         c.ringCount = ringCount.toInt().coerceIn(1, 4)
+        c.ringSectorMode = ringSectorMode
         c.maxScale = maxScale
         c.influenceRadius = influenceRadius.toInt()
         c.iconAlpha = iconAlpha
@@ -485,6 +487,7 @@ fun HyperOpenApp(
         stockSystemAnim = defaults.stockSystemAnim
         stockSystemRegion = defaults.stockSystemRegion
         ringCount = defaults.ringCount.toFloat()
+        ringSectorMode = defaults.ringSectorMode
         maxScale = defaults.maxScale
         influenceRadius = defaults.influenceRadius.toFloat()
         iconAlpha = defaults.iconAlpha
@@ -700,12 +703,14 @@ fun HyperOpenApp(
                             this.maxIconCount = maxIconCount.toInt()
                             this.layoutStyle = layoutStyle
                             this.ringCount = ringCount.toInt().coerceIn(1, 4)
+                            this.ringSectorMode = ringSectorMode
                             this.maxScale = maxScale
                             this.influenceRadius = influenceRadius.toInt()
                             this.layoutStyle = layoutStyle
                             this.stockSystemAnim = stockSystemAnim
                             this.stockSystemRegion = stockSystemRegion
                             this.ringCount = ringCount.toInt()
+                            this.ringSectorMode = ringSectorMode
                             this.iconAlpha = iconAlpha
                             this.fisheyeZoomAlpha = fisheyeZoomAlpha
                             this.fullscreenBlurMaskAlpha = fullscreenBlurMaskAlpha
@@ -1009,6 +1014,8 @@ fun HyperOpenApp(
                                     onStockSystemRegion = { stockSystemRegion = it; persist() },
                                     ringCount = ringCount,
                                     onRingCount = { ringCount = it; clampIconCountToCapacity(); persist() },
+                                    ringSectorMode = ringSectorMode,
+                                    onRingSectorMode = { ringSectorMode = it; persist() },
                                     maxScale = maxScale,
                                     onMaxScale = { maxScale = it; persist() },
                                     influenceRadius = influenceRadius,
@@ -1525,6 +1532,7 @@ fun ParamsPage(
     stockSystemAnim: Boolean, onStockSystemAnim: (Boolean) -> Unit,
     stockSystemRegion: Boolean, onStockSystemRegion: (Boolean) -> Unit,
     ringCount: Float, onRingCount: (Float) -> Unit,
+    ringSectorMode: Boolean, onRingSectorMode: (Boolean) -> Unit,
     maxScale: Float, onMaxScale: (Float) -> Unit,
     influenceRadius: Float, onInfluenceRadius: (Float) -> Unit,
     iconAlpha: Float, onIconAlpha: (Float) -> Unit,
@@ -1742,9 +1750,20 @@ fun ParamsPage(
                     )
                 }
                 if (layoutStyle == HyperOpenConfig.LAYOUT_RING) {
+                    SwitchPreference(
+                        title = "扇区触发模式",
+                        summary = when {
+                            !ringSectorMode -> "开启后：快捷方式少于 6 个时，图标沿圆周均分，中心圆内为取消区，圆外按图标数量均分为扇形（淡灰虚线分隔），滑入扇区即选中；该模式下禁止自定义排版"
+                            enabledShortcutsCount in 1..5 -> "已生效（当前 $enabledShortcutsCount 个快捷方式）：中心圆内松手取消，圆外 $enabledShortcutsCount 个扇区各对应一个图标；自定义排版已禁用"
+                            else -> "快捷方式达到 6 个及以上时自动回退为常规同心圆环布局（当前 $enabledShortcutsCount 个）"
+                        },
+                        checked = ringSectorMode,
+                        onCheckedChange = onRingSectorMode,
+                    )
                     SliderPreference(
                         title = "同心圆环圈数",
-                        summary = "中心留空，图标分布在 N 圈同心环上",
+                        summary = if (ringSectorMode && enabledShortcutsCount in 1..5)
+                            "扇区触发模式下图标固定排布在单圈圆周上，圈数暂不生效" else "中心留空，图标分布在 N 圈同心环上",
                         valueText = "${ringCount.toInt()} 圈",
                         value = ringCount,
                         valueRange = 1f..4f,

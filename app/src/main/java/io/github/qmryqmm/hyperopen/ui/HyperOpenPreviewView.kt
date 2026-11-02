@@ -21,6 +21,7 @@ import io.github.qmryqmm.hyperopen.factory.HyperOSMaterialFactory
 import io.github.qmryqmm.hyperopen.layout.ArcFanPacking
 import io.github.qmryqmm.hyperopen.layout.CircularHoneycombPacking
 import io.github.qmryqmm.hyperopen.layout.HollowRingPacking
+import io.github.qmryqmm.hyperopen.layout.RingSectorPacking
 import io.github.qmryqmm.hyperopen.layout.StockFanPacking
 import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.view.CircularBubbleView
@@ -98,6 +99,8 @@ class HyperOpenPreviewView(
     private var lastRegionDiameterPx = 0f
 
     private var currentSelectedBubble: CircularBubbleView? = null
+    /** 空心圆环扇区触发模式的几何规格（非扇区模式时为 null） */
+    private var ringSectorSpec: RingSectorPacking.Result? = null
 
     // 拖拽排版相关状态
     var isEditMode: Boolean = false
@@ -109,7 +112,8 @@ class HyperOpenPreviewView(
     private var isDraggingActive = false
     private val longPressRunnable = Runnable {
         val target = pendingPressBubble
-        if (target != null && !isEditMode && !isDraggingActive) {
+        // 扇区触发模式下禁止自定义排版：图标位置由扇区几何决定，长按不进入拖拽编辑
+        if (target != null && !isEditMode && !isDraggingActive && !isRingSectorActive()) {
             currentSelectedBubble?.setSelectedState(false)
             currentSelectedBubble = null
             enterEditMode(target)
@@ -571,6 +575,7 @@ class HyperOpenPreviewView(
             old.appIconCropMode != newConfig.appIconCropMode ||
             old.maxIconCount != newConfig.maxIconCount ||
             old.layoutStyle != newConfig.layoutStyle ||
+            old.ringSectorMode != newConfig.ringSectorMode ||
             old.ringCount != newConfig.ringCount ||
             old.shortcuts.size != newConfig.shortcuts.size
 
@@ -579,8 +584,8 @@ class HyperOpenPreviewView(
         refreshBackdropMask()
         if (::regionBackdrop.isInitialized) {
             regionBackdrop.setStyle(resolvedStyle)
-            regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
-            regionBackdrop.setDimAlpha(config.regionDimAlpha)
+            regionBackdrop.setBlurRadius(if (config.showRegionBg) config.regionBlurRadius.toFloat() else 0f)
+            regionBackdrop.setDimAlpha(if (config.showRegionBg) config.regionDimAlpha else 0f)
         }
         applyHeaderPillStyleAndLayout()
         refreshFloatingBackButtonBackground()
@@ -633,24 +638,7 @@ class HyperOpenPreviewView(
         lastRegionCenterY = regionCenterY
         lastRegionDiameterPx = regionDiameterPx
 
-        // 定位底衬
-        regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
-        regionBackdrop.setSystemBlurEnabled(false)
-        regionBackdrop.setStyle(resolvedStyle)
-        regionBackdrop.setBlurRadius(config.regionBlurRadius.toFloat())
-            regionBackdrop.setDimAlpha(config.regionDimAlpha)
-        regionBackdrop.updateGeometry(regionRadiusPx)
-        val rLp = LayoutParams(regionDiameterPx.toInt(), regionDiameterPx.toInt()).apply {
-            leftMargin = (fodX - regionRadiusPx).toInt()
-            topMargin = (regionCenterY - regionRadiusPx).toInt()
-        }
-        regionBackdrop.layoutParams = rLp
-
-        // 确保顶部提示胶囊与悬浮返回按钮样式即时更新
-        applyHeaderPillStyleAndLayout()
-        refreshFloatingBackButtonBackground()
-
-        // 筛选有效快捷项
+        // 筛选有效快捷项（提前：扇区触发模式需按数量决定底衬与命中策略）
         for (item in config.shortcuts) {
             if (item.enabled) activeShortcuts.add(item)
         }
@@ -668,9 +656,34 @@ class HyperOpenPreviewView(
             activeShortcuts.sortBy { orderMap[it.id] ?: Int.MAX_VALUE }
         }
 
+        // 空心圆环扇区触发模式：圆环布局 + 开关开启 + 快捷方式少于 6 个时生效
+        val sectorMode = config.layoutStyle == HyperOpenConfig.LAYOUT_RING &&
+            config.ringSectorMode &&
+            activeShortcuts.isNotEmpty() &&
+            activeShortcuts.size < RingSectorPacking.MAX_SECTOR_COUNT_EXCLUSIVE
+
+        // 定位底衬（扇区模式下即使关闭底衬也要显示，用于承载分隔虚线）
+        regionBackdrop.visibility = if (config.showRegionBg || sectorMode) View.VISIBLE else View.GONE
+        regionBackdrop.setSystemBlurEnabled(false)
+        regionBackdrop.setStyle(resolvedStyle)
+        regionBackdrop.setBlurRadius(if (config.showRegionBg) config.regionBlurRadius.toFloat() else 0f)
+        regionBackdrop.setDimAlpha(if (config.showRegionBg) config.regionDimAlpha else 0f)
+        regionBackdrop.updateGeometry(regionRadiusPx)
+        val rLp = LayoutParams(regionDiameterPx.toInt(), regionDiameterPx.toInt()).apply {
+            leftMargin = (fodX - regionRadiusPx).toInt()
+            topMargin = (regionCenterY - regionRadiusPx).toInt()
+        }
+        regionBackdrop.layoutParams = rLp
+
+        // 确保顶部提示胶囊与悬浮返回按钮样式即时更新
+        applyHeaderPillStyleAndLayout()
+        refreshFloatingBackButtonBackground()
+
         // 计算布局坐标（图标紧凑程度对蜂窝、空心圆环与弧形扇面通用）
         val spacingOffsetPx = dpToPx(config.iconSpacingOffset.toFloat())
         stockSpecs.clear()
+        // 每次重建先清空扇区几何，仅扇区模式分支重新赋值（防止切换布局后残留旧判定）
+        ringSectorSpec = null
         val points = if (config.layoutStyle == HyperOpenConfig.LAYOUT_SYSTEM_STOCK) {
             // 系统经典扇形布局：调用 StockFanPacking
             val stockRadius = maxOf(regionRadiusPx * 0.95f, iconSizePx * 1.8f)
@@ -684,16 +697,31 @@ class HyperOpenPreviewView(
             stockSpecs.addAll(specs)
             specs.map { it.center }
         } else if (config.layoutStyle == HyperOpenConfig.LAYOUT_RING) {
-            // 空心同心圆环：中心留空，图标排布在 ringCount 圈同心环上
-            HollowRingPacking.calculatePoints(
-                activeShortcuts.size,
-                fodX,
-                regionCenterY,
-                regionRadiusPx,
-                iconSizePx,
-                spacingOffsetPx,
-                config.ringCount
-            )
+            if (sectorMode) {
+                // 扇区触发：图标沿圆周均分排布，圆内取消、圆外按数量均分为扇形
+                val spec = RingSectorPacking.calculate(
+                    activeShortcuts.size,
+                    fodX,
+                    regionCenterY,
+                    regionRadiusPx,
+                    iconSizePx,
+                    spacingOffsetPx
+                )
+                ringSectorSpec = spec
+                spec?.points ?: emptyList()
+            } else {
+                // 空心同心圆环：中心留空，图标排布在 ringCount 圈同心环上
+                ringSectorSpec = null
+                HollowRingPacking.calculatePoints(
+                    activeShortcuts.size,
+                    fodX,
+                    regionCenterY,
+                    regionRadiusPx,
+                    iconSizePx,
+                    spacingOffsetPx,
+                    config.ringCount
+                )
+            }
         } else if (config.layoutStyle == HyperOpenConfig.LAYOUT_ARC) {
             // 弧形扇面：图标沿 150° 弧带排布，单弧放不下自动转双弧
             ArcFanPacking.calculatePoints(
@@ -720,12 +748,26 @@ class HyperOpenPreviewView(
         }
         gridPoints.addAll(points)
 
+        // 扇区分隔虚线：开启时绘制取消区小圆 + N 条径向淡灰虚线（关闭则恢复纯净底衬）
+        val sectorSpecForOverlay = ringSectorSpec
+        if (sectorMode && sectorSpecForOverlay != null && sectorSpecForOverlay.count == activeShortcuts.size) {
+            regionBackdrop.setSectorOverlay(
+                true,
+                sectorSpecForOverlay.count,
+                sectorSpecForOverlay.cancelRadius,
+                sectorSpecForOverlay.startAngleDeg
+            )
+        } else {
+            regionBackdrop.setSectorOverlay(false, 0, 0f, -90f)
+        }
+
         // 实例化气泡（预览界面禁用底层窗口级 BackgroundBlur，由 Compose 的 textureBlur 渲染实时壁纸模糊，确保样式与真实锁屏 1:1 对齐且无双层叠加闪烁）
         for (i in 0 until points.size) {
             val item = activeShortcuts[i]
             val pt = points[i]
-            val finalX = pt.x + dpToPx(item.customOffsetX)
-            val finalY = pt.y + dpToPx(item.customOffsetY)
+            // 扇区触发模式下图标位置由扇区几何决定，忽略自定义偏移（禁止自定义排版）
+            val finalX = if (sectorMode) pt.x else pt.x + dpToPx(item.customOffsetX)
+            val finalY = if (sectorMode) pt.y else pt.y + dpToPx(item.customOffsetY)
 
             val bubble = CircularBubbleView(
                 context, item, resolvedStyle, iconSizePx.toInt(), context.classLoader, config
@@ -757,7 +799,7 @@ class HyperOpenPreviewView(
         val hSpec = MeasureSpec.makeMeasureSpec(targetH, MeasureSpec.EXACTLY)
         bubblesContainer.measure(wSpec, hSpec)
         bubblesContainer.layout(0, 0, targetW, targetH)
-        if (config.showRegionBg) {
+        if (config.showRegionBg || (sectorMode && regionBackdrop.visibility == View.VISIBLE)) {
             val rSpec = MeasureSpec.makeMeasureSpec(regionDiameterPx.toInt(), MeasureSpec.EXACTLY)
             regionBackdrop.measure(rSpec, rSpec)
             regionBackdrop.layout(
@@ -894,6 +936,11 @@ class HyperOpenPreviewView(
         }
         return best
     }
+
+    /** 当前是否处于空心圆环扇区触发模式（该模式禁止自定义排版） */
+    fun isRingSectorActive(): Boolean = ringSectorSpec != null &&
+        config.layoutStyle == HyperOpenConfig.LAYOUT_RING &&
+        config.ringSectorMode
 
     /**
      * 进入自定义排版模式
@@ -1197,7 +1244,27 @@ class HyperOpenPreviewView(
         var closest: CircularBubbleView? = null
         var minDistance = Float.MAX_VALUE
 
-        if (useStockRegion && stockSpecs.isNotEmpty()) {
+        val sectorSpec = ringSectorSpec
+        val useRingSector = isRingSectorActive() && sectorSpec != null
+
+        if (useRingSector) {
+            // 空心圆环扇区触发：中心圆内取消，圆外按角度均分扇区命中，不做距离鱼眼
+            val hitIndex = RingSectorPacking.findTouchedIndex(
+                sectorSpec,
+                touchX,
+                touchY,
+                lastFodX,
+                lastRegionCenterY
+            )
+            if (hitIndex >= 0 && hitIndex < bubbleViews.size) {
+                closest = bubbleViews[hitIndex]
+                minDistance = 0f
+            }
+            for (b in bubbleViews) {
+                b.applyScale(if (b == closest) config.selectedIconScale else 1.0f)
+                b.setIconAlpha(config.iconAlpha)
+            }
+        } else if (useStockRegion && stockSpecs.isNotEmpty()) {
             val hitIndex = StockFanPacking.findTouchedIndex(stockSpecs, touchX, touchY, lastFodX, lastFodY)
             if (hitIndex >= 0 && hitIndex < bubbleViews.size) {
                 closest = bubbleViews[hitIndex]
@@ -1228,7 +1295,7 @@ class HyperOpenPreviewView(
             }
         }
 
-        val isSelected = if (useStockRegion) (closest != null) else (closest != null && minDistance < hitDistanceThreshold)
+        val isSelected = if (useRingSector || useStockRegion) (closest != null) else (closest != null && minDistance < hitDistanceThreshold)
 
         if (isSelected) {
             if (currentSelectedBubble != closest) {

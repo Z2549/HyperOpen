@@ -112,6 +112,12 @@ public class HyperOpenConfig {
     public boolean stockSystemRegion = true;
     /** 空心同心圆环布局的同心环圈数 (1 ~ 4，默认 2，中心保持空心) */
     public int ringCount = 2;
+    /**
+     * 空心圆环「扇区触发」模式：开启且快捷方式少于 6 个时，
+     * 图标沿圆周均分排布，圆内为中心取消区，圆外按图标数量均分为扇形，
+     * 每个扇形触发对应图标；该模式下禁止自定义排版（拖拽排序与单个图标偏移不生效）。
+     */
+    public boolean ringSectorMode = true;
     public float maxScale = 1.40f;
     public int influenceRadius = 70;  // dp
 
@@ -342,6 +348,7 @@ public class HyperOpenConfig {
                     config.maxIconCount = bundle.getInt("max_icon_count", 0);
                     config.layoutStyle = bundle.getInt("layout_style", LAYOUT_HONEYCOMB);
                     config.stockSystemAnim = bundle.getBoolean("stock_system_anim", true);
+                    config.ringSectorMode = bundle.getBoolean("ring_sector_mode", true);
                     config.stockSystemRegion = bundle.getBoolean("stock_system_region", true);
                     config.ringCount = bundle.getInt("ring_count", 2);
                     config.maxScale = bundle.getFloat("max_scale", 1.40f);
@@ -427,6 +434,7 @@ public class HyperOpenConfig {
         config.maxIconCount = xPrefs.getInt("max_icon_count", 0);
         config.layoutStyle = xPrefs.getInt("layout_style", LAYOUT_HONEYCOMB);
         config.stockSystemAnim = xPrefs.getBoolean("stock_system_anim", true);
+        config.ringSectorMode = xPrefs.getBoolean("ring_sector_mode", true);
         config.stockSystemRegion = xPrefs.getBoolean("stock_system_region", true);
         config.ringCount = xPrefs.getInt("ring_count", 2);
         config.maxScale = xPrefs.getFloat("max_scale", 1.40f);
@@ -502,6 +510,7 @@ public class HyperOpenConfig {
         config.maxIconCount = sp.getInt("max_icon_count", 0);
         config.layoutStyle = sp.getInt("layout_style", LAYOUT_HONEYCOMB);
         config.stockSystemAnim = sp.getBoolean("stock_system_anim", true);
+        config.ringSectorMode = sp.getBoolean("ring_sector_mode", true);
         config.stockSystemRegion = sp.getBoolean("stock_system_region", true);
         config.ringCount = sp.getInt("ring_count", 2);
         config.maxScale = sp.getFloat("max_scale", 1.40f);
@@ -578,6 +587,7 @@ public class HyperOpenConfig {
             .putInt("layout_style", layoutStyle)
             .putBoolean("stock_system_anim", stockSystemAnim)
             .putBoolean("stock_system_region", stockSystemRegion)
+            .putBoolean("ring_sector_mode", ringSectorMode)
             .putInt("ring_count", ringCount)
             .putFloat("max_scale", maxScale)
             .putInt("influence_radius", influenceRadius)

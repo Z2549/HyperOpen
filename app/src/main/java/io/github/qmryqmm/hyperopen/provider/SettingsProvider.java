@@ -184,6 +184,7 @@ public class SettingsProvider extends ContentProvider {
                 bundle.putBoolean("stock_system_anim", sp.getBoolean("stock_system_anim", true));
                 bundle.putBoolean("stock_system_region", sp.getBoolean("stock_system_region", true));
                 bundle.putInt("ring_count", sp.getInt("ring_count", 2));
+                bundle.putBoolean("ring_sector_mode", sp.getBoolean("ring_sector_mode", true));
                 bundle.putFloat("max_scale", sp.getFloat("max_scale", 1.40f));
                 bundle.putInt("influence_radius", sp.getInt("influence_radius", 70));
                 bundle.putFloat("icon_alpha", sp.getFloat("icon_alpha", 1.0f));
