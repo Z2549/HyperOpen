@@ -48,6 +48,8 @@ public class CustomHyperOpenContainer extends FrameLayout {
     private TextView headerSubtitle;
 
     private CircularRegionBackdropView regionBackdrop;
+    /** 全屏扇区分隔虚线覆盖层（独立于圆形底衬，虚线可延伸出屏幕） */
+    private SectorOverlayView sectorOverlay;
     private FrameLayout bubblesContainer;
     private final List<CircularBubbleView> bubbles = new ArrayList<>();
     private final List<StockFanPacking.StockItemSpec> stockSpecs = new ArrayList<>();
@@ -92,6 +94,10 @@ public class CustomHyperOpenContainer extends FrameLayout {
         }
         addView(regionBackdrop);
 
+        // 扇区分隔虚线覆盖层：全屏铺设，虚线一直延伸到屏幕外；关闭底衬后只剩虚线与图标
+        sectorOverlay = new SectorOverlayView(getContext());
+        addView(sectorOverlay);
+
         // 图标容器 (允许子 View 放大溢出，不被矩形容器拦截)
         bubblesContainer = new FrameLayout(getContext());
         bubblesContainer.setClipChildren(false);
@@ -117,10 +123,14 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 regionBackdrop.setDimAlpha(config.showRegionBg ? config.regionDimAlpha : 0f);
                 // 扇区分隔线样式（颜色/透明度/虚线规格）热生效
                 if (ringSectorSpec != null) {
-                    regionBackdrop.setSectorOverlay(true, ringSectorSpec.count,
+                    float liveCenterY = fodCenterY - dpToPx(config.offsetY);
+                    sectorOverlay.update(true, ringSectorSpec.count,
+                            fodCenterX, liveCenterY,
                             ringSectorSpec.cancelRadius, ringSectorSpec.startAngleDeg,
                             config.sectorLineColor, config.sectorLineAlpha,
                             config.sectorDashLength, config.sectorDashGap, config.sectorLineWidth);
+                } else {
+                    sectorOverlay.clear();
                 }
             }
             // 顶部提示参数（位置、文字大小、居中、模糊与背景）热生效
@@ -533,11 +543,11 @@ public class CustomHyperOpenContainer extends FrameLayout {
                 && !activeItems.isEmpty()
                 && activeItems.size() < RingSectorPacking.MAX_SECTOR_COUNT_EXCLUSIVE;
 
-        // 更新底衬大小与位置（扇区模式下即使关闭底衬也要显示，用于承载分隔虚线）
-        regionBackdrop.setVisibility((config.showRegionBg || sectorMode) ? View.VISIBLE : View.GONE);
+        // 更新底衬大小与位置：完全跟随「显示圆形区域底衬」开关（分隔虚线由全屏覆盖层独立绘制）
+        regionBackdrop.setVisibility(config.showRegionBg ? View.VISIBLE : View.GONE);
         regionBackdrop.setStyle(resolvedStyle);
-        regionBackdrop.setBlurRadius(config.showRegionBg ? config.regionBlurRadius : 0);
-        regionBackdrop.setDimAlpha(config.showRegionBg ? config.regionDimAlpha : 0f);
+        regionBackdrop.setBlurRadius(config.regionBlurRadius);
+        regionBackdrop.setDimAlpha(config.regionDimAlpha);
         regionBackdrop.updateGeometry(regionRadiusPx);
 
         ViewGroup.LayoutParams existingRLp = regionBackdrop.getLayoutParams();
@@ -624,14 +634,15 @@ public class CustomHyperOpenContainer extends FrameLayout {
             activeItems = new ArrayList<>(activeItems.subList(0, points.size()));
         }
 
-        // 扇区分隔虚线：开启时绘制取消区小圆 + N 条径向淡灰虚线（关闭则恢复纯净底衬）
+        // 扇区分隔虚线：全屏覆盖层绘制取消区小圆 + N 条射出屏幕的径向虚线（与底衬解耦）
         if (sectorMode && ringSectorSpec != null && ringSectorSpec.count == activeItems.size()) {
-            regionBackdrop.setSectorOverlay(true, ringSectorSpec.count,
+            sectorOverlay.update(true, ringSectorSpec.count,
+                    fodCenterX, regionCenterY,
                     ringSectorSpec.cancelRadius, ringSectorSpec.startAngleDeg,
                     config.sectorLineColor, config.sectorLineAlpha,
                     config.sectorDashLength, config.sectorDashGap, config.sectorLineWidth);
         } else {
-            regionBackdrop.setSectorOverlay(false, 0, 0f, -90f);
+            sectorOverlay.clear();
         }
 
         if (canReuseExistingBubbles(activeItems, iconSizeInt)) {

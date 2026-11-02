@@ -1801,6 +1801,15 @@ fun ParamsPage(
                         onCheckedChange = onRingSectorMode,
                     )
                     if (ringSectorMode) {
+                        SwitchPreference(
+                            title = "显示圆形视界背景",
+                            summary = if (showRegionBg)
+                                "当前显示毛玻璃底衬与圆形边框；关闭后屏上只保留分隔虚线与图标（若仍有全屏模糊，请同时关闭上方【全屏模糊遮罩】）"
+                            else
+                                "已关闭底衬与边框：扇区模式下屏上只剩分隔虚线与图标（全屏模糊遮罩另由上方参数控制）",
+                            checked = showRegionBg,
+                            onCheckedChange = onShowRegionBg,
+                        )
                         var sectorHexInput by remember {
                             mutableStateOf(String.format("#%06X", sectorLineColor and 0xFFFFFF))
                         }

@@ -26,6 +26,7 @@ import io.github.qmryqmm.hyperopen.layout.StockFanPacking
 import io.github.qmryqmm.hyperopen.model.ShortcutItem
 import io.github.qmryqmm.hyperopen.view.CircularBubbleView
 import io.github.qmryqmm.hyperopen.view.CircularRegionBackdropView
+import io.github.qmryqmm.hyperopen.view.SectorOverlayView
 import io.github.qmryqmm.hyperopen.view.CustomHyperOpenContainer
 import io.github.qmryqmm.hyperopen.view.HintTextStyler
 import io.github.qmryqmm.hyperopen.view.StrokeTextView
@@ -86,6 +87,8 @@ class HyperOpenPreviewView(
     private lateinit var editBanner: TextView
 
     private lateinit var regionBackdrop: CircularRegionBackdropView
+    /** 全屏扇区分隔虚线覆盖层（独立于圆形底衬，虚线可延伸到屏幕外） */
+    private lateinit var sectorOverlay: SectorOverlayView
     private lateinit var bubblesContainer: FrameLayout
     private val bubbleViews = mutableListOf<CircularBubbleView>()
     private val stockSpecs = mutableListOf<StockFanPacking.StockItemSpec>()
@@ -195,6 +198,10 @@ class HyperOpenPreviewView(
         regionBackdrop.setStyle(resolvedStyle)
         addView(regionBackdrop)
 
+        // 2.1 扇区分隔虚线覆盖层：全屏绘制，虚线一直延伸到屏幕外；关闭底衬后只剩虚线与图标
+        sectorOverlay = SectorOverlayView(context)
+        addView(sectorOverlay)
+
         // 3. 气泡容器
         bubblesContainer = FrameLayout(context).apply {
             clipChildren = false
@@ -210,6 +217,9 @@ class HyperOpenPreviewView(
 
         // 5. 在首次测量前提前建立蜂窝气泡视图树
         setupLayout()
+
+        // 6. 全屏虚线层插入后，把顶部提示重新提到最上层，避免虚线穿过提示胶囊
+        topHeaderContainer.bringToFront()
     }
 
     private var floatingBackButton: FrameLayout? = null
@@ -589,9 +599,11 @@ class HyperOpenPreviewView(
             // 扇区分隔线样式（颜色/透明度/虚线规格）热生效
             val liveSpec = ringSectorSpec
             if (liveSpec != null && isRingSectorActive()) {
-                regionBackdrop.setSectorOverlay(
+                sectorOverlay.update(
                     true,
                     liveSpec.count,
+                    lastRegionCenterX,
+                    lastRegionCenterY,
                     liveSpec.cancelRadius,
                     liveSpec.startAngleDeg,
                     config.sectorLineColor,
@@ -600,6 +612,8 @@ class HyperOpenPreviewView(
                     config.sectorDashGap,
                     config.sectorLineWidth
                 )
+            } else {
+                sectorOverlay.clear()
             }
         }
         applyHeaderPillStyleAndLayout()
@@ -677,8 +691,8 @@ class HyperOpenPreviewView(
             activeShortcuts.isNotEmpty() &&
             activeShortcuts.size < RingSectorPacking.MAX_SECTOR_COUNT_EXCLUSIVE
 
-        // 定位底衬（扇区模式下即使关闭底衬也要显示，用于承载分隔虚线）
-        regionBackdrop.visibility = if (config.showRegionBg || sectorMode) View.VISIBLE else View.GONE
+        // 定位底衬：完全跟随「显示圆形区域底衬」开关（分隔虚线已由全屏覆盖层独立绘制）
+        regionBackdrop.visibility = if (config.showRegionBg) View.VISIBLE else View.GONE
         regionBackdrop.setSystemBlurEnabled(false)
         regionBackdrop.setStyle(resolvedStyle)
         regionBackdrop.setBlurRadius(if (config.showRegionBg) config.regionBlurRadius.toFloat() else 0f)
@@ -763,12 +777,14 @@ class HyperOpenPreviewView(
         }
         gridPoints.addAll(points)
 
-        // 扇区分隔虚线：开启时绘制取消区小圆 + N 条径向淡灰虚线（关闭则恢复纯净底衬）
+        // 扇区分隔虚线：全屏覆盖层绘制取消区小圆 + N 条射出屏幕的径向虚线（与底衬解耦）
         val sectorSpecForOverlay = ringSectorSpec
         if (sectorMode && sectorSpecForOverlay != null && sectorSpecForOverlay.count == activeShortcuts.size) {
-            regionBackdrop.setSectorOverlay(
+            sectorOverlay.update(
                 true,
                 sectorSpecForOverlay.count,
+                fodX,
+                regionCenterY,
                 sectorSpecForOverlay.cancelRadius,
                 sectorSpecForOverlay.startAngleDeg,
                 config.sectorLineColor,
@@ -778,7 +794,7 @@ class HyperOpenPreviewView(
                 config.sectorLineWidth
             )
         } else {
-            regionBackdrop.setSectorOverlay(false, 0, 0f, -90f)
+            sectorOverlay.clear()
         }
 
         // 实例化气泡（预览界面禁用底层窗口级 BackgroundBlur，由 Compose 的 textureBlur 渲染实时壁纸模糊，确保样式与真实锁屏 1:1 对齐且无双层叠加闪烁）
@@ -819,7 +835,7 @@ class HyperOpenPreviewView(
         val hSpec = MeasureSpec.makeMeasureSpec(targetH, MeasureSpec.EXACTLY)
         bubblesContainer.measure(wSpec, hSpec)
         bubblesContainer.layout(0, 0, targetW, targetH)
-        if (config.showRegionBg || (sectorMode && regionBackdrop.visibility == View.VISIBLE)) {
+        if (config.showRegionBg) {
             val rSpec = MeasureSpec.makeMeasureSpec(regionDiameterPx.toInt(), MeasureSpec.EXACTLY)
             regionBackdrop.measure(rSpec, rSpec)
             regionBackdrop.layout(
@@ -828,6 +844,10 @@ class HyperOpenPreviewView(
                 rLp.leftMargin + regionDiameterPx.toInt(),
                 rLp.topMargin + regionDiameterPx.toInt()
             )
+        }
+        if (::sectorOverlay.isInitialized) {
+            sectorOverlay.measure(wSpec, hSpec)
+            sectorOverlay.layout(0, 0, targetW, targetH)
         }
 
         bubblesContainer.invalidate()
